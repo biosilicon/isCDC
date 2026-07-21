@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Datasets · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="mb-4">
+    <p class="text-uppercase small fw-semibold text-primary mb-1">Catalogue</p>
+    <h1 class="h2">Datasets</h1>
+    <p class="text-secondary">{{ total }} matching dataset{% if total != 1 %}s{% endif %}</p>
+  </div>
+
+  <form class="filter-panel rounded-3 p-3 mb-4" method="get">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <label class="form-label" for="q">Keyword</label>
+        <input class="form-control" id="q" name="q" value="{{ selected.get('q', '') }}" placeholder="Search catalogue">
+      </div>
+      {% set filter_fields = [
+        ('organism', 'Species', facets.organisms),
+        ('tissue', 'Tissue', facets.tissues),
+        ('modality', 'Modality', facets.modalities),
+        ('technology', 'Technology', facets.technologies),
+        ('spatial_unit', 'Spatial unit', facets.spatial_units)
+      ] %}
+      {% for name, label, values in filter_fields %}
+        <div class="col-sm-6 col-lg">
+          <label class="form-label" for="{{ name }}">{{ label }}</label>
+          <select class="form-select" id="{{ name }}" name="{{ name }}">
+            <option value="">All</option>
+            {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endfor %}
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('dataset_list') }}">Clear</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="vstack gap-3">
+    {% for dataset in datasets %}
+      <article class="card dataset-card">
+        <div class="card-body p-4">
+          <div class="row g-3">
+            <div class="col-lg-9">
+              <div class="d-flex gap-2 flex-wrap mb-2">
+                {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                <span class="badge text-bg-light">{{ dataset.spatial_unit }}</span>
+              </div>
+              <h2 class="h4"><a class="text-decoration-none" href="{{ url_for('dataset_detail', dataset_id=dataset.dataset_id) }}">{{ dataset.title }}</a></h2>
+              <p class="text-secondary mb-2">{{ dataset.description }}</p>
+              <p class="small mb-0"><span class="fw-semibold">{{ dataset.organism }}</span> · {{ dataset.tissue }} · {{ dataset.dataset_id }}</p>
+            </div>
+            <div class="col-lg-3 text-lg-end">
+              <div class="fw-semibold">{{ "{:,}".format(dataset.n_obs) }} observations</div>
+              <div class="small text-secondary">{{ dataset.file_size|filesize }}</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty-state rounded-3 p-5 text-center">
+        <h2 class="h5">No matching datasets</h2>
+        <p class="text-secondary mb-0">Try removing one or more filters.</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if page_count > 1 %}
+    <nav class="d-flex justify-content-between align-items-center mt-4" aria-label="Dataset pages">
+      {% if previous_url %}<a class="btn btn-outline-secondary" href="{{ previous_url }}">Previous</a>{% else %}<span></span>{% endif %}
+      <span class="small text-secondary">Page {{ page }} of {{ page_count }}</span>
+      {% if next_url %}<a class="btn btn-outline-secondary" href="{{ next_url }}">Next</a>{% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+</div>
+{% endblock %}

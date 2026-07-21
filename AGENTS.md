@@ -2,18 +2,20 @@
 
 ## Project Structure & Module Organization
 
-This repository is currently an empty scaffold. As implementation is added, keep production code under `src/`, automated tests under `tests/`, and non-code resources under `assets/`. Mirror source paths in the test tree; for example, tests for `src/api/client.py` should live in `tests/api/test_client.py`. Keep root-level files limited to project configuration, documentation, and entry points.
+Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data is written to the ignored `data/` directory. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
 ## Build, Test, and Development Commands
 
-No build system, dependency manifest, or task runner is configured yet. When adding one, expose a small, predictable command set and document it in `README.md`. Recommended task names are:
+All project commands must be run in the Conda environment named `iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running tests, linting, or starting the application.
 
-- `make setup` — install development dependencies.
-- `make test` — run the complete automated test suite.
-- `make lint` — run formatting and static-analysis checks.
-- `make run` — start the project locally.
+The project uses requirements files and a small Makefile command set documented in `README.md`:
+
+- `make setup` — install development dependencies from `requirements-dev.txt`.
+- `make test` — run the complete pytest suite.
+- `make lint` — run Ruff static-analysis checks.
+- `make run` — start the FastAPI application with Uvicorn.
 
 Do not document placeholder commands as working until their targets are implemented.
 
@@ -23,7 +25,7 @@ Follow the standard formatter and linter for the chosen language, checked into p
 
 ## Testing Guidelines
 
-Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Once a framework is selected, record the exact invocation and any coverage threshold here.
+Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
 
 ## Commit & Pull Request Guidelines
 

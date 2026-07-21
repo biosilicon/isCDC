@@ -1,0 +1,34 @@
+database:
+  schema_version: "1.0"
+  dataset_id: xenium_human_rcc_ffpe_rna_protein
+  source: https://www.10xgenomics.com/cn/datasets/xenium-protein-ffpe-human-renal-carcinoma
+  organism: Homo sapiens
+  tissue: kidney
+  spatial_unit: cell
+  coordinate_unit: micrometer
+  pairing_type: same_unit
+sample_ids:
+  - human_rcc_ffpe_01
+modalities:
+  rna:
+    technology: 10x Genomics Xenium
+    value_type: counts
+  protein:
+    technology: 10x Genomics Xenium
+    value_type: intensity
+title: Xenium Gene and Protein Expression in FFPE Human Renal Cell Carcinoma
+description: >-
+  Spatial gene and protein expression from an FFPE human renal cell carcinoma specimen,
+  measured with the 10x Genomics Xenium In Situ Gene and Protein Expression workflow.
+keywords:
+  - renal cell carcinoma
+  - kidney
+  - FFPE
+  - Xenium
+  - spatial transcriptomics
+  - spatial proteomics
+license:
+  name: Creative Commons Attribution 4.0 International
+  identifier: CC BY 4.0
+  url: https://creativecommons.org/licenses/by/4.0/
+publication: null

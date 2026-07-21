@@ -1,0 +1,55 @@
+:root {
+  --catalogue-blue: #2357d9;
+  --catalogue-ink: #182034;
+  --catalogue-wash: #f5f7fb;
+}
+
+body {
+  color: var(--catalogue-ink);
+  background: #fff;
+}
+
+a {
+  color: var(--catalogue-blue);
+}
+
+.hero {
+  background: linear-gradient(135deg, #f4f7ff 0%, #eef8f6 100%);
+  border-bottom: 1px solid #e3e8f2;
+}
+
+.stat-card,
+.filter-panel,
+.download-panel,
+.empty-state {
+  background: var(--catalogue-wash);
+  border: 1px solid #e2e7f0;
+}
+
+.dataset-card {
+  border-color: #e2e7f0;
+  box-shadow: 0 0.25rem 1rem rgb(31 42 68 / 5%);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.dataset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.6rem 1.5rem rgb(31 42 68 / 10%);
+}
+
+.metadata-list dt,
+.metadata-list dd {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.download-panel {
+  top: 1.5rem;
+}
+
+.checksum {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}

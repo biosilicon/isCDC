@@ -1,0 +1,130 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+
+import anndata as ad
+import mudata as md
+import numpy as np
+import pytest
+import yaml
+
+from iscdc.config import PROJECT_ROOT, Settings
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    return Settings(
+        database_path=tmp_path / "catalog.db",
+        data_root=tmp_path / "datasets",
+        templates_dir=PROJECT_ROOT / "assets" / "templates",
+        static_dir=PROJECT_ROOT / "assets" / "static",
+    )
+
+
+@pytest.fixture
+def metadata_values() -> dict:
+    return {
+        "database": {
+            "schema_version": "1.0",
+            "dataset_id": "test_rna_protein",
+            "source": "TEST001",
+            "organism": "Homo sapiens",
+            "tissue": "kidney",
+            "spatial_unit": "cell",
+            "coordinate_unit": "micrometer",
+            "pairing_type": "same_unit",
+        },
+        "sample_ids": ["sample_01"],
+        "modalities": {
+            "rna": {"technology": "Test assay", "value_type": "counts"},
+            "protein": {"technology": "Test assay", "value_type": "intensity"},
+        },
+        "title": "Test RNA and protein dataset",
+        "description": "A deterministic spatial multi-omics test dataset.",
+        "keywords": ["kidney", "test"],
+        "license": None,
+        "publication": None,
+    }
+
+
+@pytest.fixture
+def write_metadata(tmp_path: Path, metadata_values: dict):
+    def writer(values: dict | None = None, name: str = "metadata.yaml") -> Path:
+        path = tmp_path / name
+        path.write_text(
+            yaml.safe_dump(values or metadata_values, sort_keys=False), encoding="utf-8"
+        )
+        return path
+
+    return writer
+
+
+@pytest.fixture
+def write_h5mu(tmp_path: Path, metadata_values: dict):
+    def writer(
+        pairing_type: str = "same_unit",
+        *,
+        declared_pairing_type: str | None = None,
+        include_assay: bool = True,
+        include_protein: bool = True,
+        include_spatial: bool = True,
+        missing_rna_x: bool = False,
+        duplicate_rna_features: bool = False,
+        name: str = "dataset.h5mu",
+    ) -> Path:
+        if pairing_type == "same_unit":
+            rna_obs = ["cell_1", "cell_2"]
+            protein_obs = ["cell_1", "cell_2"]
+        elif pairing_type == "partially_shared":
+            rna_obs = ["cell_1", "cell_2"]
+            protein_obs = ["cell_2", "cell_3"]
+        elif pairing_type == "unpaired":
+            rna_obs = ["cell_1", "cell_2"]
+            protein_obs = ["cell_3", "cell_4"]
+        else:
+            raise ValueError(pairing_type)
+
+        rna = ad.AnnData(
+            X=np.array([[1, 0], [0, 2]], dtype=np.uint32),
+            obs={"obs_id": rna_obs},
+            var={"feature_id": ["gene_1", "gene_2"]},
+        )
+        rna.obs_names = rna_obs
+        rna.var_names = ["gene_1", "gene_1"] if duplicate_rna_features else ["gene_1", "gene_2"]
+        if missing_rna_x:
+            rna.X = None
+        protein = ad.AnnData(
+            X=np.array([[1], [3]], dtype=np.uint32),
+            obs={"obs_id": protein_obs},
+            var={"feature_id": ["CD3"]},
+        )
+        protein.obs_names = protein_obs
+        protein.var_names = ["CD3"]
+        if include_assay:
+            rna.uns["assay"] = {"technology": "Test assay", "value_type": "counts"}
+            protein.uns["assay"] = {
+                "technology": "Test assay",
+                "value_type": "intensity",
+            }
+
+        modalities = {"rna": rna}
+        if include_protein:
+            modalities["protein"] = protein
+        mdata = md.MuData(modalities)
+        mdata.obs["sample_id"] = "sample_01"
+        if include_spatial:
+            mdata.obsm["spatial"] = np.arange(mdata.n_obs * 2, dtype=np.float32).reshape(-1, 2)
+        database = deepcopy(metadata_values["database"])
+        database["pairing_type"] = declared_pairing_type or pairing_type
+        mdata.uns["database"] = database
+        path = tmp_path / name
+        mdata.write_h5mu(path)
+        return path
+
+    return writer
