@@ -17,6 +17,21 @@ The project uses requirements files and a small Makefile command set documented 
 - `make lint` — run Ruff static-analysis checks.
 - `make run` — start the FastAPI application with Uvicorn.
 
+Invoke the standalone schema 1.1 splitter with:
+
+```bash
+PYTHONPATH=src python -m iscdc.splitter
+```
+
+Use these subcommands:
+
+- `range FULL.h5mu` for read-only coordinate inspection.
+- `spatial CONFIG.yaml` for a spatial train/test split.
+- `compose CONFIG.yaml` to assign whole datasets to train or test.
+
+All split parameters belong in the YAML configuration; paths in it are resolved
+relative to the configuration file.
+
 Do not document placeholder commands as working until their targets are implemented.
 
 ## Coding Style & Naming Conventions
@@ -26,6 +41,15 @@ Follow the standard formatter and linter for the chosen language, checked into p
 ## Testing Guidelines
 
 Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
+
+Run splitter-only tests with:
+
+```bash
+PYTHONPATH=src python -m pytest tests/test_splitter.py
+```
+
+Synthetic MuData should remain the default; a root-level `.h5mu` may be used by
+optional tests that skip when the file is not available.
 
 ## Commit & Pull Request Guidelines
 

@@ -55,8 +55,9 @@ YAML 中出现且值一致；YAML 可以包含文件内部没有的附加数据�
 
 ```yaml
 database:
-  schema_version: "1.0"
+  schema_version: "1.1"
   dataset_id: example_rna_protein
+  dataset_type: full
   source: GSE000000
   organism: Homo sapiens
   tissue: kidney
@@ -83,6 +84,123 @@ publication: null
 
 `license` 和 `publication` 键必须存在，但在信息无法确认时可以为 `null`。
 
+## 划分训练集和测试集
+
+`iscdc.splitter` 是独立的 `.h5mu` 划分工具，不接入目录导入 CLI，也不修改 SQLite
+或生成网站使用的 `metadata.yaml`。来源文件必须符合根目录
+[`数据库存储规范_v1.1.md`](数据库存储规范_v1.1.md)，并明确包含：
+
+```yaml
+schema_version: "1.1"
+dataset_type: full
+```
+
+所有划分参数均写入 YAML。配置内的来源和输出相对路径以配置文件所在目录为基准。
+输出目录必须尚不存在；成功时其中只包含 `<train_id>.h5mu` 和
+`<test_id>.h5mu`。工具先在同级临时目录写入并重新验证两个文件，全部通过后才原子提交。
+
+### 查看坐标范围
+
+`range` 是只读检查命令，可先用它确定空间划分边界：
+
+```bash
+PYTHONPATH=src python -m iscdc.splitter range full.h5mu
+PYTHONPATH=src python -m iscdc.splitter range full.h5mu --sample-id sample_01
+PYTHONPATH=src python -m iscdc.splitter range full.h5mu --json
+```
+
+输出包含全局及各样本的 x/y 最小值、最大值、观测数、坐标单位和坐标维数。对于
+三维坐标仍只统计 x/y，但会报告维数为 3。
+
+### 按空间区域划分
+
+`spatial` 从一个全集产生互不重叠且完整覆盖来源观测的训练集和测试集。配置示例：
+
+```yaml
+schema_version: "1.1"
+split_id: spatial_v1
+feature_merge_policy: preserve
+source: full.h5mu
+output_dir: outputs/spatial_v1
+train:
+  dataset_id: spatial_train_v1
+test:
+  dataset_id: spatial_test_v1
+  regions:
+    - sample_id: sample_01
+      x_min: 0
+      x_max: 100
+      y_min: 0
+      y_max: 100
+    - sample_id: sample_02
+      x_min: 20
+      x_max: 80
+      y_min: 10
+      y_max: 90
+```
+
+运行：
+
+```bash
+PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
+```
+
+矩形边界闭合，多个矩形取并集。矩形内的观测进入测试集，其余全部进入训练集；未在
+`regions` 中出现的样本完整进入训练集。两侧必须都非空，并且每个来源模态在两侧均须
+有观测。空间划分固定使用 `feature_merge_policy: preserve`，保留来源特征顺序、矩阵值、
+坐标、观测 ID 和模态成员关系。
+
+### 按完整全集组合
+
+`compose` 不切分全集内部观测，而是将完整来源分配给 train 或 test：
+
+```yaml
+schema_version: "1.1"
+split_id: benchmark_v1
+feature_merge_policy: intersection
+output_dir: outputs/benchmark_v1
+train:
+  dataset_id: benchmark_train_v1
+  sources:
+    - full_a.h5mu
+    - full_b.h5mu
+  reference_dataset_id: null
+test:
+  dataset_id: benchmark_test_v1
+  sources:
+    - full_c.h5mu
+  reference_dataset_id: null
+```
+
+运行：
+
+```bash
+PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
+```
+
+同一个全集不能分配给两侧。每侧只有一个来源时记录为 `subset`，多个来源时记录为
+`composite`。所有来源必须使用相同的空间单位和坐标单位，同名模态必须使用相同的
+`value_type`，最终 train/test 模态集合必须一致且至少包含两个模态。
+
+支持以下特征策略：
+
+- `preserve`：所有相关来源的特征 ID 和顺序必须完全一致。
+- `intersection`：按配置中第一个相关来源的顺序保留共同特征。
+- `union`：按来源顺序保留首次出现的全部特征。
+- `reference`：两侧分别通过 `reference_dataset_id` 指定本侧参考全集；两个参考全集的
+  模态和特征顺序必须一致。
+
+`union` 以及存在缺失特征的 `reference` 会以零作为存储占位，并在
+`varm["feature_measured_by_source"]` 保存“特征 × 来源全集”布尔掩码。模态元数据会说明
+`False` 表示来源未测量该特征，而不是真实测量值为零。来源完全缺少某个模态时不会创建
+伪造矩阵。
+
+组合产物的顶层观测 ID 和样本 ID 分别编码为
+`<source_dataset_id>::<source_obs_id>` 和
+`<source_dataset_id>::<original_sample_id>`。每个观测的原始来源仍保存在
+`source_dataset_id`、`source_obs_id` 中，产物的 `uns["database"]["derivation"]` 会记录
+划分 ID、来源全集、选择规则、特征策略、处理说明和 `random_seed: null`。
+
 ## 网页和 API
 
 - `/datasets`：关键词搜索以及物种、组织、模态、技术和空间单位筛选。
@@ -95,8 +213,8 @@ publication: null
 ## 目录
 
 ```text
-src/iscdc/       应用、校验和导入代码
-tests/           自动化测试
+src/iscdc/       应用、校验、导入和数据划分代码
+tests/           自动化测试（包括 splitter 合成数据与可选真实数据测试）
 assets/templates 网页模板
 assets/static    页面样式
 assets/examples  示例人工元数据
