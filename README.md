@@ -7,6 +7,16 @@ isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。�
 
 项目使用 `conda iscdc` 环境。激活环境后：
 
+完整测试依赖以下不会纳入版本控制的真实数据文件，并会在临时目录重跑一次空间划分：
+
+```text
+exp/xenium_human_rcc_ffpe_rna_protein.h5mu
+exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml
+```
+
+请在运行测试前准备这两个文件，并为生成的 train/test 产物预留约 300 MB 临时空间。
+缺失文件会使测试失败。
+
 ```bash
 make setup
 make test
@@ -214,9 +224,10 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 
 ```text
 src/iscdc/       应用、校验、导入和数据划分代码
-tests/           自动化测试（包括 splitter 合成数据与可选真实数据测试）
+tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
 assets/templates 网页模板
 assets/static    页面样式
 assets/examples  示例人工元数据
 data/            本地 SQLite 和已导入文件（不纳入版本控制）
+exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
 ```

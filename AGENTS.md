@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data is written to the ignored `data/` directory. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
+Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data is written to the ignored `data/` directory. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
@@ -13,9 +13,10 @@ All project commands must be run in the Conda environment named `iscdc`. Activat
 The project uses requirements files and a small Makefile command set documented in `README.md`:
 
 - `make setup` — install development dependencies from `requirements-dev.txt`.
-- `make test` — run the complete pytest suite.
+- `make test` — run the complete pytest suite, including the required real-data split.
 - `make lint` — run Ruff static-analysis checks.
 - `make run` — start the FastAPI application with Uvicorn.
+- `make import-example` — import the documented example dataset into the local catalogue.
 
 Invoke the standalone schema 1.1 splitter with:
 
@@ -42,17 +43,21 @@ Follow the standard formatter and linter for the chosen language, checked into p
 
 Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
 
+The complete suite requires these local real-data fixtures:
+
+- `exp/xenium_human_rcc_ffpe_rna_protein.h5mu`
+- `exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml`
+
+The real-data test reruns the configured spatial split in a temporary directory and needs roughly 300 MB of temporary disk space. Missing fixtures must fail the suite with a clear message; do not skip the real-data test. Keep synthetic MuData for focused unit and edge-case coverage so those cases remain fast and reproducible.
+
 Run splitter-only tests with:
 
 ```bash
 PYTHONPATH=src python -m pytest tests/test_splitter.py
 ```
 
-Synthetic MuData should remain the default; a root-level `.h5mu` may be used by
-optional tests that skip when the file is not available.
-
 ## Commit & Pull Request Guidelines
 
-No commit history is available to establish an existing convention. Until one emerges, use concise imperative subjects, optionally with a Conventional Commit prefix, such as `feat: add configuration loader` or `fix: reject invalid input`.
+Use a descriptive Conventional Commit subject in the form `type(scope): imperative summary`; omit the scope only when none is useful. Every commit must include a body that explains the motivation, the principal implementation changes, and the verification performed. Record breaking changes, migration requirements, and related issues in the body or footer when applicable. Do not use an underspecified single-line message, even for a focused change.
 
 Pull requests should explain the change, motivation, and verification performed. Link relevant issues, identify breaking changes, and include screenshots or terminal output when behavior is visual or operational. Keep each pull request focused and ensure documented checks pass before requesting review.

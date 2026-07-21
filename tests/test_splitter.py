@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -656,10 +657,62 @@ def test_configs_require_schema_v11_and_yaml_is_only_split_interface(tmp_path, c
         main(["spatial", str(config), "--split-id", "old-interface"])
 
 
-ROOT_H5MU = Path(__file__).resolve().parents[1] / "xenium_human_rcc_ffpe_rna_protein.h5mu"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REAL_DATA_DIR = PROJECT_ROOT / "exp"
+REAL_SPATIAL_SOURCE = REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein.h5mu"
+REAL_SPATIAL_CONFIG = (
+    REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml"
+)
 
 
-@pytest.mark.skipif(not ROOT_H5MU.exists(), reason="optional root-level h5mu is unavailable")
-def test_root_h5mu_is_rejected_until_it_declares_schema_v11():
-    with pytest.raises(SplitterError, match="database metadata is missing|schema_version"):
-        coordinate_ranges(ROOT_H5MU)
+def test_real_h5mu_spatial_split_end_to_end():
+    required = (REAL_SPATIAL_SOURCE, REAL_SPATIAL_CONFIG)
+    missing = [str(path.relative_to(PROJECT_ROOT)) for path in required if not path.is_file()]
+    assert not missing, (
+        "make test requires the real-data fixture(s) under exp/: " + ", ".join(missing)
+    )
+
+    config_values = yaml.safe_load(REAL_SPATIAL_CONFIG.read_text(encoding="utf-8"))
+    assert config_values["source"] == REAL_SPATIAL_SOURCE.name
+
+    with tempfile.TemporaryDirectory(prefix="iscdc-real-split-") as temporary:
+        work_dir = Path(temporary)
+        output_dir = work_dir / "real_spatial_output"
+        config_values["source"] = str(REAL_SPATIAL_SOURCE)
+        config_values["output_dir"] = str(output_dir)
+        config_path = _write_yaml(work_dir / "real_spatial_split.yaml", config_values)
+
+        train_path, test_path = spatial_split(config_path)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="mudata")
+            source = md.read_h5mu(REAL_SPATIAL_SOURCE, backed="r")
+            train = md.read_h5mu(train_path, backed="r")
+            test = md.read_h5mu(test_path, backed="r")
+        try:
+            assert source.n_obs == 465_534
+            assert train.n_obs == 259_250
+            assert test.n_obs == 206_284
+
+            source_names = set(map(str, source.obs_names))
+            train_names = set(map(str, train.obs_names))
+            test_names = set(map(str, test.obs_names))
+            assert train_names.isdisjoint(test_names)
+            assert train_names | test_names == source_names
+
+            assert set(train.mod) == set(test.mod) == set(source.mod)
+            for modality in source.mod:
+                source_features = list(map(str, source.mod[modality].var_names))
+                assert list(map(str, train.mod[modality].var_names)) == source_features
+                assert list(map(str, test.mod[modality].var_names)) == source_features
+
+            split_id = config_values["split_id"]
+            for product, dataset_type in ((train, "train"), (test, "test")):
+                database = product.uns["database"]
+                assert database["schema_version"] == "1.1"
+                assert database["dataset_type"] == dataset_type
+                assert database["derivation"]["split_id"] == split_id
+                assert database["derivation"]["feature_merge_policy"] == "preserve"
+        finally:
+            source.file.close()
+            train.file.close()
+            test.file.close()
