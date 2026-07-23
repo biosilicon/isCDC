@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Catalogue integrity error · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5 text-center">
+  <p class="display-1 fw-bold text-light-emphasis">500</p>
+  <h1 class="h3">Catalogue integrity error</h1>
+  <p class="text-secondary">{{ message }}</p>
+  <p class="small text-secondary">An administrator must correct the catalogue before challenges can be displayed.</p>
+  <a class="btn btn-primary" href="{{ url_for('home') }}">Return home</a>
+</div>
+{% endblock %}

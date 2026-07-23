@@ -238,7 +238,7 @@ class ModalityResponse(BaseModel):
     n_vars: int
 
 
-class DatasetResponse(BaseModel):
+class DataFileResponse(BaseModel):
     dataset_id: str
     schema_version: str
     dataset_type: Literal["full", "train", "test"]
@@ -266,8 +266,22 @@ class DatasetResponse(BaseModel):
     downloads: dict[str, str]
 
 
-class DatasetListResponse(BaseModel):
-    items: list[DatasetResponse]
+class DatabaseListResponse(BaseModel):
+    items: list[DataFileResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ChallengeResponse(BaseModel):
+    split_id: str
+    status: Literal["complete", "missing_train", "missing_test"]
+    train: DataFileResponse | None
+    test: DataFileResponse | None
+
+
+class ChallengeListResponse(BaseModel):
+    items: list[ChallengeResponse]
     total: int
     limit: int
     offset: int

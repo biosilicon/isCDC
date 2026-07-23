@@ -9,14 +9,17 @@
   </head>
   <body>
     <nav class="navbar navbar-dark bg-dark">
-      <div class="container d-flex justify-content-between">
+      <div class="container d-flex justify-content-between align-items-center">
         <a class="navbar-brand fw-semibold" href="{{ url_for('home') }}">isCDC</a>
-        <a class="nav-link text-white" href="{{ url_for('dataset_list') }}">Datasets</a>
+        <div class="d-flex gap-4">
+          <a class="nav-link text-white" href="{{ url_for('database_list') }}">Databases</a>
+          <a class="nav-link text-white" href="{{ url_for('challenge_list') }}">Challenges</a>
+        </div>
       </div>
     </nav>
     <main>{% block content %}{% endblock %}</main>
     <footer class="border-top py-4 mt-5 text-secondary">
-      <div class="container small">A validated spatial multi-omics research data catalogue.</div>
+      <div class="container small">Validated spatial multi-omics databases and benchmark challenges.</div>
     </footer>
   </body>
 </html>

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Challenges · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="mb-4">
+    <p class="text-uppercase small fw-semibold text-primary mb-1">Benchmark data</p>
+    <h1 class="h2">Challenges</h1>
+    <p class="text-secondary">{{ total }} matching challenge{% if total != 1 %}s{% endif %}</p>
+  </div>
+
+  {% set clear_endpoint = 'challenge_list' %}
+  {% set search_placeholder = 'Search challenges or split IDs' %}
+  {% include "_filters.html" %}
+
+  <div class="vstack gap-3">
+    {% for challenge in challenges %}
+      <article class="card dataset-card">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+            <div>
+              <div class="d-flex gap-2 mb-2">
+                <span class="badge text-bg-primary">challenge</span>
+                {% if challenge.status == 'complete' %}
+                  <span class="badge text-bg-success">complete</span>
+                {% elif challenge.status == 'missing_train' %}
+                  <span class="badge text-bg-warning">missing train</span>
+                {% else %}
+                  <span class="badge text-bg-warning">missing test</span>
+                {% endif %}
+              </div>
+              <h2 class="h4 mb-0"><a class="text-decoration-none" href="{{ url_for('challenge_detail', split_id=challenge.split_id) }}"><code>{{ challenge.split_id }}</code></a></h2>
+            </div>
+          </div>
+          <div class="row g-3">
+            {% for label, dataset in [('Train', challenge.train), ('Test', challenge.test)] %}
+              <div class="col-md-6">
+                <div class="challenge-side rounded-3 p-3 h-100">
+                  <p class="text-uppercase small fw-semibold text-primary mb-2">{{ label }}</p>
+                  {% if dataset %}
+                    <p class="fw-semibold mb-1">{{ dataset.title }}</p>
+                    <p class="small text-secondary mb-2"><code>{{ dataset.dataset_id }}</code></p>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                      {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                    </div>
+                    <p class="small mb-0">{{ "{:,}".format(dataset.n_obs) }} observations · {{ dataset.file_size|filesize }}</p>
+                  {% else %}
+                    <p class="text-secondary mb-0">No {{ label|lower }} file has been imported.</p>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty-state rounded-3 p-5 text-center">
+        <h2 class="h5">No matching challenges</h2>
+        <p class="text-secondary mb-0">Try removing one or more filters.</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% include "_pagination.html" %}
+</div>
+{% endblock %}

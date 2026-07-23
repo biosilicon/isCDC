@@ -1,20 +1,21 @@
-{% extends "base.html" %}
-{% block title %}{{ dataset.title }} · isCDC{% endblock %}
-{% block content %}
-<div class="container py-5">
-  <nav class="small mb-4"><a href="{{ url_for('dataset_list') }}">Datasets</a> <span class="text-secondary">/ {{ dataset.dataset_id }}</span></nav>
+<section class="data-file-section {% if challenge_file %}mt-5 pt-4 border-top{% endif %}">
   <div class="row g-5">
     <div class="col-lg-8">
       <div class="d-flex gap-2 flex-wrap mb-3">
-        {% for modality in dataset.modalities %}<span class="badge text-bg-primary">{{ modality.name }}</span>{% endfor %}
+        <span class="badge text-bg-primary">{{ dataset.dataset_type }}</span>
+        {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
         <span class="badge text-bg-light">Schema {{ dataset.schema_version }}</span>
-        <span class="badge text-bg-light">{{ dataset.dataset_type }}</span>
       </div>
-      <h1 class="display-6 fw-bold">{{ dataset.title }}</h1>
+      {% if challenge_file %}
+        <p class="text-uppercase small fw-semibold text-primary mb-1">{{ side_label }} data</p>
+        <h2 class="h3 fw-bold">{{ dataset.title }}</h2>
+      {% else %}
+        <h1 class="display-6 fw-bold">{{ dataset.title }}</h1>
+      {% endif %}
       <p class="lead text-secondary">{{ dataset.description }}</p>
 
       <section class="mt-5">
-        <h2 class="h4">Dataset metadata</h2>
+        <h3 class="h4">File metadata</h3>
         <dl class="row metadata-list mt-3">
           <dt class="col-sm-4">Dataset ID</dt><dd class="col-sm-8"><code>{{ dataset.dataset_id }}</code></dd>
           <dt class="col-sm-4">Dataset type</dt><dd class="col-sm-8">{{ dataset.dataset_type }}</dd>
@@ -25,15 +26,33 @@
           <dt class="col-sm-4">Coordinates</dt><dd class="col-sm-8">{{ dataset.coordinate_dimensions }}D, {{ dataset.coordinate_unit }}</dd>
           <dt class="col-sm-4">Pairing</dt><dd class="col-sm-8">{{ dataset.pairing_type }}</dd>
           <dt class="col-sm-4">Source</dt><dd class="col-sm-8">{% for source in dataset.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+          <dt class="col-sm-4">Keywords</dt><dd class="col-sm-8">{{ dataset.keywords|join(', ') if dataset.keywords else 'None' }}</dd>
           <dt class="col-sm-4">License</dt><dd class="col-sm-8">{% if dataset.license %}{% if dataset.license.url %}<a href="{{ dataset.license.url }}" rel="noopener">{{ dataset.license.name }}</a>{% else %}{{ dataset.license.name }}{% endif %}{% else %}Not specified{% endif %}</dd>
           <dt class="col-sm-4">Publication</dt><dd class="col-sm-8">{% if dataset.publication %}{{ dataset.publication.citation or dataset.publication.doi or dataset.publication.url }}{% else %}Not specified{% endif %}</dd>
-          {% if dataset.derivation %}<dt class="col-sm-4">Derivation</dt><dd class="col-sm-8"><code>{{ dataset.derivation }}</code></dd>{% endif %}
+          <dt class="col-sm-4">Imported</dt><dd class="col-sm-8">{{ dataset.imported_at }}</dd>
           {% for key, value in dataset.additional_metadata.items() %}<dt class="col-sm-4">{{ key|replace('_', ' ')|title }}</dt><dd class="col-sm-8">{{ value }}</dd>{% endfor %}
         </dl>
       </section>
 
+      {% if dataset.derivation %}
+        <section class="mt-5">
+          <h3 class="h4">Derivation</h3>
+          <dl class="row metadata-list mt-3">
+            <dt class="col-sm-4">Split ID</dt><dd class="col-sm-8"><code>{{ dataset.derivation.split_id }}</code></dd>
+            <dt class="col-sm-4">Construction</dt><dd class="col-sm-8">{{ dataset.derivation.construction_type }}</dd>
+            <dt class="col-sm-4">Source databases</dt>
+            <dd class="col-sm-8">{% for source_id in dataset.derivation.source_dataset_ids %}<a href="{{ url_for('database_detail', dataset_id=source_id) }}"><code>{{ source_id }}</code></a>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+            <dt class="col-sm-4">Selection</dt><dd class="col-sm-8">{{ dataset.derivation.selection_description }}</dd>
+            <dt class="col-sm-4">Feature merge policy</dt><dd class="col-sm-8">{{ dataset.derivation.feature_merge_policy }}</dd>
+            {% if dataset.derivation.reference_dataset_id %}<dt class="col-sm-4">Reference database</dt><dd class="col-sm-8"><code>{{ dataset.derivation.reference_dataset_id }}</code></dd>{% endif %}
+            <dt class="col-sm-4">Processing</dt><dd class="col-sm-8">{{ dataset.derivation.processing_description }}</dd>
+            <dt class="col-sm-4">Random seed</dt><dd class="col-sm-8">{{ dataset.derivation.random_seed if dataset.derivation.random_seed is not none else 'Not applicable' }}</dd>
+          </dl>
+        </section>
+      {% endif %}
+
       <section class="mt-5">
-        <h2 class="h4">Modalities</h2>
+        <h3 class="h4">Modalities</h3>
         <div class="table-responsive mt-3">
           <table class="table align-middle">
             <thead><tr><th>Modality</th><th>Technology</th><th>Value type</th><th class="text-end">Observations</th><th class="text-end">Features</th></tr></thead>
@@ -49,14 +68,14 @@
 
     <aside class="col-lg-4">
       <div class="download-panel rounded-4 p-4 sticky-lg-top">
-        <h2 class="h5">Download</h2>
+        <h3 class="h5">Download {{ dataset.dataset_type }} file</h3>
         <p class="small text-secondary">Complete data and provenance files from this validated import.</p>
         <div class="d-grid gap-2">
-          <a class="btn btn-primary" href="{{ url_for('download_dataset_file', dataset_id=dataset.dataset_id, kind='h5mu') }}">MuData file · {{ dataset.file_size|filesize }}</a>
-          <a class="btn btn-outline-secondary" href="{{ url_for('download_dataset_file', dataset_id=dataset.dataset_id, kind='metadata') }}">Metadata YAML</a>
-          <a class="btn btn-outline-secondary" href="{{ url_for('download_dataset_file', dataset_id=dataset.dataset_id, kind='validation') }}">Validation report</a>
-          <a class="btn btn-outline-secondary" href="{{ url_for('download_dataset_file', dataset_id=dataset.dataset_id, kind='manifest') }}">Manifest</a>
-          <a class="btn btn-outline-secondary" href="{{ url_for('download_dataset_file', dataset_id=dataset.dataset_id, kind='checksum') }}">SHA-256 checksum</a>
+          <a class="btn btn-primary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='h5mu') }}">MuData file · {{ dataset.file_size|filesize }}</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='metadata') }}">Metadata YAML</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='validation') }}">Validation report</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='manifest') }}">Manifest</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='checksum') }}">SHA-256 checksum</a>
         </div>
         <hr>
         <p class="small text-secondary mb-1">SHA-256</p>
@@ -65,5 +84,4 @@
       </div>
     </aside>
   </div>
-</div>
-{% endblock %}
+</section>

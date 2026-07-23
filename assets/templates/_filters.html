@@ -1,0 +1,28 @@
+<form class="filter-panel rounded-3 p-3 mb-4" method="get">
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <label class="form-label" for="q">Keyword</label>
+      <input class="form-control" id="q" name="q" value="{{ selected.get('q', '') }}" placeholder="{{ search_placeholder }}">
+    </div>
+    {% set filter_fields = [
+      ('organism', 'Species', facets.organisms),
+      ('tissue', 'Tissue', facets.tissues),
+      ('modality', 'Modality', facets.modalities),
+      ('technology', 'Technology', facets.technologies),
+      ('spatial_unit', 'Spatial unit', facets.spatial_units)
+    ] %}
+    {% for name, label, values in filter_fields %}
+      <div class="col-sm-6 col-lg">
+        <label class="form-label" for="{{ name }}">{{ label }}</label>
+        <select class="form-select" id="{{ name }}" name="{{ name }}">
+          <option value="">All</option>
+          {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endfor %}
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary" type="submit">Apply filters</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for(clear_endpoint) }}">Clear</a>
+    </div>
+  </div>
+</form>

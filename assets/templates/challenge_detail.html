@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ challenge.split_id }} · Challenges · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <nav class="small mb-4"><a href="{{ url_for('challenge_list') }}">Challenges</a> <span class="text-secondary">/ {{ challenge.split_id }}</span></nav>
+  <div class="d-flex gap-3 align-items-start justify-content-between flex-wrap">
+    <div>
+      <p class="text-uppercase small fw-semibold text-primary mb-1">Challenge</p>
+      <h1 class="display-6 fw-bold"><code>{{ challenge.split_id }}</code></h1>
+      <p class="lead text-secondary">Training and test data files belonging to the same split.</p>
+    </div>
+    {% if challenge.status == 'complete' %}
+      <span class="badge text-bg-success mt-2">complete</span>
+    {% elif challenge.status == 'missing_train' %}
+      <span class="badge text-bg-warning mt-2">missing train</span>
+    {% else %}
+      <span class="badge text-bg-warning mt-2">missing test</span>
+    {% endif %}
+  </div>
+
+  {% if challenge.train %}
+    {% set dataset = challenge.train %}
+    {% set challenge_file = true %}
+    {% set side_label = 'Training' %}
+    {% include "_data_file_detail.html" %}
+  {% else %}
+    <section class="empty-state rounded-3 p-5 text-center mt-5">
+      <h2 class="h5">Training data is not available</h2>
+      <p class="text-secondary mb-0">No train file has been imported for this split.</p>
+    </section>
+  {% endif %}
+
+  {% if challenge.test %}
+    {% set dataset = challenge.test %}
+    {% set challenge_file = true %}
+    {% set side_label = 'Test' %}
+    {% include "_data_file_detail.html" %}
+  {% else %}
+    <section class="empty-state rounded-3 p-5 text-center mt-5">
+      <h2 class="h5">Test data is not available</h2>
+      <p class="text-secondary mb-0">No test file has been imported for this split.</p>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

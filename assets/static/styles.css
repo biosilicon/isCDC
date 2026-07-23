@@ -26,15 +26,26 @@ a {
   border: 1px solid #e2e7f0;
 }
 
-.dataset-card {
+.dataset-card,
+.entry-card {
   border-color: #e2e7f0;
   box-shadow: 0 0.25rem 1rem rgb(31 42 68 / 5%);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.dataset-card:hover {
+.dataset-card:hover,
+.entry-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 0.6rem 1.5rem rgb(31 42 68 / 10%);
+}
+
+.challenge-side {
+  background: var(--catalogue-wash);
+  border: 1px solid #e2e7f0;
+}
+
+.data-file-section code {
+  overflow-wrap: anywhere;
 }
 
 .metadata-list dt,

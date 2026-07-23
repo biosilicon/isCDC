@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Databases · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="mb-4">
+    <p class="text-uppercase small fw-semibold text-primary mb-1">Source data</p>
+    <h1 class="h2">Databases</h1>
+    <p class="text-secondary">{{ total }} matching database{% if total != 1 %}s{% endif %}</p>
+  </div>
+
+  {% set clear_endpoint = 'database_list' %}
+  {% set search_placeholder = 'Search databases' %}
+  {% include "_filters.html" %}
+
+  <div class="vstack gap-3">
+    {% for database in databases %}
+      <article class="card dataset-card">
+        <div class="card-body p-4">
+          <div class="row g-3">
+            <div class="col-lg-9">
+              <div class="d-flex gap-2 flex-wrap mb-2">
+                {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                <span class="badge text-bg-light">{{ database.spatial_unit }}</span>
+                <span class="badge text-bg-primary">full</span>
+              </div>
+              <h2 class="h4"><a class="text-decoration-none" href="{{ url_for('database_detail', dataset_id=database.dataset_id) }}">{{ database.title }}</a></h2>
+              <p class="text-secondary mb-2">{{ database.description }}</p>
+              <p class="small mb-0"><span class="fw-semibold">{{ database.organism|metadata_values }}</span> · {{ database.tissue|metadata_values }} · {{ database.dataset_id }}</p>
+            </div>
+            <div class="col-lg-3 text-lg-end">
+              <div class="fw-semibold">{{ "{:,}".format(database.n_obs) }} observations</div>
+              <div class="small text-secondary">{{ database.file_size|filesize }}</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty-state rounded-3 p-5 text-center">
+        <h2 class="h5">No matching databases</h2>
+        <p class="text-secondary mb-0">Try removing one or more filters.</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% include "_pagination.html" %}
+</div>
+{% endblock %}

@@ -5,56 +5,40 @@
   <div class="container py-4">
     <div class="row align-items-center g-4">
       <div class="col-lg-8">
-        <p class="text-uppercase small fw-semibold text-primary mb-2">Spatial multi-omics database</p>
-        <h1 class="display-5 fw-bold">Validated datasets, ready for research.</h1>
-        <p class="lead text-secondary mt-3">
-          Search harmonized spatial multi-omics metadata and download complete MuData files.
+        <p class="text-uppercase small fw-semibold text-primary mb-2">Spatial multi-omics catalogue</p>
+        <h1 class="display-5 fw-bold">Validated data, ready for research.</h1>
+        <p class="lead text-secondary mt-3 mb-0">
+          Browse complete source databases or paired training and test challenges.
         </p>
-        <form class="row g-2 mt-4" action="{{ url_for('dataset_list') }}" method="get">
-          <div class="col-md-8">
-            <label class="visually-hidden" for="home-search">Search datasets</label>
-            <input id="home-search" name="q" class="form-control form-control-lg"
-                   placeholder="Search by disease, tissue, technology, or keyword">
-          </div>
-          <div class="col-md-auto">
-            <button class="btn btn-primary btn-lg w-100" type="submit">Search datasets</button>
-          </div>
-        </form>
-      </div>
-      <div class="col-lg-4">
-        <div class="stat-card rounded-4 p-4 text-center">
-          <div class="display-4 fw-bold text-primary">{{ dataset_count }}</div>
-          <div class="text-secondary">validated dataset{% if dataset_count != 1 %}s{% endif %}</div>
-        </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="container py-4">
-  <div class="d-flex justify-content-between align-items-end mb-3">
-    <div>
-      <p class="text-uppercase small fw-semibold text-primary mb-1">Catalogue</p>
-      <h2 class="h3 mb-0">Recently imported</h2>
+<section class="container py-5">
+  <div class="row g-4">
+    <div class="col-md-6">
+      <article class="card entry-card h-100">
+        <div class="card-body p-4 p-lg-5">
+          <p class="text-uppercase small fw-semibold text-primary mb-2">Source data</p>
+          <div class="display-4 fw-bold mb-3">{{ database_count }}</div>
+          <h2 class="h3">Databases</h2>
+          <p class="text-secondary">Explore validated full spatial multi-omics data files and their provenance.</p>
+          <a class="btn btn-primary stretched-link" href="{{ url_for('database_list') }}">Browse databases</a>
+        </div>
+      </article>
     </div>
-    <a href="{{ url_for('dataset_list') }}">View all datasets</a>
-  </div>
-  <div class="row g-3">
-    {% for dataset in datasets %}
-      <div class="col-md-6 col-xl-4">
-        <article class="card dataset-card h-100">
-          <div class="card-body">
-            <div class="d-flex gap-2 flex-wrap mb-3">
-              {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
-            </div>
-            <h3 class="h5"><a class="stretched-link text-decoration-none" href="{{ url_for('dataset_detail', dataset_id=dataset.dataset_id) }}">{{ dataset.title }}</a></h3>
-            <p class="small text-secondary mb-0">{{ dataset.organism|metadata_values }} · {{ dataset.tissue|metadata_values }} · {{ "{:,}".format(dataset.n_obs) }} observations</p>
-          </div>
-        </article>
-      </div>
-    {% else %}
-      <div class="col"><p class="text-secondary">No datasets have been imported yet.</p></div>
-    {% endfor %}
+    <div class="col-md-6">
+      <article class="card entry-card h-100">
+        <div class="card-body p-4 p-lg-5">
+          <p class="text-uppercase small fw-semibold text-primary mb-2">Benchmark data</p>
+          <div class="display-4 fw-bold mb-3">{{ challenge_count }}</div>
+          <h2 class="h3">Challenges</h2>
+          <p class="text-secondary">Access training and test files grouped by their shared split identifier.</p>
+          <a class="btn btn-primary stretched-link" href="{{ url_for('challenge_list') }}">Browse challenges</a>
+        </div>
+      </article>
+    </div>
   </div>
 </section>
 {% endblock %}

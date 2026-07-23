@@ -6,6 +6,13 @@ Production code lives under `src/iscdc/`, automated tests under `tests/`, and te
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
+The public catalogue has two presentation classes without adding another storage-level type:
+
+- `full` files are exposed as **Databases**.
+- `train` and `test` files are grouped by `split_id` and exposed as one **Challenge**.
+
+Database and Challenge list pages and JSON APIs must apply filters within their own class. A Challenge response must include both imported sides even when only one side matched the filters. Show an incomplete status when one side is absent, and treat multiple train files or multiple test files under one `split_id` as a catalogue integrity error. Keep these presentation rules derived from schema 1.1 metadata; do not duplicate them in a new persisted classification field.
+
 ## Build, Test, and Development Commands
 
 All project commands must be run in the Conda environment named `iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running tests, linting, or starting the application.

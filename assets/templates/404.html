@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Dataset not found · isCDC{% endblock %}
+{% block title %}Not found · isCDC{% endblock %}
 {% block content %}
 <div class="container py-5 text-center">
   <p class="display-1 fw-bold text-light-emphasis">404</p>
-  <h1 class="h3">Dataset not found</h1>
-  <p class="text-secondary">No dataset is indexed as <code>{{ dataset_id }}</code>.</p>
-  <a class="btn btn-primary" href="{{ url_for('dataset_list') }}">Browse datasets</a>
+  <h1 class="h3">Catalogue entry not found</h1>
+  <p class="text-secondary">No published entry matches <code>{{ resource }}</code>.</p>
+  <a class="btn btn-primary" href="{{ url_for('home') }}">Return home</a>
 </div>
 {% endblock %}

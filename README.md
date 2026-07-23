@@ -1,7 +1,8 @@
 # isCDC
 
 isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
-结构及人工维护的元数据，网页请求只读取 SQLite，不读取大型表达矩阵。
+结构及人工维护的元数据，网页请求只读取 SQLite，不读取大型表达矩阵。网页将 `full`
+文件作为 Database 展示，并将相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。
 
 ## 快速开始
 
@@ -229,10 +230,23 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 
 ## 网页和 API
 
-- `/datasets`：关键词搜索以及物种、组织、模态、技术和空间单位筛选。
-- `/datasets/{dataset_id}`：元数据、模态规模、校验信息和文件下载。
-- `/api/datasets`：JSON 列表，支持相同筛选条件及 `limit`、`offset`。
-- `/api/datasets/{dataset_id}`：单个数据集的完整 JSON 记录。
+- `/databases`：浏览和筛选 `full` Database 文件。
+- `/databases/{dataset_id}`：Database 元数据、模态规模、校验信息和下载。
+- `/challenges`：以 `split_id` 为单位浏览和筛选 Challenge。
+- `/challenges/{split_id}`：同页查看 Challenge 对应的 train/test 文件；尚未配对时会明确
+  标记缺失侧。
+- `/api/databases`、`/api/databases/{dataset_id}`：Database JSON 列表和详情。
+- `/api/challenges`、`/api/challenges/{split_id}`：按 Challenge 聚合的 JSON 列表和详情。
+- `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
+
+网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
+筛选；API 列表另外支持 `limit`、`offset`。Challenge 的任一侧满足全部筛选条件时，响应
+仍会返回该 Challenge 已导入的完整两侧。若同一个 `split_id` 下存在多份 train 或多份
+test，目录会报告完整性错误，不会静默选择其中一份。
+
+Challenge JSON 使用 `status` 表示 `complete`、`missing_train` 或 `missing_test`，并通过
+`train`、`test` 字段返回对应的完整文件记录或 `null`。旧版 `/datasets`、
+`/datasets/{dataset_id}` 和 `/api/datasets*` 路由已经移除，不提供兼容重定向。
 
 生产部署时可以在下载路由前增加 Nginx；当前开发版本由 FastAPI 直接传输文件。
 

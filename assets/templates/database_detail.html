@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ database.title }} · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ database.dataset_id }}</span></nav>
+  {% set dataset = database %}
+  {% set challenge_file = false %}
+  {% include "_data_file_detail.html" %}
+</div>
+{% endblock %}
