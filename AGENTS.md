@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data is written to the ignored `data/` directory. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
+Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data is written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files and their in-progress `metadata.yaml` there until they satisfy schema 1.1. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
