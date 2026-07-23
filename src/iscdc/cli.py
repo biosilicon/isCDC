@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from .config import Settings
+from .database import CatalogueSchemaError
 from .importer import DatasetImportError, import_dataset
 from .schemas import MetadataLoadError
 
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "import-dataset":
         try:
             result = import_dataset(args.h5mu, args.metadata, Settings.from_environment())
-        except (DatasetImportError, MetadataLoadError) as exc:
+        except (CatalogueSchemaError, DatasetImportError, MetadataLoadError) as exc:
             print(str(exc), file=sys.stderr)
             if isinstance(exc, DatasetImportError) and exc.report:
                 print(json.dumps(exc.report, ensure_ascii=False, indent=2), file=sys.stderr)

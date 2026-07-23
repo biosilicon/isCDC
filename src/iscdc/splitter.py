@@ -20,6 +20,8 @@ import pandas as pd
 import yaml
 from scipy import sparse
 
+from .validation import validate_h5mu, validate_mudata, validate_train_test_pair
+
 SCHEMA_VERSION = "1.1"
 CONFIG_POLICIES = {"preserve", "intersection", "union", "reference"}
 DATASET_TYPES = {"train", "test"}
@@ -283,8 +285,7 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
     policy = values["feature_merge_policy"]
     if policy not in CONFIG_POLICIES:
         raise SplitterError(
-            "compose feature_merge_policy must be one of: "
-            + ", ".join(sorted(CONFIG_POLICIES))
+            "compose feature_merge_policy must be one of: " + ", ".join(sorted(CONFIG_POLICIES))
         )
     base = config_path.parent
     train = _load_compose_side(values["train"], base, "train")
@@ -387,6 +388,10 @@ def _validate_common_structure(mdata: md.MuData, context: str) -> dict[str, Any]
         raise SplitterError(
             f"{context}: pairing_type must be '{computed_pairing}' for the modality memberships"
         )
+    shared_outcome = validate_mudata(mdata)
+    if not shared_outcome.valid:
+        issue = shared_outcome.errors[0]
+        raise SplitterError(f"{context}: schema 1.1 validation failed: {issue.message}")
     return dict(_normalise(database))
 
 
@@ -698,27 +703,17 @@ def _determine_target_features(
     sources: Sequence[SourceDataset],
     modalities: set[str],
     policy: str,
-    train_reference: SourceDataset | None,
-    test_reference: SourceDataset | None,
+    reference: SourceDataset | None,
 ) -> dict[str, list[str]]:
     if policy == "reference":
-        if train_reference is None or test_reference is None:
-            raise SplitterError("reference sources are required for reference policy")
-        if (
-            set(train_reference.mdata.mod) != modalities
-            or set(test_reference.mdata.mod) != modalities
-        ):
+        if reference is None:
+            raise SplitterError("a reference source is required for reference policy")
+        if set(reference.mdata.mod) != modalities:
             raise SplitterError("reference datasets must contain exactly the final modality set")
-        targets: dict[str, list[str]] = {}
-        for modality in sorted(modalities):
-            train_features = list(map(str, train_reference.mdata.mod[modality].var_names))
-            test_features = list(map(str, test_reference.mdata.mod[modality].var_names))
-            if train_features != test_features:
-                raise SplitterError(
-                    f"reference datasets must use identical feature order for modality '{modality}'"
-                )
-            targets[modality] = train_features
-        return targets
+        return {
+            modality: list(map(str, reference.mdata.mod[modality].var_names))
+            for modality in sorted(modalities)
+        }
 
     targets = {}
     for modality in sorted(modalities):
@@ -761,22 +756,32 @@ def _feature_mask(
     return np.column_stack(columns)
 
 
-def _processing_description(policy: str) -> str:
+def _processing_description(
+    policy: str, *, has_missing_features: bool, comparison_note: str
+) -> str:
     if policy == "preserve":
-        return (
+        description = (
             "Identical source feature spaces were preserved; X values and coordinates are "
             "unchanged."
         )
-    if policy == "intersection":
-        return (
+    elif policy == "intersection":
+        description = (
             "Each modality was aligned to the common feature intersection; retained X values and "
             "coordinates are unchanged."
         )
-    return (
-        f"Each modality was aligned using the {policy} feature policy; zero is a storage "
-        f"placeholder for unmeasured features identified by varm['{FEATURE_MASK_KEY}']; "
-        "measured X values and coordinates are unchanged."
-    )
+    elif policy == "union" or has_missing_features:
+        description = (
+            f"Each modality was aligned using the {policy} feature policy; zero is a storage "
+            f"placeholder for unmeasured features identified by varm['{FEATURE_MASK_KEY}']; "
+            "measured X values and coordinates are unchanged."
+        )
+    else:
+        description = (
+            "Each modality was aligned to the reference feature order; every source measured all "
+            "target features, so no missing-feature mask was needed; X values and coordinates are "
+            "unchanged."
+        )
+    return f"{description} {comparison_note}".strip()
 
 
 def _build_composite_product(
@@ -788,8 +793,10 @@ def _build_composite_product(
     policy: str,
     target_features: Mapping[str, Sequence[str]],
     reference_dataset_id: str | None,
+    comparison_note: str = "",
 ) -> md.MuData:
     modalities: dict[str, ad.AnnData] = {}
+    has_missing_features = False
     for modality, features in target_features.items():
         contributing = [source for source in sources if modality in source.mdata.mod]
         matrices: list[Any] = []
@@ -809,6 +816,7 @@ def _build_composite_product(
             value_type,
         )
         mask = _feature_mask(sources, modality, features)
+        has_missing_features = has_missing_features or not mask.all()
         if policy == "union" or (policy == "reference" and not mask.all()):
             result.varm[FEATURE_MASK_KEY] = mask
             result.uns["feature_measurement"] = {
@@ -850,7 +858,11 @@ def _build_composite_product(
         selection_description=(
             "All observations from every assigned full source dataset were retained."
         ),
-        processing_description=_processing_description(policy),
+        processing_description=_processing_description(
+            policy,
+            has_missing_features=has_missing_features,
+            comparison_note=comparison_note,
+        ),
         pairing_type=pairing_type,
         reference_dataset_id=reference_dataset_id,
     )
@@ -915,9 +927,10 @@ def _validate_product(path: Path, sources: Mapping[str, SourceDataset]) -> Produ
             source_id: set(source.obs_names) for source_id, source in sources.items()
         }
         for source_id, source_obs_id in pairs:
-            if source_id not in source_observations or source_obs_id not in source_observations[
-                source_id
-            ]:
+            if (
+                source_id not in source_observations
+                or source_obs_id not in source_observations[source_id]
+            ):
                 raise SplitterError(
                     f"{path}: source pair ({source_id!r}, {source_obs_id!r}) does not exist"
                 )
@@ -976,16 +989,23 @@ def _write_products(
         test.write_h5mu(test_path)
         train_validation = _validate_product(train_path, source_by_id)
         test_validation = _validate_product(test_path, source_by_id)
+        source_paths = {source.dataset_id: source.path for source in sources}
+        for product_path in (train_path, test_path):
+            shared_outcome = validate_h5mu(product_path, source_paths=source_paths)
+            if not shared_outcome.valid:
+                issue = shared_outcome.errors[0]
+                raise SplitterError(f"generated file failed schema 1.1 validation: {issue.message}")
         if train_validation.dataset_type != "train" or test_validation.dataset_type != "test":
             raise SplitterError("generated files have incorrect dataset_type values")
         if train_validation.split_id != test_validation.split_id:
             raise SplitterError("generated train and test files have different split_id values")
-        if train_validation.modalities != test_validation.modalities:
-            raise SplitterError(
-                "generated train and test modality feature spaces are not comparable"
-            )
+        if set(train_validation.modalities) != set(test_validation.modalities):
+            raise SplitterError("generated train and test modality sets are not comparable")
         if not train_validation.source_pairs.isdisjoint(test_validation.source_pairs):
             raise SplitterError("generated train and test source observation pairs overlap")
+        shared_pair_outcome = validate_train_test_pair(train_path, test_path)
+        if not shared_pair_outcome.valid:
+            raise SplitterError(shared_pair_outcome.errors[0].message)
         expected_pairs = {
             (source.dataset_id, obs_name) for source in sources for obs_name in source.obs_names
         }
@@ -1092,21 +1112,35 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             train_reference is None or test_reference is None
         ):
             raise SplitterError("each reference_dataset_id must identify a source on its own side")
-        targets = _determine_target_features(
-            sources,
+        train_targets = _determine_target_features(
+            train_sources,
             train_modalities,
             config.feature_merge_policy,
             train_reference,
+        )
+        test_targets = _determine_target_features(
+            test_sources,
+            test_modalities,
+            config.feature_merge_policy,
             test_reference,
         )
+        if config.feature_merge_policy == "reference" and train_targets != test_targets:
+            raise SplitterError("reference datasets must use identical modality feature order")
+        comparison_note = ""
+        if train_targets != test_targets:
+            comparison_note = (
+                "Train and test feature spaces were computed independently from each side's "
+                "declared full sources and differ."
+            )
         train = _build_composite_product(
             train_sources,
             dataset_id=config.train.dataset_id,
             dataset_type="train",
             split_id=config.split_id,
             policy=config.feature_merge_policy,
-            target_features=targets,
+            target_features=train_targets,
             reference_dataset_id=config.train.reference_dataset_id,
+            comparison_note=comparison_note,
         )
         test = _build_composite_product(
             test_sources,
@@ -1114,8 +1148,9 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             dataset_type="test",
             split_id=config.split_id,
             policy=config.feature_merge_policy,
-            target_features=targets,
+            target_features=test_targets,
             reference_dataset_id=config.test.reference_dataset_id,
+            comparison_note=comparison_note,
         )
         return _write_products(
             config.output_dir,

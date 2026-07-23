@@ -58,6 +58,15 @@ checksum.sha256
 
 重复的 `dataset_id` 会被拒绝。初版不提供覆盖、在线编辑或删除功能。
 
+目录严格只接受 `schema_version: "1.1"`，不再兼容 1.0。`full` 可直接导入；导入
+`train` 或 `test` 前，必须先导入其 `derivation.source_dataset_ids` 引用的全部 `full`
+数据集。导入器会对照来源文件验证每个来源观测对象和特征合并策略；若目录中已经存在
+相同 `split_id` 的另一侧，还会检查 train/test 不包含重复来源观测对象。
+
+升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
+已有记录；空的旧版目录会自动重建为当前目录结构。
+`manifest_version` 独立描述导入清单格式，与 `.h5mu` 的 `schema_version` 无关。
+
 ## metadata.yaml
 
 YAML 是网站元数据的主记录。`.h5mu` 内部已有的数据库、样本和 assay 元数据必须在
@@ -93,11 +102,14 @@ publication: null
 ```
 
 `license` 和 `publication` 键必须存在，但在信息无法确认时可以为 `null`。
+多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
+字符串列表；目录 API 会原样保留字符串或列表形式。
 
 ## 划分训练集和测试集
 
-`iscdc.splitter` 是独立的 `.h5mu` 划分工具，不接入目录导入 CLI，也不修改 SQLite
-或生成网站使用的 `metadata.yaml`。来源文件必须符合根目录
+`iscdc.splitter` 是独立的 `.h5mu` 划分工具，不自动修改 SQLite，也不生成网站使用的
+`metadata.yaml`。需要发布产物时，为 train/test 分别准备匹配的 metadata YAML，再使用
+现有 `import-dataset` 命令逐个导入。来源文件必须符合根目录
 [`数据库存储规范_v1.1.md`](数据库存储规范_v1.1.md)，并明确包含：
 
 ```yaml
@@ -194,9 +206,9 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 
 支持以下特征策略：
 
-- `preserve`：所有相关来源的特征 ID 和顺序必须完全一致。
-- `intersection`：按配置中第一个相关来源的顺序保留共同特征。
-- `union`：按来源顺序保留首次出现的全部特征。
+- `preserve`：每个输出侧内的相关来源必须具有完全一致的特征 ID 和顺序。
+- `intersection`：每个输出侧分别按本侧第一个相关来源的顺序保留本侧共同特征。
+- `union`：每个输出侧分别按本侧来源顺序保留首次出现的全部特征。
 - `reference`：两侧分别通过 `reference_dataset_id` 指定本侧参考全集；两个参考全集的
   模态和特征顺序必须一致。
 
@@ -204,6 +216,10 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 `varm["feature_measured_by_source"]` 保存“特征 × 来源全集”布尔掩码。模态元数据会说明
 `False` 表示来源未测量该特征，而不是真实测量值为零。来源完全缺少某个模态时不会创建
 伪造矩阵。
+
+`intersection` 和 `union` 由 train/test 各自声明的来源分别计算，因此两侧特征空间可能
+不同；发生差异时，两个产物的 `processing_description` 会明确记录。`reference` 仍要求
+两侧参考全集使用完全相同的模态和特征顺序。
 
 组合产物的顶层观测 ID 和样本 ID 分别编码为
 `<source_dataset_id>::<source_obs_id>` 和

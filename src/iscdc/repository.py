@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import Dataset, Modality
@@ -16,6 +16,7 @@ class DatasetFilters:
     modality: str | None = None
     technology: str | None = None
     spatial_unit: str | None = None
+    dataset_type: str | None = None
 
 
 def _escaped_pattern(value: str) -> str:
@@ -24,6 +25,10 @@ def _escaped_pattern(value: str) -> str:
 
 
 def _conditions(filters: DatasetFilters):  # noqa: ANN202
+    def json_contains(column, value):  # noqa: ANN001, ANN202
+        entries = func.json_each(column).table_valued("value").alias()
+        return exists(select(1).select_from(entries).where(entries.c.value == value))
+
     conditions = []
     if filters.query:
         pattern = _escaped_pattern(filters.query.strip())
@@ -40,15 +45,19 @@ def _conditions(filters: DatasetFilters):  # noqa: ANN202
             )
         )
     if filters.organism:
-        conditions.append(Dataset.organism == filters.organism)
+        conditions.append(json_contains(Dataset.organism, filters.organism))
     if filters.tissue:
-        conditions.append(Dataset.tissue == filters.tissue)
+        conditions.append(json_contains(Dataset.tissue, filters.tissue))
     if filters.spatial_unit:
         conditions.append(Dataset.spatial_unit == filters.spatial_unit)
     if filters.modality:
         conditions.append(Dataset.modalities.any(Modality.name == filters.modality))
     if filters.technology:
-        conditions.append(Dataset.modalities.any(Modality.technology == filters.technology))
+        conditions.append(
+            Dataset.modalities.any(json_contains(Modality.technology, filters.technology))
+        )
+    if filters.dataset_type:
+        conditions.append(Dataset.dataset_type == filters.dataset_type)
     return conditions
 
 
@@ -73,10 +82,21 @@ def get_facets(session: Session) -> dict[str, list[str]]:
     def distinct_values(column) -> list[str]:  # noqa: ANN001
         return list(session.scalars(select(column).distinct().order_by(column)).all())
 
+    def flattened_values(column) -> list[str]:  # noqa: ANN001
+        values = session.scalars(select(column)).all()
+        return sorted(
+            {
+                str(item)
+                for value in values
+                for item in (value if isinstance(value, list) else [value])
+            }
+        )
+
     return {
-        "organisms": distinct_values(Dataset.organism),
-        "tissues": distinct_values(Dataset.tissue),
+        "organisms": flattened_values(Dataset.organism),
+        "tissues": flattened_values(Dataset.tissue),
         "spatial_units": distinct_values(Dataset.spatial_unit),
+        "dataset_types": distinct_values(Dataset.dataset_type),
         "modalities": distinct_values(Modality.name),
-        "technologies": distinct_values(Modality.technology),
+        "technologies": flattened_values(Modality.technology),
     }

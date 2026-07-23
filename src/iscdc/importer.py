@@ -64,6 +64,7 @@ def _build_dataset(
     dataset = Dataset(
         dataset_id=database.dataset_id,
         schema_version=database.schema_version,
+        dataset_type=database.dataset_type,
         title=metadata.title,
         description=metadata.description,
         source=database.source,
@@ -72,6 +73,8 @@ def _build_dataset(
         spatial_unit=database.spatial_unit,
         coordinate_unit=database.coordinate_unit,
         pairing_type=database.pairing_type,
+        derivation=database.derivation.model_dump(mode="python") if database.derivation else None,
+        split_id=database.derivation.split_id if database.derivation else None,
         sample_ids=metadata.sample_ids,
         keywords=metadata.keywords,
         license=metadata.license.model_dump() if metadata.license else None,
@@ -118,9 +121,53 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
     engine = create_database_engine(settings.database_path)
     initialize_database(engine)
     session_factory = create_session_factory(engine)
+    source_paths: dict[str, Path] = {}
+    peer_paths: list[Path] = []
     with session_factory() as session:
         if session.scalar(select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id)):
             raise DatasetImportError(f"Dataset '{dataset_id}' is already indexed.")
+        derivation = metadata.database.derivation
+        if derivation is not None:
+            sources = list(
+                session.scalars(
+                    select(Dataset).where(Dataset.dataset_id.in_(derivation.source_dataset_ids))
+                ).all()
+            )
+            sources_by_id = {source.dataset_id: source for source in sources}
+            missing_sources = [
+                source_id
+                for source_id in derivation.source_dataset_ids
+                if source_id not in sources_by_id
+            ]
+            if missing_sources:
+                raise DatasetImportError(
+                    "Derived datasets require their full sources to be imported first; missing: "
+                    + ", ".join(missing_sources)
+                )
+            non_full_sources = [
+                source_id
+                for source_id, source in sources_by_id.items()
+                if source.dataset_type != "full"
+            ]
+            if non_full_sources:
+                raise DatasetImportError(
+                    "Derived source_dataset_ids must identify full datasets: "
+                    + ", ".join(non_full_sources)
+                )
+            source_paths = {
+                source_id: settings.data_root / source.storage_dir / "dataset.h5mu"
+                for source_id, source in sources_by_id.items()
+            }
+            opposite_type = "test" if metadata.database.dataset_type == "train" else "train"
+            peers = list(
+                session.scalars(
+                    select(Dataset).where(
+                        Dataset.dataset_type == opposite_type,
+                        Dataset.split_id == derivation.split_id,
+                    )
+                ).all()
+            )
+            peer_paths = [settings.data_root / peer.storage_dir / "dataset.h5mu" for peer in peers]
     if final_dir.exists():
         raise DatasetImportError(f"Dataset directory already exists: {final_dir}")
 
@@ -129,7 +176,12 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
     try:
         staged_h5mu = stage_dir / "dataset.h5mu"
         file_size, sha256 = _copy_and_hash(h5mu_path, staged_h5mu)
-        outcome = validate_h5mu(staged_h5mu, metadata)
+        outcome = validate_h5mu(
+            staged_h5mu,
+            metadata,
+            source_paths=source_paths or None,
+            peer_paths=peer_paths,
+        )
         checked_at = datetime.now(timezone.utc)
         report = outcome.report(checked_at.isoformat(), "dataset.h5mu")
         if not outcome.valid:

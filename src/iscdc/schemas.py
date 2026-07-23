@@ -2,25 +2,99 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 DATASET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+ScalarOrList = str | list[str]
+
+
+def _clean_scalar_or_list(value: ScalarOrList) -> ScalarOrList:
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+    cleaned = [item.strip() for item in value]
+    if not cleaned or any(not item for item in cleaned):
+        raise ValueError("must contain non-blank strings")
+    if len(cleaned) != len(set(cleaned)):
+        raise ValueError("entries must be unique")
+    return cleaned
+
+
+class DerivationMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    construction_type: Literal["subset", "composite"]
+    source_dataset_ids: list[str] = Field(min_length=1)
+    split_id: str = Field(min_length=1)
+    selection_description: str = Field(min_length=1)
+    feature_merge_policy: Literal["preserve", "intersection", "union", "reference"]
+    processing_description: str = Field(min_length=1)
+    reference_dataset_id: str | None = None
+    random_seed: int | None = None
+
+    @field_validator(
+        "source_dataset_ids",
+        mode="after",
+    )
+    @classmethod
+    def validate_source_dataset_ids(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("entries must not be blank")
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("entries must be unique")
+        return cleaned
+
+    @field_validator("split_id", "selection_description", "processing_description")
+    @classmethod
+    def strip_required_strings(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def validate_derivation_relationships(self) -> DerivationMetadata:
+        source_count = len(self.source_dataset_ids)
+        if self.construction_type == "subset" and source_count != 1:
+            raise ValueError("subset requires exactly one source_dataset_id")
+        if self.construction_type == "composite" and source_count < 2:
+            raise ValueError("composite requires at least two source_dataset_ids")
+        if self.feature_merge_policy == "reference":
+            if self.reference_dataset_id not in self.source_dataset_ids:
+                raise ValueError("reference_dataset_id must identify one of the sources")
+        elif self.reference_dataset_id is not None:
+            raise ValueError("reference_dataset_id is only valid for the reference policy")
+        return self
 
 
 class DatabaseMetadata(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    schema_version: str = Field(min_length=1)
+    schema_version: Literal["1.1"]
     dataset_id: str = Field(min_length=1, max_length=128)
-    source: str = Field(min_length=1)
-    organism: str = Field(min_length=1)
-    tissue: str = Field(min_length=1)
+    dataset_type: Literal["full", "train", "test"]
+    source: ScalarOrList
+    organism: ScalarOrList
+    tissue: ScalarOrList
     spatial_unit: str = Field(min_length=1)
     coordinate_unit: str = Field(min_length=1)
     pairing_type: str = Field(min_length=1)
+    derivation: DerivationMetadata | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_empty_full_derivation(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("dataset_type") == "full":
+            if not value.get("derivation"):
+                value = dict(value)
+                value["derivation"] = None
+        return value
 
     @field_validator("dataset_id")
     @classmethod
@@ -32,12 +106,46 @@ class DatabaseMetadata(BaseModel):
             )
         return value
 
+    @field_validator("source", "organism", "tissue")
+    @classmethod
+    def validate_scalar_or_list(cls, value: ScalarOrList) -> ScalarOrList:
+        return _clean_scalar_or_list(value)
+
+    @field_validator("spatial_unit", "coordinate_unit", "pairing_type")
+    @classmethod
+    def validate_required_string(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def validate_dataset_derivation(self) -> DatabaseMetadata:
+        if self.dataset_type == "full" and self.derivation is not None:
+            raise ValueError("full datasets must not define derivation metadata")
+        if self.dataset_type in {"train", "test"} and self.derivation is None:
+            raise ValueError("train and test datasets require derivation metadata")
+        return self
+
 
 class ModalityMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    technology: str = Field(min_length=1)
+    technology: ScalarOrList
     value_type: str = Field(min_length=1)
+
+    @field_validator("technology")
+    @classmethod
+    def validate_technology(cls, value: ScalarOrList) -> ScalarOrList:
+        return _clean_scalar_or_list(value)
+
+    @field_validator("value_type")
+    @classmethod
+    def validate_value_type(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
 
 
 class LicenseMetadata(BaseModel):
@@ -124,7 +232,7 @@ def load_metadata(path) -> MetadataDocument:  # noqa: ANN001
 
 class ModalityResponse(BaseModel):
     name: str
-    technology: str
+    technology: ScalarOrList
     value_type: str
     n_obs: int
     n_vars: int
@@ -133,14 +241,16 @@ class ModalityResponse(BaseModel):
 class DatasetResponse(BaseModel):
     dataset_id: str
     schema_version: str
+    dataset_type: Literal["full", "train", "test"]
     title: str
     description: str
-    source: str
-    organism: str
-    tissue: str
+    source: ScalarOrList
+    organism: ScalarOrList
+    tissue: ScalarOrList
     spatial_unit: str
     coordinate_unit: str
     pairing_type: str
+    derivation: DerivationMetadata | None
     sample_ids: list[str]
     keywords: list[str]
     license: dict[str, Any] | None

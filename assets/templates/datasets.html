@@ -19,7 +19,8 @@
         ('tissue', 'Tissue', facets.tissues),
         ('modality', 'Modality', facets.modalities),
         ('technology', 'Technology', facets.technologies),
-        ('spatial_unit', 'Spatial unit', facets.spatial_units)
+        ('spatial_unit', 'Spatial unit', facets.spatial_units),
+        ('dataset_type', 'Dataset type', facets.dataset_types)
       ] %}
       {% for name, label, values in filter_fields %}
         <div class="col-sm-6 col-lg">
@@ -46,10 +47,11 @@
               <div class="d-flex gap-2 flex-wrap mb-2">
                 {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
                 <span class="badge text-bg-light">{{ dataset.spatial_unit }}</span>
+                <span class="badge text-bg-light">{{ dataset.dataset_type }}</span>
               </div>
               <h2 class="h4"><a class="text-decoration-none" href="{{ url_for('dataset_detail', dataset_id=dataset.dataset_id) }}">{{ dataset.title }}</a></h2>
               <p class="text-secondary mb-2">{{ dataset.description }}</p>
-              <p class="small mb-0"><span class="fw-semibold">{{ dataset.organism }}</span> · {{ dataset.tissue }} · {{ dataset.dataset_id }}</p>
+              <p class="small mb-0"><span class="fw-semibold">{{ dataset.organism|metadata_values }}</span> · {{ dataset.tissue|metadata_values }} · {{ dataset.dataset_id }}</p>
             </div>
             <div class="col-lg-3 text-lg-end">
               <div class="fw-semibold">{{ "{:,}".format(dataset.n_obs) }} observations</div>

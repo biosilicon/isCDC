@@ -8,6 +8,7 @@
       <div class="d-flex gap-2 flex-wrap mb-3">
         {% for modality in dataset.modalities %}<span class="badge text-bg-primary">{{ modality.name }}</span>{% endfor %}
         <span class="badge text-bg-light">Schema {{ dataset.schema_version }}</span>
+        <span class="badge text-bg-light">{{ dataset.dataset_type }}</span>
       </div>
       <h1 class="display-6 fw-bold">{{ dataset.title }}</h1>
       <p class="lead text-secondary">{{ dataset.description }}</p>
@@ -16,15 +17,17 @@
         <h2 class="h4">Dataset metadata</h2>
         <dl class="row metadata-list mt-3">
           <dt class="col-sm-4">Dataset ID</dt><dd class="col-sm-8"><code>{{ dataset.dataset_id }}</code></dd>
-          <dt class="col-sm-4">Species</dt><dd class="col-sm-8">{{ dataset.organism }}</dd>
-          <dt class="col-sm-4">Tissue</dt><dd class="col-sm-8">{{ dataset.tissue }}</dd>
+          <dt class="col-sm-4">Dataset type</dt><dd class="col-sm-8">{{ dataset.dataset_type }}</dd>
+          <dt class="col-sm-4">Species</dt><dd class="col-sm-8">{{ dataset.organism|metadata_values }}</dd>
+          <dt class="col-sm-4">Tissue</dt><dd class="col-sm-8">{{ dataset.tissue|metadata_values }}</dd>
           <dt class="col-sm-4">Samples</dt><dd class="col-sm-8">{{ dataset.sample_ids|join(', ') }}</dd>
           <dt class="col-sm-4">Spatial unit</dt><dd class="col-sm-8">{{ dataset.spatial_unit }}</dd>
           <dt class="col-sm-4">Coordinates</dt><dd class="col-sm-8">{{ dataset.coordinate_dimensions }}D, {{ dataset.coordinate_unit }}</dd>
           <dt class="col-sm-4">Pairing</dt><dd class="col-sm-8">{{ dataset.pairing_type }}</dd>
-          <dt class="col-sm-4">Source</dt><dd class="col-sm-8">{% if dataset.source.startswith('http') %}<a href="{{ dataset.source }}" rel="noopener">{{ dataset.source }}</a>{% else %}{{ dataset.source }}{% endif %}</dd>
+          <dt class="col-sm-4">Source</dt><dd class="col-sm-8">{% for source in dataset.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
           <dt class="col-sm-4">License</dt><dd class="col-sm-8">{% if dataset.license %}{% if dataset.license.url %}<a href="{{ dataset.license.url }}" rel="noopener">{{ dataset.license.name }}</a>{% else %}{{ dataset.license.name }}{% endif %}{% else %}Not specified{% endif %}</dd>
           <dt class="col-sm-4">Publication</dt><dd class="col-sm-8">{% if dataset.publication %}{{ dataset.publication.citation or dataset.publication.doi or dataset.publication.url }}{% else %}Not specified{% endif %}</dd>
+          {% if dataset.derivation %}<dt class="col-sm-4">Derivation</dt><dd class="col-sm-8"><code>{{ dataset.derivation }}</code></dd>{% endif %}
           {% for key, value in dataset.additional_metadata.items() %}<dt class="col-sm-4">{{ key|replace('_', ' ')|title }}</dt><dd class="col-sm-8">{{ value }}</dd>{% endfor %}
         </dl>
       </section>
@@ -36,7 +39,7 @@
             <thead><tr><th>Modality</th><th>Technology</th><th>Value type</th><th class="text-end">Observations</th><th class="text-end">Features</th></tr></thead>
             <tbody>
               {% for modality in dataset.modalities %}
-                <tr><td class="fw-semibold">{{ modality.name }}</td><td>{{ modality.technology }}</td><td>{{ modality.value_type }}</td><td class="text-end">{{ "{:,}".format(modality.n_obs) }}</td><td class="text-end">{{ "{:,}".format(modality.n_vars) }}</td></tr>
+                <tr><td class="fw-semibold">{{ modality.name }}</td><td>{{ modality.technology|metadata_values }}</td><td>{{ modality.value_type }}</td><td class="text-end">{{ "{:,}".format(modality.n_obs) }}</td><td class="text-end">{{ "{:,}".format(modality.n_vars) }}</td></tr>
               {% endfor %}
             </tbody>
           </table>

@@ -31,8 +31,9 @@ def settings(tmp_path: Path) -> Settings:
 def metadata_values() -> dict:
     return {
         "database": {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "dataset_id": "test_rna_protein",
+            "dataset_type": "full",
             "source": "TEST001",
             "organism": "Homo sapiens",
             "tissue": "kidney",

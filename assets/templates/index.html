@@ -48,7 +48,7 @@
               {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
             </div>
             <h3 class="h5"><a class="stretched-link text-decoration-none" href="{{ url_for('dataset_detail', dataset_id=dataset.dataset_id) }}">{{ dataset.title }}</a></h3>
-            <p class="small text-secondary mb-0">{{ dataset.organism }} · {{ dataset.tissue }} · {{ "{:,}".format(dataset.n_obs) }} observations</p>
+            <p class="small text-secondary mb-0">{{ dataset.organism|metadata_values }} · {{ dataset.tissue|metadata_values }} · {{ "{:,}".format(dataset.n_obs) }} observations</p>
           </div>
         </article>
       </div>

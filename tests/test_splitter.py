@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from iscdc.schemas import load_metadata
 from iscdc.splitter import (
     FEATURE_MASK_KEY,
     SplitterError,
@@ -21,6 +22,7 @@ from iscdc.splitter import (
     main,
     spatial_split,
 )
+from iscdc.validation import validate_h5mu
 
 
 def _pairing_type(modality_obs: dict[str, list[str]]) -> str:
@@ -171,6 +173,38 @@ def _read(path: Path) -> md.MuData:
         return md.read_h5mu(path)
 
 
+def _normalise_metadata(value):  # noqa: ANN001, ANN202
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return [_normalise_metadata(item) for item in value.tolist()]
+    if isinstance(value, dict):
+        return {str(key): _normalise_metadata(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalise_metadata(item) for item in value]
+    return value
+
+
+def _metadata_for_product(path: Path) -> Path:
+    product = _read(path)
+    try:
+        values = {
+            "database": _normalise_metadata(product.uns["database"]),
+            "sample_ids": sorted(set(product.obs["sample_id"].astype(str))),
+            "modalities": {
+                name: _normalise_metadata(adata.uns["assay"]) for name, adata in product.mod.items()
+            },
+            "title": f"Validation metadata for {path.stem}",
+            "description": "Generated metadata for schema validation tests.",
+            "keywords": ["validation"],
+            "license": None,
+            "publication": None,
+        }
+    finally:
+        product.file.close()
+    return _write_yaml(path.with_suffix(".metadata.yaml"), values)
+
+
 def test_coordinate_ranges_reports_global_samples_json_and_3d(tmp_path, capsys):
     source = _write_full(
         tmp_path,
@@ -226,9 +260,7 @@ def test_range_rejects_non_v11_and_unknown_sample(tmp_path):
 
 def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
     obs_names = ["c1", "c2", "c3", "c4", "c5", "c6"]
-    coordinates = np.asarray(
-        [[0, 0], [1, 1], [2, 2], [3, 3], [0, 0], [1, 1]], dtype=np.float32
-    )
+    coordinates = np.asarray([[0, 0], [1, 1], [2, 2], [3, 3], [0, 0], [1, 1]], dtype=np.float32)
     source = _write_full(
         tmp_path,
         "spatial_full",
@@ -282,21 +314,21 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
 
 @pytest.mark.parametrize(
     "region",
-        [
-            {
-                "sample_id": "sample_1",
-                "x_min": -1,
-                "x_max": 10,
-                "y_min": -1,
-                "y_max": 10,
-            },
-            {
-                "sample_id": "sample_1",
-                "x_min": 20,
-                "x_max": 30,
-                "y_min": 20,
-                "y_max": 30,
-            },
+    [
+        {
+            "sample_id": "sample_1",
+            "x_min": -1,
+            "x_max": 10,
+            "y_min": -1,
+            "y_max": 10,
+        },
+        {
+            "sample_id": "sample_1",
+            "x_min": 20,
+            "x_max": 30,
+            "y_min": 20,
+            "y_max": 30,
+        },
     ],
 )
 def test_spatial_rejects_empty_side(tmp_path, region):
@@ -442,10 +474,11 @@ def test_intersection_uses_first_source_feature_order_and_values(tmp_path):
     test = _read(test_path)
     try:
         assert list(train.mod["rna"].var_names) == ["g1"]
-        assert list(test.mod["rna"].var_names) == ["g1"]
+        assert list(test.mod["rna"].var_names) == ["g1", "g2", "g4"]
         np.testing.assert_array_equal(train.mod["rna"].X[:, 0], [1, 10, 3, 4])
-        np.testing.assert_array_equal(test.mod["rna"].X[:, 0], [5, 7])
+        np.testing.assert_array_equal(test.mod["rna"].X, [[5, 6, 50], [7, 8, 70]])
         assert FEATURE_MASK_KEY not in train.mod["rna"].varm
+        assert "feature spaces" in train.uns["database"]["derivation"]["processing_description"]
     finally:
         train.file.close()
         test.file.close()
@@ -459,17 +492,14 @@ def test_union_aligns_values_and_records_per_source_measurement_mask(tmp_path):
     train = _read(train_path)
     test = _read(test_path)
     try:
-        expected_features = ["g2", "g1", "g3", "g4"]
-        assert list(train.mod["rna"].var_names) == expected_features
-        assert list(test.mod["rna"].var_names) == expected_features
-        np.testing.assert_array_equal(train.mod["rna"].X[0], [2, 1, 0, 0])
-        np.testing.assert_array_equal(train.mod["rna"].X[2], [0, 3, 30, 0])
-        np.testing.assert_array_equal(test.mod["rna"].X[0], [6, 5, 0, 50])
+        assert list(train.mod["rna"].var_names) == ["g2", "g1", "g3"]
+        assert list(test.mod["rna"].var_names) == ["g1", "g2", "g4"]
+        np.testing.assert_array_equal(train.mod["rna"].X[0], [2, 1, 0])
+        np.testing.assert_array_equal(train.mod["rna"].X[2], [0, 3, 30])
+        np.testing.assert_array_equal(test.mod["rna"].X[0], [5, 6, 50])
         np.testing.assert_array_equal(
             train.mod["rna"].varm[FEATURE_MASK_KEY],
-            np.asarray(
-                [[True, False], [True, True], [False, True], [False, False]], dtype=bool
-            ),
+            np.asarray([[True, False], [True, True], [False, True]], dtype=bool),
         )
         metadata = train.mod["rna"].uns["feature_measurement"]
         assert list(metadata["source_dataset_ids"]) == ["features_a", "features_b"]
@@ -478,6 +508,13 @@ def test_union_aligns_values_and_records_per_source_measurement_mask(tmp_path):
     finally:
         train.file.close()
         test.file.close()
+
+    outcome = validate_h5mu(
+        train_path,
+        load_metadata(_metadata_for_product(train_path)),
+        source_paths={"features_a": source_a, "features_b": source_b},
+    )
+    assert outcome.valid, outcome.errors
 
 
 def test_reference_uses_matching_reference_order_and_missing_mask(tmp_path):
@@ -522,13 +559,33 @@ def test_reference_uses_matching_reference_order_and_missing_mask(tmp_path):
             train.mod["rna"].varm[FEATURE_MASK_KEY],
             np.asarray([[False, True], [True, True]], dtype=bool),
         )
-        assert (
-            train.uns["database"]["derivation"]["reference_dataset_id"]
-            == "train_reference"
-        )
+        assert train.uns["database"]["derivation"]["reference_dataset_id"] == "train_reference"
     finally:
         train.file.close()
         test.file.close()
+
+
+def test_reference_without_missing_features_records_that_no_mask_is_needed(tmp_path):
+    train_reference = _write_full(tmp_path, "complete_train_reference")
+    test_reference = _write_full(tmp_path, "complete_test_reference")
+    config = _compose_config(
+        tmp_path,
+        "reference",
+        [train_reference],
+        [test_reference],
+        train_reference="complete_train_reference",
+        test_reference="complete_test_reference",
+        output_name="complete_reference",
+    )
+
+    train_path, _ = compose_split(config)
+    train = _read(train_path)
+    try:
+        assert FEATURE_MASK_KEY not in train.mod["rna"].varm
+        description = train.uns["database"]["derivation"]["processing_description"]
+        assert "no missing-feature mask was needed" in description
+    finally:
+        train.file.close()
 
 
 def test_compose_does_not_fabricate_modality_for_source_that_lacks_it(tmp_path):
@@ -560,16 +617,14 @@ def test_compose_does_not_fabricate_modality_for_source_that_lacks_it(tmp_path):
             "modal_train_b::cell_1",
             "modal_train_b::cell_2",
         ]
-        np.testing.assert_array_equal(
-            train.mod["protein"].varm[FEATURE_MASK_KEY], [[True, False]]
-        )
+        np.testing.assert_array_equal(train.mod["protein"].varm[FEATURE_MASK_KEY], [[True, False]])
     finally:
         train.file.close()
 
 
 def test_preserve_rejects_different_features_and_intersection_rejects_empty(tmp_path):
     source_a, source_b, source_c = _feature_sources(tmp_path)
-    preserve = _compose_config(tmp_path, "preserve", [source_a], [source_b])
+    preserve = _compose_config(tmp_path, "preserve", [source_a, source_b], [source_c])
     with pytest.raises(SplitterError, match="preserve requires identical"):
         compose_split(preserve)
 
@@ -581,8 +636,8 @@ def test_preserve_rejects_different_features_and_intersection_rejects_empty(tmp_
     intersection = _compose_config(
         tmp_path,
         "intersection",
-        [source_a],
-        [disjoint],
+        [source_a, disjoint],
+        [source_c],
         output_name="empty_intersection",
     )
     with pytest.raises(SplitterError, match="intersection is empty"):
@@ -660,16 +715,14 @@ def test_configs_require_schema_v11_and_yaml_is_only_split_interface(tmp_path, c
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REAL_DATA_DIR = PROJECT_ROOT / "exp"
 REAL_SPATIAL_SOURCE = REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein.h5mu"
-REAL_SPATIAL_CONFIG = (
-    REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml"
-)
+REAL_SPATIAL_CONFIG = REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml"
 
 
 def test_real_h5mu_spatial_split_end_to_end():
     required = (REAL_SPATIAL_SOURCE, REAL_SPATIAL_CONFIG)
     missing = [str(path.relative_to(PROJECT_ROOT)) for path in required if not path.is_file()]
-    assert not missing, (
-        "make test requires the real-data fixture(s) under exp/: " + ", ".join(missing)
+    assert not missing, "make test requires the real-data fixture(s) under exp/: " + ", ".join(
+        missing
     )
 
     config_values = yaml.safe_load(REAL_SPATIAL_CONFIG.read_text(encoding="utf-8"))

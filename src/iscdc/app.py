@@ -38,6 +38,14 @@ def _format_bytes(value: int) -> str:
     return f"{size:.1f} TB"
 
 
+def _as_list(value):  # noqa: ANN001, ANN202
+    return value if isinstance(value, list) else [value]
+
+
+def _format_metadata(value):  # noqa: ANN001, ANN202
+    return ", ".join(map(str, _as_list(value)))
+
+
 def _filters(
     q: str | None,
     organism: str | None,
@@ -45,8 +53,9 @@ def _filters(
     modality: str | None,
     technology: str | None,
     spatial_unit: str | None,
+    dataset_type: str | None,
 ) -> DatasetFilters:
-    return DatasetFilters(q, organism, tissue, modality, technology, spatial_unit)
+    return DatasetFilters(q, organism, tissue, modality, technology, spatial_unit, dataset_type)
 
 
 def _dataset_response(dataset: Dataset, request: Request) -> DatasetResponse:
@@ -59,6 +68,7 @@ def _dataset_response(dataset: Dataset, request: Request) -> DatasetResponse:
     return DatasetResponse(
         dataset_id=dataset.dataset_id,
         schema_version=dataset.schema_version,
+        dataset_type=dataset.dataset_type,
         title=dataset.title,
         description=dataset.description,
         source=dataset.source,
@@ -67,6 +77,7 @@ def _dataset_response(dataset: Dataset, request: Request) -> DatasetResponse:
         spatial_unit=dataset.spatial_unit,
         coordinate_unit=dataset.coordinate_unit,
         pairing_type=dataset.pairing_type,
+        derivation=dataset.derivation,
         sample_ids=dataset.sample_ids,
         keywords=dataset.keywords,
         license=dataset.license,
@@ -99,6 +110,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     templates = Jinja2Templates(directory=settings.templates_dir)
     templates.env.filters["filesize"] = _format_bytes
+    templates.env.filters["as_list"] = _as_list
+    templates.env.filters["metadata_values"] = _format_metadata
 
     application = FastAPI(
         title="isCDC Spatial Multi-omics Database",
@@ -136,9 +149,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
+        dataset_type: str | None = None,
         page: Annotated[int, Query(ge=1)] = 1,
     ):
-        filters = _filters(q, organism, tissue, modality, technology, spatial_unit)
+        filters = _filters(q, organism, tissue, modality, technology, spatial_unit, dataset_type)
         per_page = 20
         datasets, total = list_datasets(session, filters, (page - 1) * per_page, per_page)
         page_count = max(1, math.ceil(total / per_page))
@@ -151,6 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "modality": modality,
                 "technology": technology,
                 "spatial_unit": spatial_unit,
+                "dataset_type": dataset_type,
             }.items()
             if value
         }
@@ -227,10 +242,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
+        dataset_type: str | None = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> DatasetListResponse:
-        filters = _filters(q, organism, tissue, modality, technology, spatial_unit)
+        filters = _filters(q, organism, tissue, modality, technology, spatial_unit, dataset_type)
         datasets, total = list_datasets(session, filters, offset, limit)
         return DatasetListResponse(
             items=[_dataset_response(dataset, request) for dataset in datasets],
