@@ -38,6 +38,29 @@ make run
 数据库默认保存在 `data/catalog.db`，正式数据文件保存在 `data/datasets/`。可通过
 `ISCDC_DATABASE_PATH` 和 `ISCDC_DATA_ROOT` 修改这两个位置。
 
+### 服务器测试部署
+
+在当前服务器上，可以使用根目录的脚本将网页运行在后台 tmux 会话中：
+
+```bash
+./deploy_test.sh start
+```
+
+脚本默认使用 `/home1/shezixi/miniconda3/envs/iscdc/bin/python`，监听
+`0.0.0.0:5000`，网页入口为 <http://10.138.46.171:5000>，日志保存在
+`data/iscdc-server.log`。无需预先激活 Conda 环境。其他常用操作为：
+
+```bash
+./deploy_test.sh status
+./deploy_test.sh logs
+./deploy_test.sh restart
+./deploy_test.sh stop
+```
+
+如环境位置或测试端口发生变化，可使用 `ISCDC_PYTHON` 和 `ISCDC_DEPLOY_PORT` 覆盖默认值；
+运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，也不会
+修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
+
 ## 导入数据
 
 每个待导入数据集由一个 `.h5mu` 文件和一个 `metadata.yaml` 组成。示例元数据位于
