@@ -110,6 +110,9 @@ publication: null
 ```
 
 `license` 和 `publication` 键必须存在，但在信息无法确认时可以为 `null`。
+`coordinate_unit` 可使用 `array_index` 表示平台原生的离散阵列索引，例如 10x
+Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理坐标换算，应保留
+`array_index`，不应将这些值重新标记为 `pixel` 或 `micrometer`。
 多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
 字符串列表；目录 API 会原样保留字符串或列表形式。
 

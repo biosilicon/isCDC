@@ -93,6 +93,26 @@ def test_yaml_sample_mismatch_is_rejected(metadata_values, write_h5mu, write_met
     assert "sample_ids_mismatch" in {issue.code for issue in outcome.errors}
 
 
+@pytest.mark.parametrize(
+    ("coordinate_unit", "expects_nonstandard_warning"),
+    [("array_index", False), ("grid_step", True)],
+)
+def test_coordinate_unit_vocabulary_controls_warning(
+    coordinate_unit,
+    expects_nonstandard_warning,
+    metadata_values,
+    write_h5mu,
+    write_metadata,
+):
+    metadata_values["database"]["coordinate_unit"] = coordinate_unit
+
+    outcome = validate_h5mu(write_h5mu(), load_metadata(write_metadata()))
+
+    assert outcome.valid
+    warning_codes = {issue.code for issue in outcome.warnings}
+    assert ("nonstandard_coordinate_unit" in warning_codes) is expects_nonstandard_warning
+
+
 def test_train_test_pair_rejects_overlapping_source_observations(tmp_path, write_h5mu):
     source_path = write_h5mu()
     product_paths = {}
