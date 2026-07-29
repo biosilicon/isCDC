@@ -8,6 +8,7 @@
       <p class="text-uppercase small fw-semibold text-primary mb-1">Challenge</p>
       <h1 class="display-6 fw-bold"><code>{{ challenge.split_id }}</code></h1>
       <p class="lead text-secondary">Training and test data files belonging to the same split.</p>
+      <span class="badge text-bg-secondary">{{ challenge.challenge_type|challenge_type_label }}</span>
     </div>
     {% if challenge.status == 'complete' %}
       <span class="badge text-bg-success mt-2">complete</span>

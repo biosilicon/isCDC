@@ -3,6 +3,7 @@
 isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
 结构及人工维护的元数据，网页请求只读取 SQLite，不读取大型表达矩阵。网页将 `full`
 文件作为 Database 展示，并将相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。
+每个 Challenge 通过 `derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
 
 ## 目录约定
 
@@ -92,7 +93,8 @@ checksum.sha256
 目录严格只接受 `schema_version: "1.1"`，不再兼容 1.0。`full` 可直接导入；导入
 `train` 或 `test` 前，必须先导入其 `derivation.source_dataset_ids` 引用的全部 `full`
 数据集。导入器会对照来源文件验证每个来源观测对象和特征合并策略；若目录中已经存在
-相同 `split_id` 的另一侧，还会检查 train/test 不包含重复来源观测对象。
+相同 `split_id` 的另一侧，还会检查 train/test 的 `challenge_type` 一致且不包含重复来源
+观测对象。
 
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
@@ -175,6 +177,7 @@ PYTHONPATH=src python -m iscdc.splitter range full.h5mu --json
 ```yaml
 schema_version: "1.1"
 split_id: spatial_v1
+challenge_type: same_slice
 feature_merge_policy: preserve
 source: full.h5mu
 output_dir: outputs/spatial_v1
@@ -213,6 +216,7 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 ```yaml
 schema_version: "1.1"
 split_id: benchmark_v1
+challenge_type: cross_subject
 feature_merge_policy: intersection
 output_dir: outputs/benchmark_v1
 train:
@@ -238,6 +242,17 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 `composite`。所有来源必须使用相同的空间单位和坐标单位，同名模态必须使用相同的
 `value_type`，最终 train/test 模态集合必须一致且至少包含两个模态。
 
+`spatial` 和 `compose` 配置都必须显式声明 `challenge_type`，可选值为：
+
+- `same_slice`：同一物理切片内部划分。
+- `cross_slice_same_subject`：同一个体的不同切片之间划分。
+- `cross_subject`：跨个体划分，涵盖生物学重复及不同条件或发育阶段。
+
+该字段会写入两侧 `uns["database"]["derivation"]`。发布产物时，对应
+`metadata.yaml` 的 `database.derivation.challenge_type` 必须与文件内部取值一致。同一
+`split_id` 的 train/test 必须使用相同值；缺少该字段的旧 schema 1.1 衍生文件需要补齐后
+重新校验或导入。
+
 支持以下特征策略：
 
 - `preserve`：每个输出侧内的相关来源必须具有完全一致的特征 ID 和顺序。
@@ -259,7 +274,8 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 `<source_dataset_id>::<source_obs_id>` 和
 `<source_dataset_id>::<original_sample_id>`。每个观测的原始来源仍保存在
 `source_dataset_id`、`source_obs_id` 中，产物的 `uns["database"]["derivation"]` 会记录
-划分 ID、来源全集、选择规则、特征策略、处理说明和 `random_seed: null`。
+划分 ID、Challenge 类型、来源全集、选择规则、特征策略、处理说明和
+`random_seed: null`。
 
 ## 网页和 API
 
@@ -273,12 +289,14 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 - `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
 
 网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
-筛选；API 列表另外支持 `limit`、`offset`。Challenge 的任一侧满足全部筛选条件时，响应
+筛选；Challenge 列表还支持 `challenge_type`，API 列表另外支持 `limit`、`offset`。
+Challenge 的任一侧满足全部筛选条件时，响应
 仍会返回该 Challenge 已导入的完整两侧。若同一个 `split_id` 下存在多份 train 或多份
 test，目录会报告完整性错误，不会静默选择其中一份。
 
-Challenge JSON 使用 `status` 表示 `complete`、`missing_train` 或 `missing_test`，并通过
-`train`、`test` 字段返回对应的完整文件记录或 `null`。旧版 `/datasets`、
+Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表示 `complete`、
+`missing_train` 或 `missing_test`，并通过 `train`、`test` 字段返回对应的完整文件记录或
+`null`。旧版 `/datasets`、
 `/datasets/{dataset_id}` 和 `/api/datasets*` 路由已经移除，不提供兼容重定向。
 
 生产部署时可以在下载路由前增加 Nginx；当前开发版本由 FastAPI 直接传输文件。

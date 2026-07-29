@@ -20,6 +20,7 @@
             <div>
               <div class="d-flex gap-2 mb-2">
                 <span class="badge text-bg-primary">challenge</span>
+                <span class="badge text-bg-secondary">{{ challenge.challenge_type|challenge_type_label }}</span>
                 {% if challenge.status == 'complete' %}
                   <span class="badge text-bg-success">complete</span>
                 {% elif challenge.status == 'missing_train' %}

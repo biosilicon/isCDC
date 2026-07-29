@@ -63,6 +63,7 @@ def _app_with_challenge(
     write_metadata,
     *,
     split_id="web_split_v1",
+    challenge_type="same_slice",
     imported_sides=("train", "test"),
 ):  # noqa: ANN202
     source_path = write_h5mu()
@@ -73,6 +74,7 @@ def _app_with_challenge(
             {
                 "schema_version": "1.1",
                 "split_id": split_id,
+                "challenge_type": challenge_type,
                 "feature_merge_policy": "preserve",
                 "source": str(source_path),
                 "output_dir": "web-derived-output",
@@ -151,6 +153,7 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
         assert "1 matching challenge" in listing.text
         assert listing.text.count('class="card dataset-card"') == 1
         assert "web_split_v1" in listing.text
+        assert "Same slice" in listing.text
         assert "Derived train dataset" in listing.text
         assert "Derived test dataset" in listing.text
 
@@ -159,6 +162,7 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
         assert "Training data" in detail.text
         assert "Test data" in detail.text
         assert "Feature merge policy" in detail.text
+        assert "Same slice" in detail.text
         assert "/downloads/web_train/h5mu" in detail.text
         assert "/downloads/web_test/h5mu" in detail.text
 
@@ -184,6 +188,14 @@ async def test_challenge_filter_matches_one_side_but_returns_both(
         assert payload["total"] == 1
         assert payload["items"][0]["train"]["dataset_id"] == "web_train"
         assert payload["items"][0]["test"]["dataset_id"] == "web_test"
+
+        matching = await client.get("/api/challenges?challenge_type=same_slice")
+        assert matching.status_code == 200
+        assert matching.json()["total"] == 1
+        assert matching.json()["items"][0]["challenge_type"] == "same_slice"
+        empty = await client.get("/api/challenges?challenge_type=cross_subject")
+        assert empty.status_code == 200
+        assert empty.json()["total"] == 0
 
 
 @pytest.mark.parametrize(
@@ -213,6 +225,7 @@ async def test_incomplete_challenge_is_visible(
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         payload = (await client.get("/api/challenges/web_split_v1")).json()
         assert payload["status"] == status
+        assert payload["challenge_type"] == "same_slice"
         detail = await client.get("/challenges/web_split_v1")
         assert detail.status_code == 200
         assert missing_text in detail.text
@@ -311,6 +324,33 @@ async def test_derived_file_without_split_id_is_an_integrity_error(
         api = await client.get("/api/challenges")
         assert api.status_code == 500
         assert "does not define a split_id" in api.json()["detail"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "mismatch"])
+async def test_invalid_challenge_type_is_an_integrity_error(
+    mutation, tmp_path, settings, write_h5mu, write_metadata
+):
+    _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        test = session.get(Dataset, "web_test")
+        assert test is not None and test.derivation is not None
+        derivation = deepcopy(test.derivation)
+        if mutation == "missing":
+            derivation.pop("challenge_type")
+        else:
+            derivation["challenge_type"] = "cross_subject"
+        test.derivation = derivation
+        session.commit()
+    engine.dispose()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/challenges")
+        assert response.status_code == 500
+        expected = "valid challenge_type" if mutation == "missing" else "inconsistent"
+        assert expected in response.json()["detail"]
 
 
 async def test_special_split_id_is_addressable(

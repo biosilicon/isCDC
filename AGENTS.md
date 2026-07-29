@@ -6,12 +6,22 @@ Production code lives under `src/iscdc/`, automated tests under `tests/`, and te
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
-The public catalogue has two presentation classes without adding another storage-level type:
+The public catalogue has two presentation classes without adding another `dataset_type`
+value or a separate persisted presentation-class field:
 
 - `full` files are exposed as **Databases**.
-- `train` and `test` files are grouped by `split_id` and exposed as one **Challenge**.
+- `train` and `test` files are grouped by `split_id` and exposed as one **Challenge**. Every
+  train/test file must declare `derivation.challenge_type` as `same_slice`,
+  `cross_slice_same_subject`, or `cross_subject`; both sides of one Challenge must agree.
 
-Database and Challenge list pages and JSON APIs must apply filters within their own class. A Challenge response must include both imported sides even when only one side matched the filters. Show an incomplete status when one side is absent, and treat multiple train files or multiple test files under one `split_id` as a catalogue integrity error. Keep these presentation rules derived from schema 1.1 metadata; do not duplicate them in a new persisted classification field.
+Database and Challenge list pages and JSON APIs must apply filters within their own class.
+Challenge lists must support `challenge_type` filtering, and Challenge responses must expose
+the type derived from schema 1.1 derivation metadata. A Challenge response must include both
+imported sides even when only one side matched the filters. Show an incomplete status when one
+side is absent, and treat multiple train files, multiple test files, a missing or invalid
+`challenge_type`, or conflicting types under one `split_id` as a catalogue integrity error.
+Do not duplicate either the Database/Challenge presentation class or `challenge_type` in a
+separate catalogue column.
 
 ## Build, Test, and Development Commands
 

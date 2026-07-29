@@ -28,9 +28,16 @@ from .repository import (
 from .schemas import (
     ChallengeListResponse,
     ChallengeResponse,
+    ChallengeType,
     DatabaseListResponse,
     DataFileResponse,
 )
+
+CHALLENGE_TYPE_LABELS = {
+    "same_slice": "Same slice",
+    "cross_slice_same_subject": "Cross-slice, same subject",
+    "cross_subject": "Cross-subject (including biological replicates)",
+}
 
 DOWNLOAD_FILES = {
     "h5mu": ("dataset.h5mu", "application/x-hdf5", ".h5mu"),
@@ -69,8 +76,11 @@ def _filters(
     modality: str | None,
     technology: str | None,
     spatial_unit: str | None,
+    challenge_type: ChallengeType | None = None,
 ) -> CatalogueFilters:
-    return CatalogueFilters(q, organism, tissue, modality, technology, spatial_unit)
+    return CatalogueFilters(
+        q, organism, tissue, modality, technology, spatial_unit, challenge_type
+    )
 
 
 def _selected_filters(
@@ -80,6 +90,7 @@ def _selected_filters(
     modality: str | None,
     technology: str | None,
     spatial_unit: str | None,
+    challenge_type: ChallengeType | None = None,
 ) -> dict[str, str]:
     return {
         key: value
@@ -90,6 +101,7 @@ def _selected_filters(
             "modality": modality,
             "technology": technology,
             "spatial_unit": spatial_unit,
+            "challenge_type": challenge_type,
         }.items()
         if value
     }
@@ -157,6 +169,7 @@ def _data_file_response(dataset: Dataset, request: Request) -> DataFileResponse:
 def _challenge_response(challenge: Challenge, request: Request) -> ChallengeResponse:
     return ChallengeResponse(
         split_id=challenge.split_id,
+        challenge_type=challenge.challenge_type,
         status=challenge.status,
         train=(
             _data_file_response(challenge.train, request) if challenge.train is not None else None
@@ -174,6 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.filters["filesize"] = _format_bytes
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
+    templates.env.filters["challenge_type_label"] = CHALLENGE_TYPE_LABELS.__getitem__
 
     application = FastAPI(
         title="isCDC Spatial Multi-omics Database",
@@ -271,10 +285,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
+        challenge_type: ChallengeType | None = None,
         page: Annotated[int, Query(ge=1)] = 1,
     ):
-        filters = _filters(q, organism, tissue, modality, technology, spatial_unit)
-        selected = _selected_filters(q, organism, tissue, modality, technology, spatial_unit)
+        filters = _filters(
+            q, organism, tissue, modality, technology, spatial_unit, challenge_type
+        )
+        selected = _selected_filters(
+            q, organism, tissue, modality, technology, spatial_unit, challenge_type
+        )
         per_page = 20
         challenges, total = list_challenges(session, filters, (page - 1) * per_page, per_page)
         return templates.TemplateResponse(
@@ -388,12 +407,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
+        challenge_type: ChallengeType | None = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> ChallengeListResponse:
         challenges, total = list_challenges(
             session,
-            _filters(q, organism, tissue, modality, technology, spatial_unit),
+            _filters(q, organism, tissue, modality, technology, spatial_unit, challenge_type),
             offset,
             limit,
         )

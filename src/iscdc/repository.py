@@ -7,8 +7,10 @@ from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import Dataset, Modality
+from .schemas import ChallengeType
 
 DERIVED_DATASET_TYPES = ("train", "test")
+CHALLENGE_TYPES = ("same_slice", "cross_slice_same_subject", "cross_subject")
 
 
 class CatalogueIntegrityError(RuntimeError):
@@ -23,6 +25,7 @@ class CatalogueFilters:
     modality: str | None = None
     technology: str | None = None
     spatial_unit: str | None = None
+    challenge_type: ChallengeType | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,15 @@ class Challenge:
         if self.test is None:
             return "missing_test"
         return "complete"
+
+    @property
+    def challenge_type(self) -> ChallengeType:
+        dataset = self.train or self.test
+        if dataset is None or dataset.derivation is None:
+            raise CatalogueIntegrityError(
+                f"Challenge {self.split_id!r} does not define a challenge_type."
+            )
+        return dataset.derivation["challenge_type"]
 
     @property
     def datasets(self) -> list[Dataset]:
@@ -82,6 +94,11 @@ def _conditions(filters: CatalogueFilters, *, include_split_id: bool = False):  
     if filters.technology:
         conditions.append(
             Dataset.modalities.any(_json_contains(Modality.technology, filters.technology))
+        )
+    if filters.challenge_type:
+        conditions.append(
+            func.json_extract(Dataset.derivation, "$.challenge_type")
+            == filters.challenge_type
         )
     return conditions
 
@@ -142,6 +159,25 @@ def _validate_challenge_integrity(session: Session) -> None:
         raise CatalogueIntegrityError(
             f"Derived dataset {missing_split_id!r} does not define a split_id."
         )
+
+    derived = session.execute(
+        select(Dataset.dataset_id, Dataset.split_id, Dataset.derivation).where(
+            Dataset.dataset_type.in_(DERIVED_DATASET_TYPES)
+        )
+    ).all()
+    challenge_types_by_split: dict[str, set[str]] = {}
+    for dataset_id, split_id, derivation in derived:
+        challenge_type = derivation.get("challenge_type") if isinstance(derivation, dict) else None
+        if challenge_type not in CHALLENGE_TYPES:
+            raise CatalogueIntegrityError(
+                f"Derived dataset {dataset_id!r} does not define a valid challenge_type."
+            )
+        challenge_types_by_split.setdefault(split_id, set()).add(challenge_type)
+    for split_id, challenge_types in challenge_types_by_split.items():
+        if len(challenge_types) > 1:
+            raise CatalogueIntegrityError(
+                f"Challenge {split_id!r} contains inconsistent challenge_type values."
+            )
 
     duplicate = session.execute(
         select(Dataset.split_id, Dataset.dataset_type, func.count())
@@ -266,6 +302,17 @@ def get_facets(session: Session, dataset_types: tuple[str, ...]) -> dict[str, li
         .join(Dataset, Modality.dataset_id == Dataset.dataset_id)
         .where(Dataset.dataset_type.in_(dataset_types))
     ).all()
+    challenge_types = list(
+        session.scalars(
+            select(func.json_extract(Dataset.derivation, "$.challenge_type"))
+            .where(
+                Dataset.dataset_type.in_(dataset_types),
+                Dataset.derivation.is_not(None),
+            )
+            .distinct()
+            .order_by(func.json_extract(Dataset.derivation, "$.challenge_type"))
+        ).all()
+    )
     return {
         "organisms": flattened_dataset_values(Dataset.organism),
         "tissues": flattened_dataset_values(Dataset.tissue),
@@ -278,4 +325,5 @@ def get_facets(session: Session, dataset_types: tuple[str, ...]) -> dict[str, li
                 for item in (value if isinstance(value, list) else [value])
             }
         ),
+        "challenge_types": [value for value in challenge_types if value in CHALLENGE_TYPES],
     }

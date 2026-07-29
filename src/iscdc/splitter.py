@@ -24,6 +24,7 @@ from .validation import validate_h5mu, validate_mudata, validate_train_test_pair
 
 SCHEMA_VERSION = "1.1"
 CONFIG_POLICIES = {"preserve", "intersection", "union", "reference"}
+CHALLENGE_TYPES = {"same_slice", "cross_slice_same_subject", "cross_subject"}
 DATASET_TYPES = {"train", "test"}
 FEATURE_MASK_KEY = "feature_measured_by_source"
 
@@ -42,6 +43,7 @@ REQUIRED_DERIVATION_FIELDS = {
     "construction_type",
     "source_dataset_ids",
     "split_id",
+    "challenge_type",
     "selection_description",
     "feature_merge_policy",
     "processing_description",
@@ -65,6 +67,7 @@ class Region:
 class SpatialConfig:
     path: Path
     split_id: str
+    challenge_type: str
     source: Path
     output_dir: Path
     train_id: str
@@ -83,6 +86,7 @@ class ComposeSide:
 class ComposeConfig:
     path: Path
     split_id: str
+    challenge_type: str
     feature_merge_policy: str
     output_dir: Path
     train: ComposeSide
@@ -108,6 +112,7 @@ class SourceDataset:
 class ProductValidation:
     dataset_type: str
     split_id: str
+    challenge_type: str
     source_pairs: frozenset[tuple[str, str]]
     modalities: dict[str, tuple[str, ...]]
 
@@ -179,11 +184,21 @@ def _check_config_version(value: Any) -> None:
         raise SplitterError(f"config schema_version must be '{SCHEMA_VERSION}'")
 
 
+def _challenge_type(value: Any, context: str) -> str:
+    result = _required_string(value, context)
+    if result not in CHALLENGE_TYPES:
+        raise SplitterError(
+            f"{context} must be one of: " + ", ".join(sorted(CHALLENGE_TYPES))
+        )
+    return result
+
+
 def load_spatial_config(path: Path | str) -> SpatialConfig:
     config_path, values = _load_yaml(path)
     required = {
         "schema_version",
         "split_id",
+        "challenge_type",
         "feature_merge_policy",
         "source",
         "output_dir",
@@ -239,6 +254,9 @@ def load_spatial_config(path: Path | str) -> SpatialConfig:
     return SpatialConfig(
         path=config_path,
         split_id=_required_string(values["split_id"], "spatial config split_id"),
+        challenge_type=_challenge_type(
+            values["challenge_type"], "spatial config challenge_type"
+        ),
         source=_config_path(values["source"], base, "spatial config source"),
         output_dir=_config_path(values["output_dir"], base, "spatial config output_dir"),
         train_id=train_id,
@@ -275,6 +293,7 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
     fields = {
         "schema_version",
         "split_id",
+        "challenge_type",
         "feature_merge_policy",
         "output_dir",
         "train",
@@ -304,6 +323,9 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
     return ComposeConfig(
         path=config_path,
         split_id=_required_string(values["split_id"], "compose config split_id"),
+        challenge_type=_challenge_type(
+            values["challenge_type"], "compose config challenge_type"
+        ),
         feature_merge_policy=policy,
         output_dir=_config_path(values["output_dir"], base, "compose config output_dir"),
         train=train,
@@ -600,6 +622,7 @@ def _derivation_database(
     dataset_type: str,
     sources: Sequence[SourceDataset],
     split_id: str,
+    challenge_type: str,
     construction_type: str,
     feature_policy: str,
     selection_description: str,
@@ -611,6 +634,7 @@ def _derivation_database(
         "construction_type": construction_type,
         "source_dataset_ids": [source.dataset_id for source in sources],
         "split_id": split_id,
+        "challenge_type": challenge_type,
         "selection_description": selection_description,
         "feature_merge_policy": feature_policy,
         "processing_description": processing_description,
@@ -648,6 +672,7 @@ def _build_spatial_product(
     dataset_id: str,
     dataset_type: str,
     split_id: str,
+    challenge_type: str,
     selection_description: str,
 ) -> md.MuData:
     global_names = np.asarray(source.obs_names, dtype=object)
@@ -675,6 +700,7 @@ def _build_spatial_product(
         dataset_type=dataset_type,
         sources=[source],
         split_id=split_id,
+        challenge_type=challenge_type,
         construction_type="subset",
         feature_policy="preserve",
         selection_description=selection_description,
@@ -790,6 +816,7 @@ def _build_composite_product(
     dataset_id: str,
     dataset_type: str,
     split_id: str,
+    challenge_type: str,
     policy: str,
     target_features: Mapping[str, Sequence[str]],
     reference_dataset_id: str | None,
@@ -853,6 +880,7 @@ def _build_composite_product(
         dataset_type=dataset_type,
         sources=sources,
         split_id=split_id,
+        challenge_type=challenge_type,
         construction_type=construction_type,
         feature_policy=policy,
         selection_description=(
@@ -960,6 +988,7 @@ def _validate_product(path: Path, sources: Mapping[str, SourceDataset]) -> Produ
         return ProductValidation(
             dataset_type=dataset_type,
             split_id=str(derivation["split_id"]),
+            challenge_type=str(derivation["challenge_type"]),
             source_pairs=pairs,
             modalities={
                 name: tuple(map(str, adata.var_names)) for name, adata in mdata.mod.items()
@@ -999,6 +1028,10 @@ def _write_products(
             raise SplitterError("generated files have incorrect dataset_type values")
         if train_validation.split_id != test_validation.split_id:
             raise SplitterError("generated train and test files have different split_id values")
+        if train_validation.challenge_type != test_validation.challenge_type:
+            raise SplitterError(
+                "generated train and test files have different challenge_type values"
+            )
         if set(train_validation.modalities) != set(test_validation.modalities):
             raise SplitterError("generated train and test modality sets are not comparable")
         if not train_validation.source_pairs.isdisjoint(test_validation.source_pairs):
@@ -1058,6 +1091,7 @@ def spatial_split(config_path: Path | str) -> tuple[Path, Path]:
             dataset_id=config.train_id,
             dataset_type="train",
             split_id=config.split_id,
+            challenge_type=config.challenge_type,
             selection_description=f"Complement of the {region_description}.",
         )
         test = _build_spatial_product(
@@ -1066,6 +1100,7 @@ def spatial_split(config_path: Path | str) -> tuple[Path, Path]:
             dataset_id=config.test_id,
             dataset_type="test",
             split_id=config.split_id,
+            challenge_type=config.challenge_type,
             selection_description=f"The {region_description}.",
         )
         return _write_products(
@@ -1137,6 +1172,7 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             dataset_id=config.train.dataset_id,
             dataset_type="train",
             split_id=config.split_id,
+            challenge_type=config.challenge_type,
             policy=config.feature_merge_policy,
             target_features=train_targets,
             reference_dataset_id=config.train.reference_dataset_id,
@@ -1147,6 +1183,7 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             dataset_id=config.test.dataset_id,
             dataset_type="test",
             split_id=config.split_id,
+            challenge_type=config.challenge_type,
             policy=config.feature_merge_policy,
             target_features=test_targets,
             reference_dataset_id=config.test.reference_dataset_id,

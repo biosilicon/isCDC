@@ -11,12 +11,17 @@
       ('technology', 'Technology', facets.technologies),
       ('spatial_unit', 'Spatial unit', facets.spatial_units)
     ] %}
+    {% if facets.challenge_types %}
+      {% set filter_fields = filter_fields + [
+        ('challenge_type', 'Challenge type', facets.challenge_types)
+      ] %}
+    {% endif %}
     {% for name, label, values in filter_fields %}
       <div class="col-sm-6 col-lg">
         <label class="form-label" for="{{ name }}">{{ label }}</label>
         <select class="form-select" id="{{ name }}" name="{{ name }}">
           <option value="">All</option>
-          {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{% if name == 'challenge_type' %}{{ value|challenge_type_label }}{% else %}{{ value }}{% endif %}</option>{% endfor %}
         </select>
       </div>
     {% endfor %}

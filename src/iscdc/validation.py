@@ -67,6 +67,7 @@ class ValidationOutcome:
     modalities: dict[str, ModalitySummary] = field(default_factory=dict)
     dataset_type: str = ""
     split_id: str | None = None
+    challenge_type: str | None = None
 
     @property
     def valid(self) -> bool:
@@ -80,6 +81,7 @@ class ValidationOutcome:
             "summary": {
                 "dataset_type": self.dataset_type,
                 "split_id": self.split_id,
+                "challenge_type": self.challenge_type,
                 "n_obs": self.n_obs,
                 "coordinate_dimensions": self.coordinate_dimensions,
                 "sample_ids": self.sample_ids,
@@ -206,6 +208,9 @@ def _validate_common(
     if database is not None:
         outcome.dataset_type = database.dataset_type
         outcome.split_id = database.derivation.split_id if database.derivation else None
+        outcome.challenge_type = (
+            database.derivation.challenge_type if database.derivation else None
+        )
         if metadata is not None:
             internal_values = _canonical(internal_database)
             yaml_values = _canonical(metadata.database_values())
@@ -923,6 +928,13 @@ def validate_train_test_pair(train_path: Path, test_path: Path) -> ValidationOut
                 "split_id_mismatch",
                 "Train and test datasets must use the same split_id.",
                 "/uns/database/derivation/split_id",
+            )
+        if train_database.derivation.challenge_type != test_database.derivation.challenge_type:
+            _error(
+                outcome,
+                "challenge_type_mismatch",
+                "Train and test datasets must use the same challenge_type.",
+                "/uns/database/derivation/challenge_type",
             )
         for label, value in (("train", train), ("test", test)):
             if not all(column in value.obs for column in ("source_dataset_id", "source_obs_id")):

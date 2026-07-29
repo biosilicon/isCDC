@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 DATASET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 ScalarOrList = str | list[str]
+ChallengeType = Literal["same_slice", "cross_slice_same_subject", "cross_subject"]
 
 
 def _clean_scalar_or_list(value: ScalarOrList) -> ScalarOrList:
@@ -31,6 +32,7 @@ class DerivationMetadata(BaseModel):
     construction_type: Literal["subset", "composite"]
     source_dataset_ids: list[str] = Field(min_length=1)
     split_id: str = Field(min_length=1)
+    challenge_type: ChallengeType
     selection_description: str = Field(min_length=1)
     feature_merge_policy: Literal["preserve", "intersection", "union", "reference"]
     processing_description: str = Field(min_length=1)
@@ -275,6 +277,7 @@ class DatabaseListResponse(BaseModel):
 
 class ChallengeResponse(BaseModel):
     split_id: str
+    challenge_type: ChallengeType
     status: Literal["complete", "missing_train", "missing_test"]
     train: DataFileResponse | None
     test: DataFileResponse | None

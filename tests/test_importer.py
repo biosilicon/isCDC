@@ -110,6 +110,7 @@ def test_imports_derived_sides_after_their_full_source(
             {
                 "schema_version": "1.1",
                 "split_id": "import_split_v1",
+                "challenge_type": "same_slice",
                 "feature_merge_policy": "preserve",
                 "source": str(source_path),
                 "output_dir": "derived-output",
@@ -145,6 +146,7 @@ def test_imports_derived_sides_after_their_full_source(
         assert train is not None and train.dataset_type == "train"
         assert test is not None and test.dataset_type == "test"
         assert train.split_id == test.split_id == "import_split_v1"
+        assert train.derivation["challenge_type"] == "same_slice"
         assert train.derivation["source_dataset_ids"] == ["test_rna_protein"]
     engine.dispose()
 
@@ -157,6 +159,7 @@ def test_derived_import_requires_source_first(tmp_path, settings, write_h5mu):
             {
                 "schema_version": "1.1",
                 "split_id": "missing_source_split",
+                "challenge_type": "same_slice",
                 "feature_merge_policy": "preserve",
                 "source": str(source_path),
                 "output_dir": "missing-source-output",
@@ -214,6 +217,7 @@ def test_composite_import_preserves_multivalue_source_and_technology(
             {
                 "schema_version": "1.1",
                 "split_id": "composite_import_v1",
+                "challenge_type": "cross_subject",
                 "feature_merge_policy": "preserve",
                 "output_dir": "composite-output",
                 "train": {

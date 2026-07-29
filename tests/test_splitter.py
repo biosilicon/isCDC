@@ -19,6 +19,7 @@ from iscdc.splitter import (
     compose_split,
     coordinate_ranges,
     load_compose_config,
+    load_spatial_config,
     main,
     spatial_split,
 )
@@ -126,6 +127,7 @@ def _spatial_config(
         {
             "schema_version": "1.1",
             "split_id": f"{output_name}_split",
+            "challenge_type": "same_slice",
             "feature_merge_policy": "preserve",
             "source": source.name,
             "output_dir": output_name,
@@ -151,6 +153,7 @@ def _compose_config(
         {
             "schema_version": "1.1",
             "split_id": f"{output_name}_split",
+            "challenge_type": "cross_subject",
             "feature_merge_policy": policy,
             "output_dir": output_name,
             "train": {
@@ -304,6 +307,7 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         assert database["schema_version"] == "1.1"
         assert database["dataset_type"] == "test"
         assert database["derivation"]["construction_type"] == "subset"
+        assert database["derivation"]["challenge_type"] == "same_slice"
         assert database["derivation"]["feature_merge_policy"] == "preserve"
         assert database["derivation"]["random_seed"] is None
     finally:
@@ -412,6 +416,8 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
         assert list(test.obs_names) == ["full_c::cell_1", "full_c::cell_2"]
         assert train.uns["database"]["derivation"]["construction_type"] == "composite"
         assert test.uns["database"]["derivation"]["construction_type"] == "subset"
+        assert train.uns["database"]["derivation"]["challenge_type"] == "cross_subject"
+        assert test.uns["database"]["derivation"]["challenge_type"] == "cross_subject"
         train_pairs = set(
             zip(
                 train.obs["source_dataset_id"].astype(str),
@@ -712,6 +718,21 @@ def test_configs_require_schema_v11_and_yaml_is_only_split_interface(tmp_path, c
         main(["spatial", str(config), "--split-id", "old-interface"])
 
 
+def test_configs_require_valid_challenge_type(tmp_path):
+    source = _write_full(tmp_path, "challenge_type_source")
+    config = _spatial_config(
+        tmp_path,
+        source,
+        [{"sample_id": "sample_1", "x_min": 0, "x_max": 0, "y_min": 0, "y_max": 0}],
+    )
+    values = yaml.safe_load(config.read_text(encoding="utf-8"))
+    values["challenge_type"] = "unknown"
+    _write_yaml(config, values)
+
+    with pytest.raises(SplitterError, match="challenge_type must be one of"):
+        load_spatial_config(config)
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REAL_DATA_DIR = PROJECT_ROOT / "exp"
 REAL_SPATIAL_SOURCE = REAL_DATA_DIR / "xenium_human_rcc_ffpe_rna_protein.h5mu"
@@ -764,6 +785,7 @@ def test_real_h5mu_spatial_split_end_to_end():
                 assert database["schema_version"] == "1.1"
                 assert database["dataset_type"] == dataset_type
                 assert database["derivation"]["split_id"] == split_id
+                assert database["derivation"]["challenge_type"] == "same_slice"
                 assert database["derivation"]["feature_merge_policy"] == "preserve"
         finally:
             source.file.close()

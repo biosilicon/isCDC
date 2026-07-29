@@ -60,6 +60,7 @@ def test_metadata_validates_derived_relationships_and_lists(metadata_values, wri
                 "construction_type": "composite",
                 "source_dataset_ids": ["full_a", "full_b"],
                 "split_id": "split_v1",
+                "challenge_type": "cross_subject",
                 "selection_description": "All assigned observations.",
                 "feature_merge_policy": "intersection",
                 "processing_description": "Aligned to common features.",
@@ -72,7 +73,32 @@ def test_metadata_validates_derived_relationships_and_lists(metadata_values, wri
 
     assert metadata.database.dataset_type == "train"
     assert metadata.database.source == ["SOURCE_A", "SOURCE_B"]
+    assert metadata.database.derivation is not None
+    assert metadata.database.derivation.challenge_type == "cross_subject"
     assert metadata.modalities["rna"].technology == ["Tech A", "Tech B"]
+
+
+@pytest.mark.parametrize("challenge_type", [None, "unknown"])
+def test_derived_metadata_requires_valid_challenge_type(
+    challenge_type, metadata_values, write_metadata
+):
+    values = deepcopy(metadata_values)
+    derivation = {
+        "construction_type": "subset",
+        "source_dataset_ids": ["source_full"],
+        "split_id": "split_v1",
+        "selection_description": "A deterministic split.",
+        "feature_merge_policy": "preserve",
+        "processing_description": "Values are unchanged.",
+    }
+    if challenge_type is not None:
+        derivation["challenge_type"] = challenge_type
+    values["database"].update(
+        {"dataset_type": "train", "derivation": derivation}
+    )
+
+    with pytest.raises(MetadataLoadError, match="challenge_type"):
+        load_metadata(write_metadata(values))
 
 
 def test_full_metadata_rejects_derivation(metadata_values, write_metadata):
@@ -81,6 +107,7 @@ def test_full_metadata_rejects_derivation(metadata_values, write_metadata):
         "construction_type": "subset",
         "source_dataset_ids": ["source_full"],
         "split_id": "split_v1",
+        "challenge_type": "same_slice",
         "selection_description": "Invalid full derivation.",
         "feature_merge_policy": "preserve",
         "processing_description": "None.",

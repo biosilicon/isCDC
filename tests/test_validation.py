@@ -129,6 +129,7 @@ def test_train_test_pair_rejects_overlapping_source_observations(tmp_path, write
                         "construction_type": "subset",
                         "source_dataset_ids": ["test_rna_protein"],
                         "split_id": "overlap_split",
+                        "challenge_type": "same_slice",
                         "selection_description": "The same observations on both sides.",
                         "feature_merge_policy": "preserve",
                         "processing_description": "Values are unchanged.",
@@ -145,3 +146,43 @@ def test_train_test_pair_rejects_overlapping_source_observations(tmp_path, write
 
     assert not outcome.valid
     assert "train_test_source_overlap" in {issue.code for issue in outcome.errors}
+
+
+def test_train_test_pair_rejects_challenge_type_mismatch(tmp_path, write_h5mu):
+    source_path = write_h5mu()
+    product_paths = {}
+    for dataset_type, challenge_type in (
+        ("train", "same_slice"),
+        ("test", "cross_subject"),
+    ):
+        product = md.read_h5mu(source_path)
+        try:
+            product.obs["source_dataset_id"] = "test_rna_protein"
+            product.obs["source_obs_id"] = [
+                f"{dataset_type}_{name}" for name in product.obs_names.astype(str)
+            ]
+            product.uns["database"].update(
+                {
+                    "dataset_id": f"mismatch_{dataset_type}",
+                    "dataset_type": dataset_type,
+                    "derivation": {
+                        "construction_type": "subset",
+                        "source_dataset_ids": ["test_rna_protein"],
+                        "split_id": "mismatch_split",
+                        "challenge_type": challenge_type,
+                        "selection_description": "Disjoint synthetic observations.",
+                        "feature_merge_policy": "preserve",
+                        "processing_description": "Values are unchanged.",
+                    },
+                }
+            )
+            path = tmp_path / f"mismatch_{dataset_type}.h5mu"
+            product.write_h5mu(path)
+            product_paths[dataset_type] = path
+        finally:
+            product.file.close()
+
+    outcome = validate_train_test_pair(product_paths["train"], product_paths["test"])
+
+    assert not outcome.valid
+    assert "challenge_type_mismatch" in {issue.code for issue in outcome.errors}
