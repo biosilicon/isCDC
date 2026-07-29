@@ -157,6 +157,21 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
         assert "Derived train dataset" in listing.text
         assert "Derived test dataset" in listing.text
 
+        all_filters = await client.get(
+            "/challenges",
+            params={
+                "q": "",
+                "organism": "",
+                "tissue": "",
+                "modality": "",
+                "technology": "",
+                "spatial_unit": "",
+                "challenge_type": "",
+            },
+        )
+        assert all_filters.status_code == 200
+        assert "1 matching challenge" in all_filters.text
+
         detail = await client.get("/challenges/web_split_v1")
         assert detail.status_code == 200
         assert "Training data" in detail.text

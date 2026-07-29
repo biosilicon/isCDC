@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BeforeValidator
 from sqlalchemy.orm import Session
 
 from .config import Settings
@@ -38,6 +39,11 @@ CHALLENGE_TYPE_LABELS = {
     "cross_slice_same_subject": "Cross-slice, same subject",
     "cross_subject": "Cross-subject (including biological replicates)",
 }
+
+OptionalChallengeTypeQuery = Annotated[
+    ChallengeType | None,
+    BeforeValidator(lambda value: None if value == "" else value),
+]
 
 DOWNLOAD_FILES = {
     "h5mu": ("dataset.h5mu", "application/x-hdf5", ".h5mu"),
@@ -285,7 +291,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
-        challenge_type: ChallengeType | None = None,
+        challenge_type: OptionalChallengeTypeQuery = None,
         page: Annotated[int, Query(ge=1)] = 1,
     ):
         filters = _filters(
@@ -407,7 +413,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
-        challenge_type: ChallengeType | None = None,
+        challenge_type: OptionalChallengeTypeQuery = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> ChallengeListResponse:
