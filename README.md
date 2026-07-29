@@ -10,7 +10,12 @@ isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。�
 `temp/` 是不会纳入版本控制的本地暂存目录，用于保存尚未整理成目录可导入形式的
 数据文件。暂存数据在导入前需要补充符合 schema 1.1 的 `metadata.yaml` 等必要内容；
 完成整理后再通过导入命令写入正式的 `data/` 目录。`exp/` 则继续用于真实数据实验、
-手工测试配置和实验输出。
+手工测试配置和实验输出。批量整理 `temp/` 数据时遵循
+[原始数据处理工作流](原始数据处理规范.md)，最终产物必须符合
+[数据库存储规范 1.1](数据库存储规范_v1.1.md)。
+
+`.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
+不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
 
 ## 快速开始
 
@@ -27,6 +32,7 @@ exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml
 缺失文件会使测试失败。
 
 ```bash
+conda activate iscdc
 make setup
 make test
 make lint
@@ -105,6 +111,20 @@ checksum.sha256
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
 `manifest_version` 独立描述导入清单格式，与 `.h5mu` 的 `schema_version` 无关。
+
+### 批量整理原始数据
+
+`temp/` 下彼此独立的数据集使用两种 agent 角色和五个受控阶段处理：
+
+1. `dataset_planner` 只读调查每个数据集，主 agent 汇总处理方案和待决定问题。
+2. 用户回答后，主 agent 将全局决定传播到受影响的数据集，并提交最终计划待批准。
+3. 只有获得明确批准后，`dataset_worker` 才在各数据集的隔离目录中转换和验证。
+4. 主 agent 独立复核文件内容、元数据和验证报告。
+5. 验收通过的数据集由主 agent 串行入库；导入后复核通过前不得删除原始数据。
+
+角色配置默认位于 `.codex/agents/`，并受 `.codex/config.toml` 的本地并发限制。
+完整的并发数、路径隔离、批准门槛、验收和清理规则见
+[原始数据处理工作流](原始数据处理规范.md)。
 
 ## metadata.yaml
 
@@ -316,5 +336,7 @@ assets/templates 网页模板
 assets/static    页面样式
 assets/examples  示例人工元数据
 data/            本地 SQLite 和已导入文件（不纳入版本控制）
+temp/            待整理数据及其隔离的转换产物（不纳入版本控制）
 exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
+.codex/          本地 agent 角色和并发配置（不纳入版本控制）
 ```
