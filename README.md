@@ -33,6 +33,12 @@ make lint
 make run
 ```
 
+网页和 API 的自动化测试统一使用 `httpx.AsyncClient` 与 `httpx.ASGITransport`，不使用
+同步的 `fastapi.testclient.TestClient` 或 `starlette.testclient.TestClient`。仅导入数据文件且
+没有修改源代码、schema、模板或 API 行为时，不需要额外启动 HTTP/ASGI 层测试；应检查导入
+命令结果、`validation_report.json`、checksum、manifest 以及 catalogue/repository 读取结果。
+只有网页或 API 行为发生变化时才增加或执行相应的网络层测试。
+
 默认网页地址为 <http://127.0.0.1:8000>，API 文档为
 <http://127.0.0.1:8000/docs>。
 

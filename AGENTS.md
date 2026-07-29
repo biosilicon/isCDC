@@ -60,6 +60,14 @@ Follow the standard formatter and linter for the chosen language, checked into p
 
 Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
 
+Application, page, and API tests must use `httpx.AsyncClient` with
+`httpx.ASGITransport`; do not use the synchronous `fastapi.testclient.TestClient` or
+`starlette.testclient.TestClient`. Pure data imports that do not change source code, schemas,
+templates, or API behavior do not require HTTP/ASGI-layer tests. Validate those imports through
+the importer result, `validation_report.json`, checksum and manifest consistency, and direct
+catalogue or repository reads instead. Run network-layer tests when application behavior changes,
+not merely to confirm that a data file was imported.
+
 The complete suite requires these local real-data fixtures:
 
 - `exp/xenium_human_rcc_ffpe_rna_protein.h5mu`
