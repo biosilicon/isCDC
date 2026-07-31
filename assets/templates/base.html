@@ -19,7 +19,10 @@
     </nav>
     <main>{% block content %}{% endblock %}</main>
     <footer class="border-top py-4 mt-5 text-secondary">
-      <div class="container small">Validated spatial multi-omics databases and benchmark challenges.</div>
+      <div class="container small d-flex flex-wrap justify-content-between gap-2">
+        <span>Validated spatial multi-omics databases and benchmark challenges.</span>
+        <span>Visits: {{ "{:,}".format(visit_count) if visit_count is defined and visit_count is not none else "unavailable" }}</span>
+      </div>
     </footer>
   </body>
 </html>

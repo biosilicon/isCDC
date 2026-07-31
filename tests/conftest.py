@@ -24,6 +24,10 @@ def settings(tmp_path: Path) -> Settings:
         data_root=tmp_path / "datasets",
         templates_dir=PROJECT_ROOT / "assets" / "templates",
         static_dir=PROJECT_ROOT / "assets" / "static",
+        analytics_database_path=tmp_path / "analytics.db",
+        analytics_enabled=True,
+        analytics_retention_days=30,
+        analytics_cookie_secure=False,
     )
 
 

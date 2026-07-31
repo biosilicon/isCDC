@@ -8,9 +8,10 @@ PORT="${ISCDC_DEPLOY_PORT:-5000}"
 HOST="0.0.0.0"
 PYTHON_BIN="${ISCDC_PYTHON:-/home1/shezixi/miniconda3/envs/iscdc/bin/python}"
 DATABASE_PATH="${ISCDC_DATABASE_PATH:-${PROJECT_ROOT}/data/catalog.db}"
+ANALYTICS_DATABASE_PATH="${ISCDC_ANALYTICS_DATABASE_PATH:-${PROJECT_ROOT}/data/analytics.db}"
 DATA_ROOT="${ISCDC_DATA_ROOT:-${PROJECT_ROOT}/data/datasets}"
 LOG_PATH="${ISCDC_DEPLOY_LOG:-${PROJECT_ROOT}/data/iscdc-server.log}"
-LOCAL_URL="http://127.0.0.1:${PORT}/"
+LOCAL_URL="http://127.0.0.1:${PORT}/healthz"
 PUBLIC_URL="http://10.138.46.171:${PORT}"
 
 if [[ "${DATABASE_PATH}" != /* ]]; then
@@ -18,6 +19,9 @@ if [[ "${DATABASE_PATH}" != /* ]]; then
 fi
 if [[ "${DATA_ROOT}" != /* ]]; then
     DATA_ROOT="${PROJECT_ROOT}/${DATA_ROOT}"
+fi
+if [[ "${ANALYTICS_DATABASE_PATH}" != /* ]]; then
+    ANALYTICS_DATABASE_PATH="${PROJECT_ROOT}/${ANALYTICS_DATABASE_PATH}"
 fi
 if [[ "${LOG_PATH}" != /* ]]; then
     LOG_PATH="${PROJECT_ROOT}/${LOG_PATH}"
@@ -40,6 +44,14 @@ Optional environment variables:
   ISCDC_DEPLOY_SESSION  tmux session name (default: iscdc).
   ISCDC_DEPLOY_LOG      Server log path (default: data/iscdc-server.log).
   ISCDC_DATABASE_PATH   Catalogue database path (default: data/catalog.db).
+  ISCDC_ANALYTICS_DATABASE_PATH
+                        Visitor analytics database path (default: data/analytics.db).
+  ISCDC_ANALYTICS_ENABLED
+                        Enable visitor analytics (default: true).
+  ISCDC_ANALYTICS_RETENTION_DAYS
+                        Raw visitor event retention in days (default: 30).
+  ISCDC_ANALYTICS_COOKIE_SECURE
+                        Add Secure to the visitor cookie (default: false).
   ISCDC_DATA_ROOT       Dataset directory (default: data/datasets).
 EOF
 }
@@ -90,6 +102,7 @@ validate_start_requirements() {
     require_command ss
     require_command curl
     mkdir -p "$(dirname -- "${LOG_PATH}")"
+    mkdir -p "$(dirname -- "${ANALYTICS_DATABASE_PATH}")"
 }
 
 start_service() {
@@ -118,6 +131,7 @@ start_service() {
         exec env \
         "PYTHONPATH=${PROJECT_ROOT}/src" \
         "ISCDC_DATABASE_PATH=${DATABASE_PATH}" \
+        "ISCDC_ANALYTICS_DATABASE_PATH=${ANALYTICS_DATABASE_PATH}" \
         "ISCDC_DATA_ROOT=${DATA_ROOT}" \
         "${PYTHON_BIN}" -m uvicorn iscdc.app:app \
         --app-dir "${PROJECT_ROOT}/src" \

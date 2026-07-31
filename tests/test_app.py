@@ -8,7 +8,9 @@ import mudata as md
 import numpy as np
 import pytest
 import yaml
+from sqlalchemy import select
 
+from iscdc.analytics import VisitEvent
 from iscdc.app import create_app
 from iscdc.database import create_database_engine, create_session_factory
 from iscdc.importer import import_dataset
@@ -180,6 +182,12 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
         assert "Same slice" in detail.text
         assert "/downloads/web_train/h5mu" in detail.text
         assert "/downloads/web_test/h5mu" in detail.text
+
+    analytics = app.state.analytics
+    assert analytics is not None
+    with analytics.session_factory() as session:
+        event_types = session.scalars(select(VisitEvent.event_type)).all()
+    assert "challenge_detail_view" in event_types
 
 
 async def test_challenge_filter_matches_one_side_but_returns_both(

@@ -1,5 +1,8 @@
+import logging
 import math
 from collections.abc import AsyncGenerator
+from http.cookies import SimpleCookie
+from time import perf_counter
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -9,7 +12,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BeforeValidator
 from sqlalchemy.orm import Session
+from starlette.requests import Request as StarletteRequest
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .analytics import (
+    SESSION_COOKIE_NAME,
+    AnalyticsService,
+    create_analytics_service,
+    is_automated_user_agent,
+)
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .models import Dataset
@@ -57,6 +68,68 @@ DOWNLOAD_FILES = {
     "checksum": ("checksum.sha256", "text/plain", "_checksum.sha256"),
 }
 
+logger = logging.getLogger(__name__)
+
+
+class AnalyticsMiddleware:
+    def __init__(
+        self, app: ASGIApp, analytics: AnalyticsService, cookie_secure: bool
+    ) -> None:
+        self.app = app
+        self.analytics = analytics
+        self.cookie_secure = cookie_secure
+
+    def _cookie_header(self, session_id: str) -> bytes:
+        cookie = SimpleCookie()
+        cookie[SESSION_COOKIE_NAME] = session_id
+        cookie[SESSION_COOKIE_NAME]["httponly"] = True
+        cookie[SESSION_COOKIE_NAME]["samesite"] = "lax"
+        cookie[SESSION_COOKIE_NAME]["path"] = "/"
+        if self.cookie_secure:
+            cookie[SESSION_COOKIE_NAME]["secure"] = True
+        return cookie.output(header="").strip().encode("latin-1")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        started_at = perf_counter()
+        request = StarletteRequest(scope)
+
+        async def send_with_analytics(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                event_context = scope.get("state", {}).get("analytics_event")
+                status_code = message["status"]
+                if event_context is not None and status_code < 400:
+                    if event_context["set_cookie"]:
+                        message["headers"] = list(message.get("headers", []))
+                        message["headers"].append(
+                            (
+                                b"set-cookie",
+                                self._cookie_header(event_context["session_id"]),
+                            )
+                        )
+                    try:
+                        self.analytics.record_event(
+                            session_id=event_context["session_id"],
+                            event_type=event_context["event_type"],
+                            route_name=event_context["route_name"],
+                            path=request.url.path,
+                            details=event_context["details"],
+                            ip_address=request.client.host if request.client else None,
+                            user_agent=event_context["user_agent"],
+                            referrer=request.headers.get("referer"),
+                            status_code=status_code,
+                            duration_ms=round((perf_counter() - started_at) * 1000),
+                            automated=event_context["automated"],
+                        )
+                    except Exception:  # analytics must not alter the successful response
+                        logger.exception("Analytics event write failed")
+            await send(message)
+
+        await self.app(scope, receive, send_with_analytics)
+
 
 def _format_bytes(value: int) -> str:
     size = float(value)
@@ -73,6 +146,19 @@ def _as_list(value):  # noqa: ANN001, ANN202
 
 def _format_metadata(value):  # noqa: ANN001, ANN202
     return ", ".join(map(str, _as_list(value)))
+
+
+def _bounded_analytics_value(value):  # noqa: ANN001, ANN202
+    if isinstance(value, dict):
+        return {
+            str(key)[:100]: _bounded_analytics_value(item)
+            for key, item in list(value.items())[:20]
+        }
+    if isinstance(value, list):
+        return [_bounded_analytics_value(item) for item in value[:20]]
+    if isinstance(value, str):
+        return value[:500]
+    return value
 
 
 def _filters(
@@ -189,7 +275,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_database_engine(settings.database_path)
     initialize_database(engine)
     session_factory = create_session_factory(engine)
-    templates = Jinja2Templates(directory=settings.templates_dir)
+
+    analytics: AnalyticsService | None = None
+    if settings.analytics_enabled:
+        try:
+            analytics = create_analytics_service(
+                settings.analytics_database_path, settings.analytics_retention_days
+            )
+        except Exception:  # analytics must not prevent the catalogue from starting
+            logger.exception("Analytics initialization failed; visitor tracking is disabled")
+
+    def analytics_template_context(_request: Request) -> dict[str, int | None]:
+        if analytics is None:
+            return {"visit_count": None}
+        try:
+            return {"visit_count": analytics.total_visits()}
+        except Exception:  # analytics must not prevent page rendering
+            logger.exception("Analytics counter read failed")
+            return {"visit_count": None}
+
+    templates = Jinja2Templates(
+        directory=settings.templates_dir,
+        context_processors=[analytics_template_context],
+    )
     templates.env.filters["filesize"] = _format_bytes
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
@@ -203,7 +311,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.engine = engine
     application.state.session_factory = session_factory
+    application.state.analytics = analytics
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
+    if analytics is not None:
+        application.add_middleware(
+            AnalyticsMiddleware,
+            analytics=analytics,
+            cookie_secure=settings.analytics_cookie_secure,
+        )
+
+    def prepare_analytics_event(
+        request: Request,
+        event_type: str,
+        route_name: str,
+        details: dict[str, object],
+    ) -> None:
+        if analytics is None:
+            return
+        user_agent = request.headers.get("user-agent")
+        automated = is_automated_user_agent(user_agent)
+        try:
+            result = analytics.start_session(
+                request.cookies.get(SESSION_COOKIE_NAME), automated=automated
+            )
+        except Exception:  # analytics must not prevent request handling
+            logger.exception("Analytics session update failed")
+            return
+        request.state.analytics_event = {
+            "session_id": result.session_id,
+            "set_cookie": result.set_cookie,
+            "event_type": event_type,
+            "route_name": route_name,
+            "details": _bounded_analytics_value(details),
+            "automated": automated,
+            "user_agent": user_agent,
+        }
 
     async def get_session() -> AsyncGenerator[Session, None]:
         with session_factory() as session:
@@ -224,14 +366,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=500,
         )
 
+    @application.get("/healthz", name="health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     @application.get("/", response_class=HTMLResponse, name="home")
     async def home(request: Request, session: SessionDependency):
+        database_count = count_databases(session)
+        challenge_count = count_challenges(session)
+        prepare_analytics_event(request, "page_view", "home", {"page": "home"})
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
-                "database_count": count_databases(session),
-                "challenge_count": count_challenges(session),
+                "database_count": database_count,
+                "challenge_count": challenge_count,
             },
         )
 
@@ -251,13 +400,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected = _selected_filters(q, organism, tissue, modality, technology, spatial_unit)
         per_page = 20
         databases, total = list_databases(session, filters, (page - 1) * per_page, per_page)
+        facets = get_facets(session, ("full",))
+        event_type = "catalogue_search" if selected else "page_view"
+        prepare_analytics_event(
+            request,
+            event_type,
+            "database_list",
+            {"catalogue": "databases", "filters": selected, "page": page},
+        )
         return templates.TemplateResponse(
             request=request,
             name="databases.html",
             context={
                 "databases": databases,
                 "total": total,
-                "facets": get_facets(session, ("full",)),
+                "facets": facets,
                 "selected": selected,
                 **_pagination_context(request, selected, page, total, per_page),
             },
@@ -275,6 +432,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 context={"resource": dataset_id},
                 status_code=404,
             )
+        prepare_analytics_event(
+            request,
+            "database_detail_view",
+            "database_detail",
+            {"dataset_id": database.dataset_id},
+        )
         return templates.TemplateResponse(
             request=request,
             name="database_detail.html",
@@ -302,13 +465,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         per_page = 20
         challenges, total = list_challenges(session, filters, (page - 1) * per_page, per_page)
+        facets = get_facets(session, DERIVED_DATASET_TYPES)
+        event_type = "catalogue_search" if selected else "page_view"
+        prepare_analytics_event(
+            request,
+            event_type,
+            "challenge_list",
+            {"catalogue": "challenges", "filters": selected, "page": page},
+        )
         return templates.TemplateResponse(
             request=request,
             name="challenges.html",
             context={
                 "challenges": challenges,
                 "total": total,
-                "facets": get_facets(session, DERIVED_DATASET_TYPES),
+                "facets": facets,
                 "selected": selected,
                 **_pagination_context(request, selected, page, total, per_page),
             },
@@ -326,6 +497,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 context={"resource": split_id},
                 status_code=404,
             )
+        prepare_analytics_event(
+            request,
+            "challenge_detail_view",
+            "challenge_detail",
+            {"split_id": challenge.split_id},
+        )
         return templates.TemplateResponse(
             request=request,
             name="challenge_detail.html",
@@ -333,7 +510,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @application.get("/downloads/{dataset_id}/{kind}", name="download_file")
-    async def download_file(dataset_id: str, kind: str, session: SessionDependency):
+    async def download_file(
+        request: Request, dataset_id: str, kind: str, session: SessionDependency
+    ):
         file_spec = DOWNLOAD_FILES.get(kind)
         if file_spec is None:
             raise HTTPException(status_code=404, detail="Unknown download type")
@@ -344,6 +523,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = settings.data_root / dataset.storage_dir / stored_name
         if not path.is_file():
             raise HTTPException(status_code=404, detail="Stored file not found")
+
+        prepare_analytics_event(
+            request,
+            "download",
+            "download_file",
+            {"dataset_id": dataset.dataset_id, "kind": kind},
+        )
 
         async def chunks():  # noqa: ANN202
             with path.open("rb") as stream:

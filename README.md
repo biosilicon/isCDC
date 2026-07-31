@@ -1,9 +1,10 @@
 # isCDC
 
 isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
-结构及人工维护的元数据，网页请求只读取 SQLite，不读取大型表达矩阵。网页将 `full`
-文件作为 Database 展示，并将相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。
-每个 Challenge 通过 `derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
+结构及人工维护的元数据；网页目录请求只读取 `catalog.db`，不读取大型表达矩阵，访客会话
+和行为事件则写入完全独立的 `analytics.db`。网页将 `full` 文件作为 Database 展示，并将
+相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。每个 Challenge 通过
+`derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
 
 ## 目录约定
 
@@ -48,8 +49,36 @@ make run
 默认网页地址为 <http://127.0.0.1:8000>，API 文档为
 <http://127.0.0.1:8000/docs>。
 
-数据库默认保存在 `data/catalog.db`，正式数据文件保存在 `data/datasets/`。可通过
+目录数据库默认保存在 `data/catalog.db`，正式数据文件保存在 `data/datasets/`。可通过
 `ISCDC_DATABASE_PATH` 和 `ISCDC_DATA_ROOT` 修改这两个位置。
+
+### 访客统计
+
+网页页脚显示累计浏览器访问会话数。应用使用没有持久有效期的第一方 `iscdc_session`
+Cookie 区分会话，并在独立的 `data/analytics.db` 中记录成功的页面浏览、筛选搜索、详情
+查看和下载事件。JSON API、静态资源、健康检查及失败响应不会产生访客事件。已识别的
+自动流量会记录并标记，但不增加公开访问次数。
+
+事件明细包含直接连接的原始 IP、User-Agent、Referer、UTC 时间、路由、状态码和耗时；
+应用不信任 `X-Forwarded-For` 等转发头。明细默认保留 30 天，不包含这些字段的每日汇总
+永久保留。分析库发生故障时，目录页面、API 和下载继续服务，页脚计数显示为 unavailable。
+
+可以使用 CLI 查看汇总或导出仍在保留期内的明细：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli analytics summary --from 2026-07-01 --to 2026-07-31
+PYTHONPATH=src python -m iscdc.cli analytics export --format csv --output events.csv
+PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output events.jsonl
+```
+
+导出文件包含原始访问信息，需按敏感运维数据管理。已有目标文件默认不会覆盖；确需覆盖时
+显式添加 `--force`。相关环境变量如下：
+
+- `ISCDC_ANALYTICS_ENABLED`：是否启用统计，默认 `true`。
+- `ISCDC_ANALYTICS_DATABASE_PATH`：分析数据库路径，默认 `data/analytics.db`。
+- `ISCDC_ANALYTICS_RETENTION_DAYS`：事件明细保留天数，默认 `30`。
+- `ISCDC_ANALYTICS_COOKIE_SECURE`：是否为 Cookie 添加 Secure，当前 HTTP 测试部署默认
+  `false`，HTTPS 部署应设为 `true`。
 
 ### 服务器测试部署
 
@@ -313,6 +342,7 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 - `/api/databases`、`/api/databases/{dataset_id}`：Database JSON 列表和详情。
 - `/api/challenges`、`/api/challenges/{split_id}`：按 Challenge 聚合的 JSON 列表和详情。
 - `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
+- `/healthz`：供部署脚本和监控使用的健康检查，不创建访客会话或行为事件。
 
 网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
 筛选；Challenge 列表还支持 `challenge_type`，API 列表另外支持 `limit`、`offset`。
@@ -335,7 +365,7 @@ tests/           自动化测试（包括 splitter 合成数据与必需的真�
 assets/templates 网页模板
 assets/static    页面样式
 assets/examples  示例人工元数据
-data/            本地 SQLite 和已导入文件（不纳入版本控制）
+data/            catalog.db、analytics.db 和已导入文件（不纳入版本控制）
 temp/            待整理数据及其隔离的转换产物（不纳入版本控制）
 exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
 .codex/          本地 agent 角色和并发配置（不纳入版本控制）

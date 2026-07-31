@@ -101,6 +101,7 @@ def test_status_bypasses_proxy_for_local_health_check(tmp_path: Path) -> None:
     assert result.returncode == 0
     arguments = curl_arguments.read_text(encoding="utf-8").splitlines()
     assert arguments[:2] == ["--noproxy", "*"]
+    assert arguments[-1] == "http://127.0.0.1:5000/healthz"
 
 
 def test_stop_sends_interrupt_to_the_managed_session(tmp_path: Path) -> None:
