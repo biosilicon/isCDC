@@ -5,6 +5,7 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SESSION_NAME="${ISCDC_DEPLOY_SESSION:-iscdc}"
 PORT="${ISCDC_DEPLOY_PORT:-5000}"
+START_TIMEOUT="${ISCDC_DEPLOY_START_TIMEOUT:-60}"
 HOST="0.0.0.0"
 PYTHON_BIN="${ISCDC_PYTHON:-/home1/shezixi/miniconda3/envs/iscdc/bin/python}"
 DATABASE_PATH="${ISCDC_DATABASE_PATH:-${PROJECT_ROOT}/data/catalog.db}"
@@ -41,6 +42,8 @@ Commands:
 Optional environment variables:
   ISCDC_PYTHON          Python executable from the iscdc Conda environment.
   ISCDC_DEPLOY_PORT     Listening port (default: 5000).
+  ISCDC_DEPLOY_START_TIMEOUT
+                        Seconds to wait for application readiness (default: 60).
   ISCDC_DEPLOY_SESSION  tmux session name (default: iscdc).
   ISCDC_DEPLOY_LOG      Server log path (default: data/iscdc-server.log).
   ISCDC_DATABASE_PATH   Catalogue database path (default: data/catalog.db).
@@ -72,6 +75,11 @@ validate_configuration() {
     local port_number=$((10#${PORT}))
     ((port_number >= 1 && port_number <= 65535)) || \
         die "ISCDC_DEPLOY_PORT must be between 1 and 65535"
+    [[ "${START_TIMEOUT}" =~ ^[0-9]+$ ]] || \
+        die "ISCDC_DEPLOY_START_TIMEOUT must be a number"
+    local timeout_number=$((10#${START_TIMEOUT}))
+    ((timeout_number >= 1 && timeout_number <= 600)) || \
+        die "ISCDC_DEPLOY_START_TIMEOUT must be between 1 and 600 seconds"
 }
 
 session_exists() {
@@ -145,8 +153,9 @@ start_service() {
         die "failed to create tmux session '${SESSION_NAME}'"
     fi
 
-    local attempt
-    for attempt in {1..40}; do
+    local attempt max_attempts
+    max_attempts=$((10#${START_TIMEOUT} * 4))
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
         if http_is_healthy; then
             printf 'isCDC started successfully: %s\n' "${PUBLIC_URL}"
             printf 'Logs: %s\n' "${LOG_PATH}"
@@ -161,7 +170,7 @@ start_service() {
 
     tmux kill-session -t "=${SESSION_NAME}" 2>/dev/null || true
     show_recent_log
-    die "isCDC did not become ready within 10 seconds"
+    die "isCDC did not become ready within ${START_TIMEOUT} seconds"
 }
 
 stop_service() {

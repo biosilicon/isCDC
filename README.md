@@ -62,6 +62,8 @@ Cookie 区分会话，并在独立的 `data/analytics.db` 中记录成功的页�
 事件明细包含直接连接的原始 IP、User-Agent、Referer、UTC 时间、路由、状态码和耗时；
 应用不信任 `X-Forwarded-For` 等转发头。明细默认保留 30 天，不包含这些字段的每日汇总
 永久保留。分析库发生故障时，目录页面、API 和下载继续服务，页脚计数显示为 unavailable。
+默认 `data/` 可能位于网络文件系统，因此 `analytics.db` 使用 DELETE journal；不要改用依赖
+共享内存协调的 WAL 模式。应用启动时会将旧版创建的 WAL 数据库安全切换回 DELETE 模式。
 
 可以使用 CLI 查看汇总或导出仍在保留期内的明细：
 
@@ -99,9 +101,10 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 ./deploy_test.sh stop
 ```
 
-如环境位置或测试端口发生变化，可使用 `ISCDC_PYTHON` 和 `ISCDC_DEPLOY_PORT` 覆盖默认值；
-运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，也不会
-修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
+如环境位置或测试端口发生变化，可使用 `ISCDC_PYTHON` 和 `ISCDC_DEPLOY_PORT` 覆盖默认值。
+脚本默认等待应用就绪 60 秒；可通过 `ISCDC_DEPLOY_START_TIMEOUT` 设置 1 至 600 秒的等待
+时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
+也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
 
 ## 导入数据
 

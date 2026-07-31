@@ -189,6 +189,15 @@ def test_retention_deletes_raw_records_but_keeps_permanent_counts(tmp_path):
     service.engine.dispose()
 
 
+def test_analytics_uses_network_filesystem_compatible_journal_mode(tmp_path):
+    service = create_analytics_service(tmp_path / "analytics.db", retention_days=30)
+    with service.engine.connect() as connection:
+        journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
+
+    assert journal_mode == "delete"
+    service.engine.dispose()
+
+
 @pytest.mark.anyio
 async def test_analytics_initialization_failure_does_not_break_the_catalogue(
     tmp_path, settings, caplog

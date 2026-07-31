@@ -7,10 +7,11 @@ Production code lives under `src/iscdc/`, automated tests under `tests/`, and te
 Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
 `analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
 writes, and retention cleanup must fail open so catalogue pages, JSON APIs, and downloads remain
-available. Treat retained IP addresses, User-Agent values, and referrers as sensitive operational
-data: keep raw events for 30 days by default, expose them only through the local CLI, and never add
-them to public pages or APIs. Health checks, static assets, JSON APIs, and failed requests must not
-create visitor sessions or behavior events.
+available. The default `data/` location may be a network filesystem, so analytics SQLite databases
+must use DELETE journal mode; do not switch them to WAL. Treat retained IP addresses, User-Agent
+values, and referrers as sensitive operational data: keep raw events for 30 days by default, expose
+them only through the local CLI, and never add them to public pages or APIs. Health checks, static
+assets, JSON APIs, and failed requests must not create visitor sessions or behavior events.
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 

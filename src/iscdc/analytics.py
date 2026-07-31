@@ -167,8 +167,13 @@ def create_analytics_engine(database_path: Path) -> Engine:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
+
+    # The default data directory may be on a network filesystem, where WAL's
+    # shared-memory coordination is not reliable. DELETE mode uses ordinary
+    # file locking and also checkpoints databases created by older releases.
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA journal_mode=DELETE")
 
     return engine
 

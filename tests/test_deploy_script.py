@@ -47,6 +47,15 @@ def test_unknown_command_prints_usage() -> None:
 
     assert result.returncode == 2
     assert "Usage: ./deploy_test.sh" in result.stderr
+    assert "ISCDC_DEPLOY_START_TIMEOUT" in result.stderr
+
+
+@pytest.mark.parametrize("value", ["0", "601", "invalid"])
+def test_invalid_start_timeout_is_rejected(value: str) -> None:
+    result = _run_script("status", env={"ISCDC_DEPLOY_START_TIMEOUT": value})
+
+    assert result.returncode == 1
+    assert "ISCDC_DEPLOY_START_TIMEOUT" in result.stderr
 
 
 def test_start_reports_missing_python() -> None:
