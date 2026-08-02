@@ -131,6 +131,30 @@ async def test_home_and_database_pages_use_new_entry_points(
         assert "No matching databases" in empty.text
 
 
+async def test_histone_modality_is_imported_and_filterable(
+    metadata_values, settings, write_h5mu, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["database"]["histone_mark"] = "H3K27me3"
+    values["modalities"]["histone"] = values["modalities"].pop("protein")
+    values["title"] = "Test RNA and histone dataset"
+    import_dataset(
+        write_h5mu(second_modality_name="histone"),
+        write_metadata(values),
+        settings,
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get("/databases", params={"modality": "histone"})
+        assert page.status_code == 200
+        assert "Test RNA and histone dataset" in page.text
+
+        response = await client.get("/api/databases", params={"modality": "histone"})
+        assert response.status_code == 200
+        assert response.json()["items"][0]["modalities"][0]["name"] == "histone"
+
+
 async def test_database_detail_rejects_non_full_and_missing_entries(
     tmp_path, settings, write_h5mu, write_metadata
 ):

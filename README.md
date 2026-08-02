@@ -199,6 +199,11 @@ Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理
 多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
 字符串列表；目录 API 会原样保留字符串或列表形式。
 
+组蛋白修饰数据在 schema 1.1 中统一使用 `histone` 模态名。例如
+H3K27me3 数据的 `modalities.histone.technology` 可写为
+`Spatial CUT&Tag-RNA-seq (H3K27me3)`，具体标记同时保存在
+`database.histone_mark`。`h3k27me3` 等具体标记不直接作为模态名。
+
 ## 划分训练集和测试集
 
 `iscdc.splitter` 是独立的 `.h5mu` 划分工具，不自动修改 SQLite，也不生成网站使用的

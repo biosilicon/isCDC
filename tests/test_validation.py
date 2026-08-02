@@ -17,6 +17,36 @@ def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
     assert set(outcome.modalities) == {"rna", "protein"}
 
 
+def test_histone_is_a_standard_modality(metadata_values, write_h5mu, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["histone_mark"] = "H3K27me3"
+    values["modalities"]["histone"] = values["modalities"].pop("protein")
+
+    outcome = validate_h5mu(
+        write_h5mu(second_modality_name="histone"),
+        load_metadata(write_metadata(values)),
+    )
+
+    assert outcome.valid
+    assert set(outcome.modalities) == {"rna", "histone"}
+    assert "nonstandard_modality_name" not in {issue.code for issue in outcome.warnings}
+
+
+def test_specific_histone_mark_is_not_a_standard_modality(
+    metadata_values, write_h5mu, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["modalities"]["h3k27me3"] = values["modalities"].pop("protein")
+
+    outcome = validate_h5mu(
+        write_h5mu(second_modality_name="h3k27me3"),
+        load_metadata(write_metadata(values)),
+    )
+
+    assert outcome.valid
+    assert "nonstandard_modality_name" in {issue.code for issue in outcome.warnings}
+
+
 def test_valid_partially_shared_dataset_passes(metadata_values, write_h5mu, write_metadata):
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"

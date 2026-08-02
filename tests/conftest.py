@@ -81,6 +81,7 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
         include_spatial: bool = True,
         missing_rna_x: bool = False,
         duplicate_rna_features: bool = False,
+        second_modality_name: str = "protein",
         name: str = "dataset.h5mu",
     ) -> Path:
         if pairing_type == "same_unit":
@@ -120,7 +121,7 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
 
         modalities = {"rna": rna}
         if include_protein:
-            modalities["protein"] = protein
+            modalities[second_modality_name] = protein
         mdata = md.MuData(modalities)
         mdata.obs["sample_id"] = "sample_01"
         if include_spatial:

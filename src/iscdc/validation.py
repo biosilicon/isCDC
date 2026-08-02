@@ -24,7 +24,15 @@ REQUIRED_DATABASE_FIELDS = {
     "coordinate_unit",
     "pairing_type",
 }
-STANDARD_MODALITIES = {"rna", "protein", "atac", "methylation", "metabolite", "lipid"}
+STANDARD_MODALITIES = {
+    "rna",
+    "protein",
+    "atac",
+    "histone",
+    "methylation",
+    "metabolite",
+    "lipid",
+}
 RECOMMENDED_SPATIAL_UNITS = {"cell", "nucleus", "spot", "bin", "region"}
 RECOMMENDED_COORDINATE_UNITS = {"micrometer", "millimeter", "pixel", "array_index"}
 RECOMMENDED_PAIRING_TYPES = {"same_unit", "partially_shared", "unpaired"}
