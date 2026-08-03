@@ -106,6 +106,75 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
 也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
 
+## 使用 PyTorch 训练
+
+PyTorch 接口是可选功能，不会增加网页服务的基础依赖。需要训练时安装：
+
+```bash
+conda activate iscdc
+python -m pip install -r requirements-pytorch.txt
+```
+
+`H5MuDataset` 以顶层 observation 为样本，按需从 `.h5mu` 读取各模态的 `X`，不会把完整
+表达矩阵载入内存。默认样本包含模态张量、模态存在性 mask、特征测量 mask、空间坐标和
+观测 ID。对于 `partially_shared` 或 `unpaired` 数据，缺失模态使用零向量占位；训练时必须
+同时使用 mask，不能将占位零解释为真实测量值。
+
+```python
+import torch
+from torch.utils.data import DataLoader
+
+from iscdc.pytorch import H5MuDataset
+
+
+class LogNormalizeRNA:
+    def __call__(self, sample):
+        sample["modalities"]["rna"] = torch.log1p(sample["modalities"]["rna"])
+        return sample
+
+
+dataset = H5MuDataset(
+    "dataset.h5mu",
+    modalities=("rna", "protein"),
+    obs_columns=("cell_type",),  # 仅在文件包含该列时使用
+    transform=LogNormalizeRNA(),
+)
+loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
+
+for batch in loader:
+    rna = batch["modalities"]["rna"]
+    protein = batch["modalities"]["protein"]
+    protein_present = batch["modality_masks"]["protein"]
+    protein_measured = batch["feature_masks"]["protein"]
+```
+
+使用 `num_workers > 0` 时，transform 应是可 pickle 的顶层函数或类。Dataset 会为每个
+worker 惰性打开独立的只读 HDF5 句柄；直接使用 Dataset 时可调用 `close()`，也可用上下文
+管理器。若需要改变默认样本结构，可继承并重写 `build_sample()`；该方法同样用于批量读取，
+不会被 `DataLoader` 的批量索引路径绕过。
+
+对于每个 observation 同时具有输入和目标模态、且两侧所有特征均真实测量的跨模态监督
+任务，可以使用返回纯 `(x, y)` 的包装器：
+
+```python
+from iscdc.pytorch import H5MuPredictionDataset
+
+dataset = H5MuPredictionDataset(
+    "dataset.h5mu",
+    input_modality="rna",
+    target_modality="protein",
+    input_transform=torch.log1p,
+)
+loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
+
+for x, y in loader:
+    prediction = model(x)
+    loss = loss_fn(prediction, y)
+```
+
+包装器只保留两个模态均存在的 observation；若没有配对 observation，或 union/reference
+特征空间中仍有未测量特征，则拒绝初始化并提示改用 `H5MuDataset` 及其 mask。
+
 ## 导入数据
 
 每个待导入数据集由一个 `.h5mu` 文件和一个 `metadata.yaml` 组成。示例元数据位于
