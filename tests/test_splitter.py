@@ -54,6 +54,7 @@ def _write_full(
     coordinate_unit: str = "micrometer",
     value_types: dict[str, str] | None = None,
     technologies: dict[str, str] | None = None,
+    database_extra: dict | None = None,
 ) -> Path:
     obs_names = obs_names or ["cell_1", "cell_2"]
     samples = samples or ["sample_1"] * len(obs_names)
@@ -104,6 +105,7 @@ def _write_full(
         "spatial_unit": spatial_unit,
         "coordinate_unit": coordinate_unit,
         "pairing_type": _pairing_type(modality_obs),
+        **(database_extra or {}),
     }
     path = directory / f"{dataset_id}.h5mu"
     mdata.write_h5mu(path)
@@ -271,6 +273,7 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         samples=["s1", "s1", "s1", "s1", "s2", "s2"],
         coordinates=coordinates,
         modality_obs={"rna": obs_names, "protein": ["c2", "c3", "c4", "c5"]},
+        database_extra={"histone_mark": "H3K27me3", "genome_assembly": "GRCh38"},
     )
     config = _spatial_config(
         tmp_path,
@@ -310,6 +313,9 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         assert database["derivation"]["challenge_type"] == "same_slice"
         assert database["derivation"]["feature_merge_policy"] == "preserve"
         assert database["derivation"]["random_seed"] is None
+        assert database["histone_mark"] == "H3K27me3"
+        assert database["genome_assembly"] == "GRCh38"
+        assert train.uns["database"]["histone_mark"] == "H3K27me3"
     finally:
         train.file.close()
         test.file.close()

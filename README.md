@@ -270,7 +270,7 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 矩形边界闭合，多个矩形取并集。矩形内的观测进入测试集，其余全部进入训练集；未在
 `regions` 中出现的样本完整进入训练集。两侧必须都非空，并且每个来源模态在两侧均须
 有观测。空间划分固定使用 `feature_merge_policy: preserve`，保留来源特征顺序、矩阵值、
-坐标、观测 ID 和模态成员关系。
+坐标、观测 ID、模态成员关系以及 `histone_mark`、`genome_assembly` 等附加数据库元数据。
 
 ### 按完整全集组合
 

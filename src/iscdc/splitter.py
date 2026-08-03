@@ -710,6 +710,9 @@ def _build_spatial_product(
         ),
         pairing_type=pairing_type,
     )
+    for name, value in source.database.items():
+        if name not in REQUIRED_DATABASE_FIELDS and name != "derivation":
+            database[name] = deepcopy(value)
     return _minimal_mudata(
         modalities,
         selected_names,
