@@ -35,7 +35,7 @@ def settings(tmp_path: Path) -> Settings:
 def metadata_values() -> dict:
     return {
         "database": {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "dataset_id": "test_rna_protein",
             "dataset_type": "full",
             "source": "TEST001",
@@ -82,6 +82,7 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
         missing_rna_x: bool = False,
         duplicate_rna_features: bool = False,
         second_modality_name: str = "protein",
+        include_third_modality: bool = False,
         name: str = "dataset.h5mu",
     ) -> Path:
         if pairing_type == "same_unit":
@@ -122,6 +123,26 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
         modalities = {"rna": rna}
         if include_protein:
             modalities[second_modality_name] = protein
+        if include_third_modality:
+            if pairing_type == "same_unit":
+                metabolite_obs = ["cell_1", "cell_2"]
+            elif pairing_type == "partially_shared":
+                metabolite_obs = ["cell_3", "cell_4"]
+            else:
+                metabolite_obs = ["cell_5", "cell_6"]
+            metabolite = ad.AnnData(
+                X=np.arange(1, len(metabolite_obs) + 1, dtype=np.uint32)[:, None],
+                obs={"obs_id": metabolite_obs},
+                var={"feature_id": ["metabolite_1"]},
+            )
+            metabolite.obs_names = metabolite_obs
+            metabolite.var_names = ["metabolite_1"]
+            if include_assay:
+                metabolite.uns["assay"] = {
+                    "technology": "Test assay",
+                    "value_type": "intensity",
+                }
+            modalities["metabolite"] = metabolite
         mdata = md.MuData(modalities)
         mdata.obs["sample_id"] = "sample_01"
         if include_spatial:

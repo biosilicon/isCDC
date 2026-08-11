@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, CatalogueMetadata, Dataset
 
-CATALOGUE_SCHEMA_VERSION = "2"
+CATALOGUE_SCHEMA_VERSION = "3"
 
 
 class CatalogueSchemaError(RuntimeError):
@@ -43,7 +43,7 @@ def initialize_database(engine: Engine) -> None:
             if dataset_count:
                 raise CatalogueSchemaError(
                     "The catalogue uses the legacy schema and contains data. Back it up, remove "
-                    "the old catalogue, and re-import schema 1.1 datasets."
+                    "the old catalogue, and re-import schema 1.2 datasets."
                 )
             Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

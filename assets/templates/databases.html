@@ -20,6 +20,7 @@
             <div class="col-lg-9">
               <div class="d-flex gap-2 flex-wrap mb-2">
                 {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                {% if database.modalities|length > 2 %}<span class="badge text-bg-info">{{ database.modalities|length }} modalities</span>{% endif %}
                 <span class="badge text-bg-light">{{ database.spatial_unit }}</span>
                 <span class="badge text-bg-primary">full</span>
               </div>

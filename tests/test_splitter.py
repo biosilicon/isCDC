@@ -49,7 +49,7 @@ def _write_full(
     features: dict[str, list[str]] | None = None,
     modality_obs: dict[str, list[str]] | None = None,
     matrices: dict[str, np.ndarray] | None = None,
-    schema_version: str = "1.1",
+    schema_version: str = "1.2",
     spatial_unit: str = "cell",
     coordinate_unit: str = "micrometer",
     value_types: dict[str, str] | None = None,
@@ -127,7 +127,7 @@ def _spatial_config(
     return _write_yaml(
         directory / f"{output_name}.yaml",
         {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "split_id": f"{output_name}_split",
             "challenge_type": "same_slice",
             "feature_merge_policy": "preserve",
@@ -153,7 +153,7 @@ def _compose_config(
     return _write_yaml(
         directory / f"{output_name}.yaml",
         {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "split_id": f"{output_name}_split",
             "challenge_type": "cross_subject",
             "feature_merge_policy": policy,
@@ -253,11 +253,11 @@ def test_coordinate_ranges_rejects_invalid_coordinates(tmp_path, coordinates, me
         coordinate_ranges(source)
 
 
-def test_range_rejects_non_v11_and_unknown_sample(tmp_path):
+def test_range_rejects_non_v12_and_unknown_sample(tmp_path):
     legacy = _write_full(tmp_path, "legacy", schema_version="1.0")
     current = _write_full(tmp_path, "current")
 
-    with pytest.raises(SplitterError, match="schema_version must be '1.1'"):
+    with pytest.raises(SplitterError, match="schema_version must be '1.2'"):
         coordinate_ranges(legacy)
     with pytest.raises(SplitterError, match="does not exist"):
         coordinate_ranges(current, "missing")
@@ -272,7 +272,12 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         obs_names=obs_names,
         samples=["s1", "s1", "s1", "s1", "s2", "s2"],
         coordinates=coordinates,
-        modality_obs={"rna": obs_names, "protein": ["c2", "c3", "c4", "c5"]},
+        features={"rna": ["g1", "g2"], "protein": ["p1"], "metabolite": ["m1"]},
+        modality_obs={
+            "rna": obs_names,
+            "protein": ["c2", "c3", "c4", "c5"],
+            "metabolite": obs_names,
+        },
         database_extra={"histone_mark": "H3K27me3", "genome_assembly": "GRCh38"},
     )
     config = _spatial_config(
@@ -307,7 +312,7 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         assert list(test.mod["rna"].var_names) == ["g1", "g2"]
         assert set(test.obs.columns) == {"sample_id", "source_dataset_id", "source_obs_id"}
         database = test.uns["database"]
-        assert database["schema_version"] == "1.1"
+        assert database["schema_version"] == "1.2"
         assert database["dataset_type"] == "test"
         assert database["derivation"]["construction_type"] == "subset"
         assert database["derivation"]["challenge_type"] == "same_slice"
@@ -707,7 +712,7 @@ def test_compose_rejects_invalid_reference_and_duplicate_source(tmp_path):
         load_compose_config(duplicate)
 
 
-def test_configs_require_schema_v11_and_yaml_is_only_split_interface(tmp_path, capsys):
+def test_configs_require_schema_v12_and_yaml_is_only_split_interface(tmp_path, capsys):
     source = _write_full(tmp_path, "config_source")
     config = _spatial_config(
         tmp_path,
@@ -719,7 +724,7 @@ def test_configs_require_schema_v11_and_yaml_is_only_split_interface(tmp_path, c
     _write_yaml(config, values)
 
     assert main(["spatial", str(config)]) == 2
-    assert "schema_version must be '1.1'" in capsys.readouterr().err
+    assert "schema_version must be '1.2'" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main(["spatial", str(config), "--split-id", "old-interface"])
 
@@ -788,7 +793,7 @@ def test_real_h5mu_spatial_split_end_to_end():
             split_id = config_values["split_id"]
             for product, dataset_type in ((train, "train"), (test, "test")):
                 database = product.uns["database"]
-                assert database["schema_version"] == "1.1"
+                assert database["schema_version"] == "1.2"
                 assert database["dataset_type"] == dataset_type
                 assert database["derivation"]["split_id"] == split_id
                 assert database["derivation"]["challenge_type"] == "same_slice"

@@ -22,7 +22,7 @@ from scipy import sparse
 
 from .validation import validate_h5mu, validate_mudata, validate_train_test_pair
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 CONFIG_POLICIES = {"preserve", "intersection", "union", "reference"}
 CHALLENGE_TYPES = {"same_slice", "cross_slice_same_subject", "cross_subject"}
 DATASET_TYPES = {"train", "test"}
@@ -413,7 +413,7 @@ def _validate_common_structure(mdata: md.MuData, context: str) -> dict[str, Any]
     shared_outcome = validate_mudata(mdata)
     if not shared_outcome.valid:
         issue = shared_outcome.errors[0]
-        raise SplitterError(f"{context}: schema 1.1 validation failed: {issue.message}")
+        raise SplitterError(f"{context}: schema 1.2 validation failed: {issue.message}")
     return dict(_normalise(database))
 
 
@@ -1026,7 +1026,7 @@ def _write_products(
             shared_outcome = validate_h5mu(product_path, source_paths=source_paths)
             if not shared_outcome.valid:
                 issue = shared_outcome.errors[0]
-                raise SplitterError(f"generated file failed schema 1.1 validation: {issue.message}")
+                raise SplitterError(f"generated file failed schema 1.2 validation: {issue.message}")
         if train_validation.dataset_type != "train" or test_validation.dataset_type != "test":
             raise SplitterError("generated files have incorrect dataset_type values")
         if train_validation.split_id != test_validation.split_id:
@@ -1223,7 +1223,7 @@ def _print_range(result: Mapping[str, Any]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Split schema 1.1 spatial MuData datasets")
+    parser = argparse.ArgumentParser(description="Split schema 1.2 spatial MuData datasets")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     range_parser = subparsers.add_parser("range", help="show x/y coordinate ranges")

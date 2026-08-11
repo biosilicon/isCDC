@@ -1,6 +1,6 @@
 # isCDC
 
-isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
+isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
 结构及人工维护的元数据；网页目录请求只读取 `catalog.db`，不读取大型表达矩阵，访客会话
 和行为事件则写入完全独立的 `analytics.db`。网页将 `full` 文件作为 Database 展示，并将
 相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。每个 Challenge 通过
@@ -12,11 +12,11 @@ isCDC 是一个轻量级、公开只读的空间多组学科研数据目录。�
 ## 目录约定
 
 `temp/` 是不会纳入版本控制的本地暂存目录，用于保存尚未整理成目录可导入形式的
-数据文件。暂存数据在导入前需要补充符合 schema 1.1 的 `metadata.yaml` 等必要内容；
+数据文件。暂存数据在导入前需要补充符合 schema 1.2 的 `metadata.yaml` 等必要内容；
 完成整理后再通过导入命令写入正式的 `data/` 目录。`exp/` 则继续用于真实数据实验、
 手工测试配置和实验输出。批量整理 `temp/` 数据时遵循
 [原始数据处理工作流](原始数据处理规范.md)，最终产物必须符合
-[数据库存储规范 1.1](数据库存储规范_v1.1.md)。
+[数据库存储规范 1.2](数据库存储规范_v1.2.md)。
 
 `.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
@@ -42,6 +42,11 @@ make test
 make lint
 make run
 ```
+
+完整测试包含使用多进程 `DataLoader` worker 的 PyTorch 用例，因此运行环境必须允许本地
+IPC socket。在受限沙箱中，运行 `make test` 前应申请仅覆盖本机进程间通信的最小权限；
+该要求不需要也不授权外部网络访问。若本地 socket 被禁止，worker 可能在
+`multiprocessing.resource_sharer` 中报出 `PermissionError`，而 pytest 主进程继续等待。
 
 网页和 API 的自动化测试统一使用 `httpx.AsyncClient` 与 `httpx.ASGITransport`，不使用
 同步的 `fastapi.testclient.TestClient` 或 `starlette.testclient.TestClient`。仅导入数据文件且
@@ -120,8 +125,8 @@ python -m pip install -r requirements-pytorch.txt
 
 `H5MuDataset` 以顶层 observation 为样本，按需从 `.h5mu` 读取各模态的 `X`，不会把完整
 表达矩阵载入内存。默认样本包含模态张量、模态存在性 mask、特征测量 mask、空间坐标和
-观测 ID。对于 `partially_shared` 或 `unpaired` 数据，缺失模态使用零向量占位；训练时必须
-同时使用 mask，不能将占位零解释为真实测量值。
+观测 ID。两模态 schema 1.2 文件始终完全配对；三个及以上模态的 `partially_shared`
+文件仍以零向量表示缺失模态，训练时必须同时使用 mask，不能将占位零解释为真实测量值。
 
 ```python
 import torch
@@ -151,10 +156,11 @@ for batch in loader:
     protein_measured = batch["feature_masks"]["protein"]
 ```
 
-使用 `num_workers > 0` 时，transform 应是可 pickle 的顶层函数或类。Dataset 会为每个
-worker 惰性打开独立的只读 HDF5 句柄；直接使用 Dataset 时可调用 `close()`，也可用上下文
-管理器。若需要改变默认样本结构，可继承并重写 `build_sample()`；该方法同样用于批量读取，
-不会被 `DataLoader` 的批量索引路径绕过。
+使用 `num_workers > 0` 时，运行环境必须允许 PyTorch worker 通过本地 IPC socket 传递
+队列和张量；受限沙箱或容器应显式允许本机进程间通信，无需开放外部网络。transform 应是
+可 pickle 的顶层函数或类。Dataset 会为每个 worker 惰性打开独立的只读 HDF5 句柄；直接
+使用 Dataset 时可调用 `close()`，也可用上下文管理器。若需要改变默认样本结构，可继承并
+重写 `build_sample()`；该方法同样用于批量读取，不会被 `DataLoader` 的批量索引路径绕过。
 
 对于每个 observation 同时具有输入和目标模态、且两侧所有特征均真实测量的跨模态监督
 任务，可以使用返回纯 `(x, y)` 的包装器：
@@ -206,7 +212,9 @@ checksum.sha256
 
 重复的 `dataset_id` 会被拒绝。初版不提供覆盖、在线编辑或删除功能。
 
-目录严格只接受 `schema_version: "1.1"`，不再兼容 1.0。`full` 可直接导入；导入
+目录严格只接受 `schema_version: "1.2"`，不兼容 1.1 或更早版本。恰好两个模态时必须为
+`same_unit`；三个及以上模态可为 `same_unit` 或 `partially_shared`，但不接受 `unpaired`。
+导入器不会隐式裁剪 observation，不符合规则的数据应先在 `temp/` 中整理。`full` 可直接导入；导入
 `train` 或 `test` 前，必须先导入其 `derivation.source_dataset_ids` 引用的全部 `full`
 数据集。导入器会对照来源文件验证每个来源观测对象和特征合并策略；若目录中已经存在
 相同 `split_id` 的另一侧，还会检查 train/test 的 `challenge_type` 一致且不包含重复来源
@@ -215,6 +223,23 @@ checksum.sha256
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
 `manifest_version` 独立描述导入清单格式，与 `.h5mu` 的 `schema_version` 无关。
+
+现有 schema 1.1 catalogue 升级时，先停止应用并执行只读预检，再运行正式迁移：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli migrate-schema-1-2 --dry-run
+PYTHONPATH=src python -m iscdc.cli migrate-schema-1-2
+```
+
+正式迁移会在隔离目录生成和验证完整的 1.2 副本，然后保留 1.1 备份并切换 active
+catalogue。网站/API 验收通过后，使用迁移结果中的报告路径删除精确备份：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli finalize-schema-1-2 data/migrations/schema_1_2_<UTC>.json
+```
+
+迁移报告永久保留旧/新 checksum、shape、配对类型和被裁剪的 observation ID；
+`analytics.db` 不参与 schema 数据迁移。
 
 ### 批量整理原始数据
 
@@ -237,7 +262,7 @@ YAML 中出现且值一致；YAML 可以包含文件内部没有的附加数据�
 
 ```yaml
 database:
-  schema_version: "1.1"
+  schema_version: "1.2"
   dataset_id: example_rna_protein
   dataset_type: full
   source: GSE000000
@@ -271,7 +296,7 @@ Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理
 多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
 字符串列表；目录 API 会原样保留字符串或列表形式。
 
-组蛋白修饰数据在 schema 1.1 中统一使用 `histone` 模态名。例如
+组蛋白修饰数据在 schema 1.2 中统一使用 `histone` 模态名。例如
 H3K27me3 数据的 `modalities.histone.technology` 可写为
 `Spatial CUT&Tag-RNA-seq (H3K27me3)`，具体标记同时保存在
 `database.histone_mark`。`h3k27me3` 等具体标记不直接作为模态名。
@@ -281,10 +306,10 @@ H3K27me3 数据的 `modalities.histone.technology` 可写为
 `iscdc.splitter` 是独立的 `.h5mu` 划分工具，不自动修改 SQLite，也不生成网站使用的
 `metadata.yaml`。需要发布产物时，为 train/test 分别准备匹配的 metadata YAML，再使用
 现有 `import-dataset` 命令逐个导入。来源文件必须符合根目录
-[`数据库存储规范_v1.1.md`](数据库存储规范_v1.1.md)，并明确包含：
+[`数据库存储规范_v1.2.md`](数据库存储规范_v1.2.md)，并明确包含：
 
 ```yaml
-schema_version: "1.1"
+schema_version: "1.2"
 dataset_type: full
 ```
 
@@ -310,7 +335,7 @@ PYTHONPATH=src python -m iscdc.splitter range full.h5mu --json
 `spatial` 从一个全集产生互不重叠且完整覆盖来源观测的训练集和测试集。配置示例：
 
 ```yaml
-schema_version: "1.1"
+schema_version: "1.2"
 split_id: spatial_v1
 challenge_type: same_slice
 feature_merge_policy: preserve
@@ -349,7 +374,7 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 `compose` 不切分全集内部观测，而是将完整来源分配给 train 或 test：
 
 ```yaml
-schema_version: "1.1"
+schema_version: "1.2"
 split_id: benchmark_v1
 challenge_type: cross_subject
 feature_merge_policy: intersection
@@ -385,7 +410,7 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 
 该字段会写入两侧 `uns["database"]["derivation"]`。发布产物时，对应
 `metadata.yaml` 的 `database.derivation.challenge_type` 必须与文件内部取值一致。同一
-`split_id` 的 train/test 必须使用相同值；缺少该字段的旧 schema 1.1 衍生文件需要补齐后
+`split_id` 的 train/test 必须使用相同值；缺少该字段的旧衍生文件需要补齐并升级到 schema 1.2 后
 重新校验或导入。
 
 支持以下特征策略：

@@ -250,6 +250,7 @@ def _data_file_response(dataset: Dataset, request: Request) -> DataFileResponse:
             }
             for modality in dataset.modalities
         ],
+        modality_count=len(dataset.modalities),
         file_size=dataset.file_size,
         sha256=dataset.sha256,
         validation_warning_count=dataset.validation_warning_count,

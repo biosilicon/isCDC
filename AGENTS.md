@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.1. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
+Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
 Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
 `analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
@@ -25,12 +25,20 @@ value or a separate persisted presentation-class field:
 
 Database and Challenge list pages and JSON APIs must apply filters within their own class.
 Challenge lists must support `challenge_type` filtering, and Challenge responses must expose
-the type derived from schema 1.1 derivation metadata. A Challenge response must include both
+the type derived from schema 1.2 derivation metadata. A Challenge response must include both
 imported sides even when only one side matched the filters. Show an incomplete status when one
 side is absent, and treat multiple train files, multiple test files, a missing or invalid
 `challenge_type`, or conflicting types under one `split_id` as a catalogue integrity error.
 Do not duplicate either the Database/Challenge presentation class or `challenge_type` in a
 separate catalogue column.
+
+Schema 1.2 is restricted to cross-omics translation data. A file with exactly two modalities
+must use `pairing_type: same_unit`, and both modality `obs_names` sets must be identical. Files
+with three or more modalities may use `same_unit` or `partially_shared`; partially shared files
+may retain observations present in only one modality, but at least one modality pair must overlap.
+Reject `unpaired` files and do not make the importer silently discard observations. Derive
+`modality_count` from the modality relationship rather than adding a persisted catalogue field,
+and visibly annotate files with more than two modalities in pages and JSON responses.
 
 ## Build, Test, and Development Commands
 
@@ -44,7 +52,7 @@ The project uses requirements files and a small Makefile command set documented 
 - `make run` — start the FastAPI application with Uvicorn.
 - `make import-example` — import the documented example dataset into the local catalogue.
 
-Invoke the standalone schema 1.1 splitter with:
+Invoke the standalone schema 1.2 splitter with:
 
 ```bash
 PYTHONPATH=src python -m iscdc.splitter
@@ -68,6 +76,12 @@ Follow the standard formatter and linter for the chosen language, checked into p
 ## Testing Guidelines
 
 Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
+
+Test runs must allow local IPC sockets because the PyTorch suite exercises multi-process
+`DataLoader` workers. In sandboxed environments, request the minimum additional permission needed
+for local process-to-process communication before running `make test`; this does not authorize
+external network access. Do not run the suite in a socket-blocking sandbox, where worker queue
+failures can leave pytest waiting indefinitely.
 
 Application, page, and API tests must use `httpx.AsyncClient` with
 `httpx.ASGITransport`; do not use the synchronous `fastapi.testclient.TestClient` or

@@ -47,6 +47,43 @@ def test_metadata_rejects_schema_v10(metadata_values, write_metadata):
         load_metadata(write_metadata(values))
 
 
+def test_metadata_rejects_schema_v11(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["schema_version"] = "1.1"
+
+    with pytest.raises(MetadataLoadError, match="schema_version"):
+        load_metadata(write_metadata(values))
+
+
+def test_two_modality_metadata_requires_same_unit(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["pairing_type"] = "partially_shared"
+
+    with pytest.raises(MetadataLoadError, match="two-modality datasets require"):
+        load_metadata(write_metadata(values))
+
+
+def test_three_modality_metadata_allows_partially_shared(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["pairing_type"] = "partially_shared"
+    values["modalities"]["metabolite"] = {
+        "technology": "Test assay",
+        "value_type": "intensity",
+    }
+
+    metadata = load_metadata(write_metadata(values))
+
+    assert metadata.database.pairing_type == "partially_shared"
+
+
+def test_metadata_rejects_unpaired(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["pairing_type"] = "unpaired"
+
+    with pytest.raises(MetadataLoadError, match="pairing_type"):
+        load_metadata(write_metadata(values))
+
+
 def test_metadata_validates_derived_relationships_and_lists(metadata_values, write_metadata):
     values = deepcopy(metadata_values)
     values["database"].update(

@@ -108,7 +108,7 @@ def test_imports_derived_sides_after_their_full_source(
     config_path.write_text(
         yaml.safe_dump(
             {
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "split_id": "import_split_v1",
                 "challenge_type": "same_slice",
                 "feature_merge_policy": "preserve",
@@ -157,7 +157,7 @@ def test_derived_import_requires_source_first(tmp_path, settings, write_h5mu):
     config_path.write_text(
         yaml.safe_dump(
             {
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "split_id": "missing_source_split",
                 "challenge_type": "same_slice",
                 "feature_merge_policy": "preserve",
@@ -215,7 +215,7 @@ def test_composite_import_preserves_multivalue_source_and_technology(
     config_path.write_text(
         yaml.safe_dump(
             {
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "split_id": "composite_import_v1",
                 "challenge_type": "cross_subject",
                 "feature_merge_policy": "preserve",

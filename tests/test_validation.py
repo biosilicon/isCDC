@@ -47,32 +47,51 @@ def test_specific_histone_mark_is_not_a_standard_modality(
     assert "nonstandard_modality_name" in {issue.code for issue in outcome.warnings}
 
 
-def test_valid_partially_shared_dataset_passes(metadata_values, write_h5mu, write_metadata):
+def test_three_modality_partially_shared_dataset_passes(
+    metadata_values, write_h5mu, write_metadata
+):
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
+    values["modalities"]["metabolite"] = {
+        "technology": "Test assay",
+        "value_type": "intensity",
+    }
 
-    outcome = validate_h5mu(write_h5mu("partially_shared"), load_metadata(write_metadata(values)))
-
-    assert outcome.valid
-    assert outcome.n_obs == 3
-
-
-def test_valid_unpaired_dataset_passes(metadata_values, write_h5mu, write_metadata):
-    values = deepcopy(metadata_values)
-    values["database"]["pairing_type"] = "unpaired"
-
-    outcome = validate_h5mu(write_h5mu("unpaired"), load_metadata(write_metadata(values)))
+    outcome = validate_h5mu(
+        write_h5mu("partially_shared", include_third_modality=True),
+        load_metadata(write_metadata(values)),
+    )
 
     assert outcome.valid
     assert outcome.n_obs == 4
 
 
+def test_two_modality_partially_shared_dataset_is_rejected(write_h5mu):
+    outcome = validate_h5mu(write_h5mu("partially_shared"))
+
+    assert not outcome.valid
+    assert "two_modality_pairing_required" in {issue.code for issue in outcome.errors}
+
+
+def test_unpaired_dataset_is_rejected(write_h5mu):
+    outcome = validate_h5mu(write_h5mu("unpaired"))
+
+    assert not outcome.valid
+    assert "invalid_database_metadata" in {issue.code for issue in outcome.errors}
+
+
 def test_pairing_mismatch_is_rejected(metadata_values, write_h5mu, write_metadata):
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
+    values["modalities"]["metabolite"] = {
+        "technology": "Test assay",
+        "value_type": "intensity",
+    }
 
     outcome = validate_h5mu(
-        write_h5mu(declared_pairing_type="partially_shared"),
+        write_h5mu(
+            declared_pairing_type="partially_shared", include_third_modality=True
+        ),
         load_metadata(write_metadata(values)),
     )
 

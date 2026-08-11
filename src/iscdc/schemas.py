@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 DATASET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 ScalarOrList = str | list[str]
 ChallengeType = Literal["same_slice", "cross_slice_same_subject", "cross_subject"]
+PairingType = Literal["same_unit", "partially_shared"]
 
 
 def _clean_scalar_or_list(value: ScalarOrList) -> ScalarOrList:
@@ -78,7 +79,7 @@ class DerivationMetadata(BaseModel):
 class DatabaseMetadata(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     dataset_id: str = Field(min_length=1, max_length=128)
     dataset_type: Literal["full", "train", "test"]
     source: ScalarOrList
@@ -86,7 +87,7 @@ class DatabaseMetadata(BaseModel):
     tissue: ScalarOrList
     spatial_unit: str = Field(min_length=1)
     coordinate_unit: str = Field(min_length=1)
-    pairing_type: str = Field(min_length=1)
+    pairing_type: PairingType
     derivation: DerivationMetadata | None = None
 
     @model_validator(mode="before")
@@ -113,7 +114,7 @@ class DatabaseMetadata(BaseModel):
     def validate_scalar_or_list(cls, value: ScalarOrList) -> ScalarOrList:
         return _clean_scalar_or_list(value)
 
-    @field_validator("spatial_unit", "coordinate_unit", "pairing_type")
+    @field_validator("spatial_unit", "coordinate_unit")
     @classmethod
     def validate_required_string(cls, value: str) -> str:
         value = value.strip()
@@ -203,6 +204,12 @@ class MetadataDocument(BaseModel):
             raise ValueError("modality names must not be blank")
         return values
 
+    @model_validator(mode="after")
+    def validate_pairing_policy(self) -> MetadataDocument:
+        if len(self.modalities) == 2 and self.database.pairing_type != "same_unit":
+            raise ValueError("two-modality datasets require pairing_type 'same_unit'")
+        return self
+
     def database_values(self) -> dict[str, Any]:
         return self.database.model_dump(mode="python")
 
@@ -251,7 +258,7 @@ class DataFileResponse(BaseModel):
     tissue: ScalarOrList
     spatial_unit: str
     coordinate_unit: str
-    pairing_type: str
+    pairing_type: PairingType
     derivation: DerivationMetadata | None
     sample_ids: list[str]
     keywords: list[str]
@@ -261,6 +268,7 @@ class DataFileResponse(BaseModel):
     n_obs: int
     coordinate_dimensions: int
     modalities: list[ModalityResponse]
+    modality_count: int
     file_size: int
     sha256: str
     validation_warning_count: int

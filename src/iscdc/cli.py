@@ -15,6 +15,13 @@ from .analytics import AnalyticsSchemaError, create_analytics_service
 from .config import Settings
 from .database import CatalogueSchemaError
 from .importer import DatasetImportError, import_dataset
+from .schema_migration import (
+    MigrationInventory,
+    MigrationResult,
+    SchemaMigrationError,
+    finalize_schema_1_2_migration,
+    migrate_schema_1_2,
+)
 from .schemas import MetadataLoadError
 
 ANALYTICS_EXPORT_FIELDS = (
@@ -56,6 +63,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("h5mu", type=Path)
     import_parser.add_argument("metadata", type=Path)
+
+    migration_parser = subparsers.add_parser(
+        "migrate-schema-1-2",
+        help="Stage, validate, back up, and activate the schema 1.2 catalogue.",
+    )
+    migration_parser.add_argument("--dry-run", action="store_true")
+    migration_parser.add_argument("--exp-root", type=Path)
+
+    finalize_parser = subparsers.add_parser(
+        "finalize-schema-1-2",
+        help="Verify a migrated catalogue and delete its schema 1.1 backup.",
+    )
+    finalize_parser.add_argument("report", type=Path)
 
     analytics_parser = subparsers.add_parser(
         "analytics", help="Summarize or export visitor analytics."
@@ -166,6 +186,38 @@ def main(argv: list[str] | None = None) -> int:
                 indent=2,
             )
         )
+        return 0
+    if args.command == "migrate-schema-1-2":
+        settings = Settings.from_environment()
+        options = {"dry_run": args.dry_run}
+        if args.exp_root is not None:
+            options["exp_root"] = args.exp_root
+        try:
+            result = migrate_schema_1_2(settings, **options)
+        except (OSError, SQLAlchemyError, SchemaMigrationError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if isinstance(result, MigrationInventory):
+            payload = {"dry_run": True, "inventory": result.as_dict()}
+        else:
+            assert isinstance(result, MigrationResult)
+            payload = {
+                "dry_run": False,
+                "inventory": result.inventory.as_dict(),
+                "report": str(result.report_path),
+                "backup": str(result.backup_path),
+            }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "finalize-schema-1-2":
+        try:
+            removed = finalize_schema_1_2_migration(
+                args.report, Settings.from_environment()
+            )
+        except (OSError, SQLAlchemyError, SchemaMigrationError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "analytics":
         return _run_analytics(args)

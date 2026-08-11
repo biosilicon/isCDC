@@ -53,7 +53,7 @@ def _write_dataset(
     mdata.obs["label"] = np.arange(mdata.n_obs, dtype=np.int64)
     mdata.obsm["spatial"] = np.arange(mdata.n_obs * 2, dtype=np.float32).reshape(-1, 2)
     mdata.uns["database"] = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "dataset_id": "training_data",
         "dataset_type": "full",
         "source": "TEST",
@@ -96,7 +96,7 @@ def _write_feature_mask_dataset(tmp_path: Path) -> Path:
     mdata.obs["source_obs_id"] = ["a1", "b1"]
     mdata.obsm["spatial"] = np.asarray([[0, 0], [1, 1]], dtype=np.float32)
     mdata.uns["database"] = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "dataset_id": "masked_train",
         "dataset_type": "train",
         "source": ["A", "B"],

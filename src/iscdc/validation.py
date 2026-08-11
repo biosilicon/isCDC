@@ -35,7 +35,6 @@ STANDARD_MODALITIES = {
 }
 RECOMMENDED_SPATIAL_UNITS = {"cell", "nucleus", "spot", "bin", "region"}
 RECOMMENDED_COORDINATE_UNITS = {"micrometer", "millimeter", "pixel", "array_index"}
-RECOMMENDED_PAIRING_TYPES = {"same_unit", "partially_shared", "unpaired"}
 RECOMMENDED_VALUE_TYPES = {
     "counts",
     "binary",
@@ -480,21 +479,25 @@ def _validate_common(
         )
     if database is not None and len(mdata.mod) >= 2:
         computed_pairing = _computed_pairing_type(mdata)
-        if (
-            database.pairing_type in RECOMMENDED_PAIRING_TYPES
-            and database.pairing_type != computed_pairing
-        ):
+        if len(mdata.mod) == 2 and computed_pairing != "same_unit":
+            _error(
+                outcome,
+                "two_modality_pairing_required",
+                "Two-modality datasets must contain the same observations in both modalities.",
+                "/mod",
+            )
+        if computed_pairing == "unpaired":
+            _error(
+                outcome,
+                "unpaired_modalities",
+                "At least one modality pair must share observations.",
+                "/mod",
+            )
+        if database.pairing_type != computed_pairing:
             _error(
                 outcome,
                 f"{database.pairing_type}_mismatch",
                 f"pairing_type must be '{computed_pairing}' for the modality memberships.",
-                "/uns/database/pairing_type",
-            )
-        elif database.pairing_type not in RECOMMENDED_PAIRING_TYPES:
-            _warn(
-                outcome,
-                "nonstandard_pairing_type",
-                "Pairing type is outside the recommended vocabulary and was not checked.",
                 "/uns/database/pairing_type",
             )
     return database
@@ -704,7 +707,7 @@ def _validate_derivation(
                 _error(
                     outcome,
                     "invalid_source_dataset",
-                    f"Source dataset '{source_id}' does not satisfy schema 1.1.",
+                    f"Source dataset '{source_id}' does not satisfy schema 1.2.",
                     f"/sources/{source_id}",
                 )
             if (
@@ -715,7 +718,7 @@ def _validate_derivation(
                 _error(
                     outcome,
                     "source_not_full",
-                    f"Source '{source_id}' must identify a schema 1.1 full dataset "
+                    f"Source '{source_id}' must identify a schema 1.2 full dataset "
                     "with the same dataset_id.",
                     f"/sources/{source_id}",
                 )
@@ -859,7 +862,7 @@ def _validate_derivation(
 
 
 def validate_mudata(mdata, metadata: MetadataDocument | None = None) -> ValidationOutcome:  # noqa: ANN001
-    """Validate the schema 1.1 structure already loaded in memory."""
+    """Validate the schema 1.2 structure already loaded in memory."""
     outcome = ValidationOutcome()
     _validate_common(mdata, outcome, metadata)
     return outcome

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import shutil
 import tempfile
@@ -12,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from .artifacts import write_dataset_artifacts
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .models import Dataset, Modality
@@ -46,14 +46,7 @@ def _copy_and_hash(source: Path, destination: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _write_json(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-
-def _build_dataset(
+def build_dataset_record(
     metadata: MetadataDocument,
     outcome: ValidationOutcome,
     file_size: int,
@@ -189,37 +182,15 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
 
         shutil.copy2(metadata_path, stage_dir / "metadata.yaml")
         imported_at = checked_at
-        manifest = {
-            "manifest_version": "1.0",
-            "dataset_id": dataset_id,
-            "imported_at": imported_at.isoformat(),
-            "database": metadata.database_values(),
-            "sample_ids": metadata.sample_ids,
-            "n_obs": outcome.n_obs,
-            "coordinate_dimensions": outcome.coordinate_dimensions,
-            "modalities": {
-                name: {
-                    "technology": summary.technology,
-                    "value_type": summary.value_type,
-                    "n_obs": summary.n_obs,
-                    "n_vars": summary.n_vars,
-                }
-                for name, summary in sorted(outcome.modalities.items())
-            },
-            "files": {
-                "h5mu": {
-                    "name": "dataset.h5mu",
-                    "size": file_size,
-                    "sha256": sha256,
-                },
-                "metadata": {"name": "metadata.yaml"},
-                "validation_report": {"name": "validation_report.json"},
-                "checksum": {"name": "checksum.sha256"},
-            },
-        }
-        _write_json(stage_dir / "manifest.json", manifest)
-        _write_json(stage_dir / "validation_report.json", report)
-        (stage_dir / "checksum.sha256").write_text(f"{sha256}  dataset.h5mu\n", encoding="utf-8")
+        write_dataset_artifacts(
+            stage_dir,
+            metadata,
+            outcome,
+            file_size,
+            sha256,
+            imported_at,
+            checked_at,
+        )
 
         with session_factory() as session:
             try:
@@ -227,7 +198,9 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
                     select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id)
                 ):
                     raise DatasetImportError(f"Dataset '{dataset_id}' is already indexed.")
-                session.add(_build_dataset(metadata, outcome, file_size, sha256, imported_at))
+                session.add(
+                    build_dataset_record(metadata, outcome, file_size, sha256, imported_at)
+                )
                 session.flush()
                 os.replace(stage_dir, final_dir)
                 renamed = True

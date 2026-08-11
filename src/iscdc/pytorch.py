@@ -1,4 +1,4 @@
-"""PyTorch datasets for schema 1.1 ``.h5mu`` files.
+"""PyTorch datasets for schema 1.2 ``.h5mu`` files.
 
 This module is intentionally optional. Importing the rest of :mod:`iscdc` does
 not require PyTorch; users of this module should install
@@ -31,7 +31,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised by installati
     ) from exc
 
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 FEATURE_MASK_KEY = "feature_measured_by_source"
 FIXED_OBS_COLUMNS = ("sample_id",)
 DERIVED_OBS_COLUMNS = ("source_dataset_id", "source_obs_id")
@@ -166,7 +166,7 @@ class H5MuDataset(Dataset[Any]):
             raise H5MuDatasetError("uns['database'] must be a mapping")
         database = _normalize_metadata(database)
         if database.get("schema_version") != SCHEMA_VERSION:
-            raise H5MuDatasetError("only schema 1.1 .h5mu files are supported")
+            raise H5MuDatasetError("only schema 1.2 .h5mu files are supported")
         self.dataset_id = _as_string(database.get("dataset_id"), "database.dataset_id")
         self.dataset_type = _as_string(database.get("dataset_type"), "database.dataset_type")
         if self.dataset_type not in {"full", "train", "test"}:
@@ -520,7 +520,7 @@ class H5MuDataset(Dataset[Any]):
 
 
 class H5MuPredictionDataset(Dataset[Any]):
-    """Paired single-input, single-target view over a schema 1.1 file."""
+    """Paired single-input, single-target view over a schema 1.2 file."""
 
     def __init__(
         self,

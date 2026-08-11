@@ -4,6 +4,7 @@
       <div class="d-flex gap-2 flex-wrap mb-3">
         <span class="badge text-bg-primary">{{ dataset.dataset_type }}</span>
         {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+        {% if dataset.modalities|length > 2 %}<span class="badge text-bg-info">{{ dataset.modalities|length }} modalities</span>{% endif %}
         <span class="badge text-bg-light">Schema {{ dataset.schema_version }}</span>
       </div>
       {% if challenge_file %}
@@ -25,6 +26,7 @@
           <dt class="col-sm-4">Spatial unit</dt><dd class="col-sm-8">{{ dataset.spatial_unit }}</dd>
           <dt class="col-sm-4">Coordinates</dt><dd class="col-sm-8">{{ dataset.coordinate_dimensions }}D, {{ dataset.coordinate_unit }}</dd>
           <dt class="col-sm-4">Pairing</dt><dd class="col-sm-8">{{ dataset.pairing_type }}</dd>
+          <dt class="col-sm-4">Modality count</dt><dd class="col-sm-8">{{ dataset.modalities|length }}</dd>
           <dt class="col-sm-4">Source</dt><dd class="col-sm-8">{% for source in dataset.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
           <dt class="col-sm-4">Keywords</dt><dd class="col-sm-8">{{ dataset.keywords|join(', ') if dataset.keywords else 'None' }}</dd>
           <dt class="col-sm-4">License</dt><dd class="col-sm-8">{% if dataset.license %}{% if dataset.license.url %}<a href="{{ dataset.license.url }}" rel="noopener">{{ dataset.license.name }}</a>{% else %}{{ dataset.license.name }}{% endif %}{% else %}Not specified{% endif %}</dd>

@@ -74,7 +74,7 @@ def _app_with_challenge(
     config_path.write_text(
         yaml.safe_dump(
             {
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "split_id": split_id,
                 "challenge_type": challenge_type,
                 "feature_merge_policy": "preserve",
@@ -153,6 +153,35 @@ async def test_histone_modality_is_imported_and_filterable(
         response = await client.get("/api/databases", params={"modality": "histone"})
         assert response.status_code == 200
         assert response.json()["items"][0]["modalities"][0]["name"] == "histone"
+        assert response.json()["items"][0]["modality_count"] == 2
+        assert "2 modalities" not in page.text
+
+
+async def test_three_modality_database_is_annotated(
+    metadata_values, settings, write_h5mu, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["database"]["pairing_type"] = "partially_shared"
+    values["modalities"]["metabolite"] = {
+        "technology": "Test assay",
+        "value_type": "intensity",
+    }
+    import_dataset(
+        write_h5mu("partially_shared", include_third_modality=True),
+        write_metadata(values),
+        settings,
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get("/databases")
+        detail = await client.get("/databases/test_rna_protein")
+        api = await client.get("/api/databases/test_rna_protein")
+
+    assert "3 modalities" in listing.text
+    assert "3 modalities" in detail.text
+    assert "Modality count" in detail.text
+    assert api.json()["modality_count"] == 3
 
 
 async def test_database_detail_rejects_non_full_and_missing_entries(

@@ -42,6 +42,7 @@
                     <p class="small text-secondary mb-2"><code>{{ dataset.dataset_id }}</code></p>
                     <div class="d-flex gap-2 flex-wrap mb-2">
                       {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                      {% if dataset.modalities|length > 2 %}<span class="badge text-bg-info">{{ dataset.modalities|length }} modalities</span>{% endif %}
                     </div>
                     <p class="small mb-0">{{ "{:,}".format(dataset.n_obs) }} observations · {{ dataset.file_size|filesize }}</p>
                   {% else %}
