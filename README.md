@@ -468,7 +468,7 @@ Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表�
 src/iscdc/       应用、校验、导入和数据划分代码
 tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
 assets/templates 网页模板
-assets/static    页面样式
+assets/static    页面样式及数据库网页缩略图
 assets/examples  示例人工元数据
 data/            catalog.db、analytics.db 和已导入文件（不纳入版本控制）
 temp/            待整理数据及其隔离的转换产物（不纳入版本控制）

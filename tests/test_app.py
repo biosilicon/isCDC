@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from urllib.parse import quote
 
 import httpx
@@ -129,6 +130,56 @@ async def test_home_and_database_pages_use_new_entry_points(
 
         empty = await client.get("/databases?tissue=brain")
         assert "No matching databases" in empty.text
+
+
+async def test_database_pages_show_matching_thumbnail(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    static_dir = tmp_path / "static"
+    thumbnail_dir = static_dir / "database_thumbnails"
+    thumbnail_dir.mkdir(parents=True)
+    thumbnail_content = b"test webp content"
+    thumbnail_path = thumbnail_dir / "test_rna_protein.webp"
+    thumbnail_path.write_bytes(thumbnail_content)
+    thumbnail_settings = replace(settings, static_dir=static_dir)
+    app = _app_with_database(thumbnail_settings, write_h5mu, write_metadata)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get("/databases")
+        detail = await client.get("/databases/test_rna_protein")
+        thumbnail = await client.get(
+            "/static/database_thumbnails/test_rna_protein.webp"
+        )
+
+    expected_url = "/static/database_thumbnails/test_rna_protein.webp"
+    for page in (listing, detail):
+        assert page.status_code == 200
+        assert expected_url in page.text
+        assert "Thumbnail for Test RNA and protein dataset" in page.text
+        assert 'loading="lazy"' in page.text
+        assert 'decoding="async"' in page.text
+    assert "database-thumbnail-list" in listing.text
+    assert "database-thumbnail-detail" in detail.text
+    assert thumbnail.status_code == 200
+    assert thumbnail.headers["content-type"] == "image/webp"
+    assert thumbnail.content == thumbnail_content
+
+
+async def test_database_pages_omit_thumbnail_when_unavailable(
+    settings, write_h5mu, write_metadata
+):
+    app = _app_with_database(settings, write_h5mu, write_metadata)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get("/databases")
+        detail = await client.get("/databases/test_rna_protein")
+
+    assert listing.status_code == 200
+    assert detail.status_code == 200
+    assert "database-thumbnail" not in listing.text
+    assert "database-thumbnail" not in detail.text
 
 
 async def test_histone_modality_is_imported_and_filterable(

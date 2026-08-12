@@ -15,6 +15,13 @@
       {% endif %}
       <p class="lead text-secondary">{{ dataset.description }}</p>
 
+      {% set thumbnail_path = (database_thumbnail_paths|default({})).get(dataset.dataset_id) %}
+      {% if not challenge_file and thumbnail_path %}
+        <figure class="database-thumbnail database-thumbnail-detail mt-4 mb-0">
+          <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ dataset.title }}" loading="lazy" decoding="async">
+        </figure>
+      {% endif %}
+
       <section class="mt-5">
         <h3 class="h4">File metadata</h3>
         <dl class="row metadata-list mt-3">

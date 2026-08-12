@@ -1,7 +1,9 @@
 import logging
 import math
+import mimetypes
 from collections.abc import AsyncGenerator
 from http.cookies import SimpleCookie
+from pathlib import Path
 from time import perf_counter
 from typing import Annotated
 from urllib.parse import urlencode
@@ -69,6 +71,19 @@ DOWNLOAD_FILES = {
 }
 
 logger = logging.getLogger(__name__)
+
+DATABASE_THUMBNAIL_DIRECTORY = "database_thumbnails"
+
+
+def _discover_database_thumbnails(static_dir: Path) -> dict[str, str]:
+    thumbnail_dir = static_dir / DATABASE_THUMBNAIL_DIRECTORY
+    if not thumbnail_dir.is_dir():
+        return {}
+    return {
+        path.stem: f"{DATABASE_THUMBNAIL_DIRECTORY}/{path.name}"
+        for path in sorted(thumbnail_dir.glob("*.webp"))
+        if path.is_file()
+    }
 
 
 class AnalyticsMiddleware:
@@ -273,6 +288,7 @@ def _challenge_response(challenge: Challenge, request: Request) -> ChallengeResp
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
+    mimetypes.add_type("image/webp", ".webp")
     engine = create_database_engine(settings.database_path)
     initialize_database(engine)
     session_factory = create_session_factory(engine)
@@ -303,6 +319,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
     templates.env.filters["challenge_type_label"] = CHALLENGE_TYPE_LABELS.__getitem__
+    templates.env.globals["database_thumbnail_paths"] = _discover_database_thumbnails(
+        settings.static_dir
+    )
 
     application = FastAPI(
         title="isCDC Spatial Multi-omics Database",
