@@ -7,9 +7,15 @@ Production code lives under `src/iscdc/`, automated tests under `tests/`, and te
 Local Database thumbnails live under the ignored `assets/static/database_thumbnails/` directory
 as WebP files named exactly `<dataset_id>.webp`; do not commit them. Keep images downloaded only
 to produce thumbnails in the separately ignored `assets/he_wsi_thumbnails/` directory. A missing
-thumbnail is valid and must not produce a placeholder or empty image container. Store downloadable WSI and other formal
-auxiliary files under the owning dataset's ignored `data/datasets/<dataset_id>/auxiliary/`
-directory, never under assets, and register them through `add-auxiliary-file` so manifest 1.1
+thumbnail is valid and must not produce a placeholder or empty image container. When a `full`
+Database has a registered `he_wsi`, generate its thumbnail directly from that WSI with
+`generate-wsi-thumbnails`; do not substitute a separate preview image. Preserve the whole-slide
+view and aspect ratio, do not crop to tissue, and use the fixed 640 px maximum dimension. The
+output must be RGB WebP encoded with quality 85 and method 6. The command must refuse existing
+output unless `--force` is supplied, and replacements must remain atomic. Store downloadable WSI
+and other formal auxiliary files under the owning dataset's ignored
+`data/datasets/<dataset_id>/auxiliary/` directory, never under assets, and register them through
+`add-auxiliary-file` so manifest 1.1
 records their stable ID, original filename, media type, size, SHA-256, source URL, and retrieval
 time. Auxiliary files remain part of the owning data-file detail page and JSON record; do not give
 them catalogue rows, independent detail pages, or user-controlled filesystem paths. Keep manifest
@@ -111,6 +117,13 @@ duplicate and path rejection, fail-open discovery, detail-page and JSON exposure
 Range downloads, and 404/416 failures. A pure auxiliary-data registration using already-tested
 code does not require a new ASGI test, but it must be verified through CLI output, source and stored
 SHA-256/size equality, manifest consistency, format-specific checks, and direct endpoint reads.
+
+WSI-thumbnail behavior tests must use small deterministic tiled TIFF fixtures and cover pyramid
+level selection, aspect-ratio-preserving 640 px output, RGB WebP validation, existing-output
+protection, atomic replacement rollback, invalid inputs, single-dataset and `--all` CLI modes,
+batch skipping, and partial failures. Real WSI thumbnail generation additionally requires visual
+inspection for completeness, orientation, tile seams, and black borders, plus direct detail-page
+and static-file reads after restarting the application.
 
 The complete suite requires these local real-data fixtures:
 

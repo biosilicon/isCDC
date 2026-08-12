@@ -24,6 +24,12 @@ from .schema_migration import (
     migrate_schema_1_2,
 )
 from .schemas import MetadataLoadError
+from .thumbnails import (
+    ThumbnailGenerationError,
+    database_has_he_wsi,
+    generate_wsi_thumbnail,
+    list_database_ids,
+)
 
 ANALYTICS_EXPORT_FIELDS = (
     "id",
@@ -75,6 +81,21 @@ def build_parser() -> argparse.ArgumentParser:
     auxiliary_parser.add_argument("--label", required=True)
     auxiliary_parser.add_argument("--source-url", required=True)
     auxiliary_parser.add_argument("--media-type", required=True)
+
+    thumbnail_parser = subparsers.add_parser(
+        "generate-wsi-thumbnails",
+        help="Generate local Database WebP thumbnails from registered H&E WSI files.",
+    )
+    thumbnail_scope = thumbnail_parser.add_mutually_exclusive_group(required=True)
+    thumbnail_scope.add_argument("dataset_id", nargs="?")
+    thumbnail_scope.add_argument(
+        "--all",
+        action="store_true",
+        help="Generate thumbnails for every Database with a registered he_wsi file.",
+    )
+    thumbnail_parser.add_argument(
+        "--force", action="store_true", help="Atomically replace existing thumbnails."
+    )
 
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
@@ -175,6 +196,54 @@ def _run_analytics(args: argparse.Namespace) -> int:
         service.engine.dispose()
 
 
+def _run_wsi_thumbnail_generation(args: argparse.Namespace) -> int:
+    settings = Settings.from_environment()
+    generated: list[dict[str, object]] = []
+    failures: list[dict[str, str]] = []
+    skipped_without_wsi = 0
+
+    try:
+        dataset_ids = list_database_ids(settings) if args.all else (args.dataset_id,)
+    except (CatalogueSchemaError, OSError, SQLAlchemyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    for dataset_id in dataset_ids:
+        assert dataset_id is not None
+        if args.all:
+            try:
+                if not database_has_he_wsi(dataset_id, settings):
+                    skipped_without_wsi += 1
+                    continue
+            except (
+                CatalogueSchemaError,
+                OSError,
+                SQLAlchemyError,
+                ThumbnailGenerationError,
+            ) as exc:
+                failures.append({"dataset_id": dataset_id, "error": str(exc)})
+                continue
+        try:
+            result = generate_wsi_thumbnail(dataset_id, settings, force=args.force)
+        except (CatalogueSchemaError, OSError, SQLAlchemyError, ThumbnailGenerationError) as exc:
+            failures.append({"dataset_id": dataset_id, "error": str(exc)})
+            continue
+        generated.append(result.as_dict())
+
+    print(
+        json.dumps(
+            {
+                "generated": generated,
+                "skipped_without_wsi": skipped_without_wsi,
+                "failures": failures,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0 if generated and not failures else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "import-dataset":
@@ -227,6 +296,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    if args.command == "generate-wsi-thumbnails":
+        return _run_wsi_thumbnail_generation(args)
     if args.command == "migrate-schema-1-2":
         settings = Settings.from_environment()
         options = {"dry_run": args.dry_run}

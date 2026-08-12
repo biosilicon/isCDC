@@ -26,7 +26,8 @@ Database 的网页缩略图以 `<dataset_id>.webp` 命名，保存在被忽略�
 `assets/static/database_thumbnails/`，不纳入版本控制；新工作区和部署环境需要单独准备这些本地
 文件。仅用于制作缩略图的 PNG、JPEG 或 TIFF 来源文件保存在被忽略的
 `assets/he_wsi_thumbnails/`；正式提供下载的 WSI 则注册到所属
-数据集的 `data/datasets/<dataset_id>/auxiliary/`。并非每个 Database 都有缩略图或 WSI；缺图
+数据集的 `data/datasets/<dataset_id>/auxiliary/`。已注册 `he_wsi` 的 Database 应直接由该 WSI
+生成缩略图，不再使用另一张预览图代替。并非每个 Database 都有缩略图或 WSI；缺图
 时页面不显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
 [HE WSI 图像访问链接](HE_WSI图像访问链接.md)。
 
@@ -257,6 +258,22 @@ SHA-256，并原子更新 `manifest.json`。辅助文件 ID 在单个数据集�
 数字、下划线或连字符；命令拒绝符号链接、路径穿越、未知数据集和已有 ID/文件，不执行覆盖。
 主 `checksum.sha256` 和 `validation_report.json` 继续只描述 `.h5mu`，辅助文件大小、哈希和
 来源记录在 manifest 中。注册后需重启应用，使启动时的只读辅助文件索引重新加载。
+
+已注册辅助文件 ID `he_wsi` 的 Database 可直接生成本地 WebP 缩略图：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli generate-wsi-thumbnails DATASET_ID
+PYTHONPATH=src python -m iscdc.cli generate-wsi-thumbnails DATASET_ID --force
+PYTHONPATH=src python -m iscdc.cli generate-wsi-thumbnails --all --force
+```
+
+命令只处理 `full` Database。有金字塔的 TIFF 会读取最小且最长边不低于 640 px 的层；
+没有金字塔时读取完整图像。最终保持整张切片和原始纵横比，使用 Lanczos 缩小到
+最长边 640 px，不做组织区域裁剪，并以 RGB WebP `quality=85`、`method=6` 编码。默认拒绝
+覆盖；`--force` 会在校验新 WebP 后原子替换旧图。`--all` 跳过没有 `he_wsi` 的 Database，
+并以 JSON 汇总成功、跳过和失败结果。
+批量中单个条目失败不回滚已成功输出；任一失败或没有生成任何缩略图时命令返回非零状态。
+生成后必须重启应用，使启动时缩略图索引重新加载。
 
 现有 schema 1.1 catalogue 升级时，先停止应用并执行只读预检，再运行正式迁移：
 
@@ -493,7 +510,8 @@ test，目录会报告完整性错误，不会静默选择其中一份。
 
 Database 缩略图是样本或切片的辅助预览，并不都属于 H&E，也不能替代原始 WSI。页面按
 `dataset_id` 与 `<dataset_id>.webp` 精确匹配；没有匹配文件时不渲染图片。该展示信息仅存在
-于 HTML 页面，不改变 catalogue schema、导入流程或 Database JSON API。
+于 HTML 页面，不改变 catalogue schema、导入流程或 Database JSON API。已注册 `he_wsi` 的
+Database 是例外：其 WebP 必须直接由对应 WSI 副本生成，但仍只是有损的展示预览。
 
 已注册的辅助文件只在所属 Database 或 Challenge 文件的详情下载面板中显示，不形成独立的
 目录条目或详情页。Database/Challenge JSON 响应通过 `auxiliary_files` 返回稳定 ID、标签、
