@@ -86,6 +86,16 @@
           <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='manifest') }}">Manifest</a>
           <a class="btn btn-outline-secondary" href="{{ url_for('download_file', dataset_id=dataset.dataset_id, kind='checksum') }}">SHA-256 checksum</a>
         </div>
+        {% set auxiliary_files = (auxiliary_files_by_dataset|default({})).get(dataset.dataset_id, ()) %}
+        {% if auxiliary_files %}
+          <hr>
+          <p class="small text-secondary mb-2">Auxiliary files</p>
+          <div class="d-grid gap-2">
+            {% for auxiliary_file in auxiliary_files %}
+              <a class="btn btn-outline-primary" href="{{ url_for('download_auxiliary_file', dataset_id=dataset.dataset_id, auxiliary_id=auxiliary_file.auxiliary_id) }}">{{ auxiliary_file.label }} · {{ auxiliary_file.size|filesize }}</a>
+            {% endfor %}
+          </div>
+        {% endif %}
         <hr>
         <p class="small text-secondary mb-1">SHA-256</p>
         <code class="checksum">{{ dataset.sha256 }}</code>

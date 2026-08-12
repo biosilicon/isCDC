@@ -12,6 +12,7 @@ from typing import TextIO
 from sqlalchemy.exc import SQLAlchemyError
 
 from .analytics import AnalyticsSchemaError, create_analytics_service
+from .auxiliary import AuxiliaryFileError, register_auxiliary_file
 from .config import Settings
 from .database import CatalogueSchemaError
 from .importer import DatasetImportError, import_dataset
@@ -63,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("h5mu", type=Path)
     import_parser.add_argument("metadata", type=Path)
+
+    auxiliary_parser = subparsers.add_parser(
+        "add-auxiliary-file",
+        help="Copy and register an auxiliary file for an indexed dataset.",
+    )
+    auxiliary_parser.add_argument("dataset_id")
+    auxiliary_parser.add_argument("file", type=Path)
+    auxiliary_parser.add_argument("--id", dest="auxiliary_id", required=True)
+    auxiliary_parser.add_argument("--label", required=True)
+    auxiliary_parser.add_argument("--source-url", required=True)
+    auxiliary_parser.add_argument("--media-type", required=True)
 
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
@@ -181,6 +193,34 @@ def main(argv: list[str] | None = None) -> int:
                     "file_size": result.file_size,
                     "sha256": result.sha256,
                     "warning_count": result.warning_count,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "add-auxiliary-file":
+        try:
+            result = register_auxiliary_file(
+                args.dataset_id,
+                args.file,
+                Settings.from_environment(),
+                auxiliary_id=args.auxiliary_id,
+                label=args.label,
+                source_url=args.source_url,
+                media_type=args.media_type,
+            )
+        except (AuxiliaryFileError, CatalogueSchemaError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(
+            json.dumps(
+                {
+                    "dataset_id": result.dataset_id,
+                    "auxiliary_id": result.auxiliary_id,
+                    "destination": str(result.destination),
+                    "size": result.size,
+                    "sha256": result.sha256,
                 },
                 ensure_ascii=False,
                 indent=2,

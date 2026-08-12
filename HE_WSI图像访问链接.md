@@ -44,6 +44,24 @@
 | Xenium Gene and Protein Expression in FFPE Human Renal Cell Carcinoma<br><code>xenium_human_rcc_ffpe_rna_protein</code> | [10x Genomics 数据记录](https://www.10xgenomics.com/datasets/xenium-protein-ffpe-human-renal-carcinoma) · [官方分析摘要](https://cf.10xgenomics.com/samples/xenium/4.0.0/Xenium_V1_Human_Kidney_FFPE_Protein_updated/Xenium_V1_Human_Kidney_FFPE_Protein_updated_analysis_summary.html) | [同切片 post-Xenium H&E OME-TIFF（约 3.72 GB）](https://cf.10xgenomics.com/samples/xenium/4.0.0/Xenium_V1_Human_Kidney_FFPE_Protein_updated/Xenium_V1_Human_Kidney_FFPE_Protein_updated_he_image.ome.tif) | <a href="https://cf.10xgenomics.com/samples/xenium/4.0.0/Xenium_V1_Human_Kidney_FFPE_Protein_updated/Xenium_V1_Human_Kidney_FFPE_Protein_updated_analysis_summary.html"><img src="assets/static/database_thumbnails/xenium_human_rcc_ffpe_rna_protein.webp" alt="Xenium human FFPE renal cell carcinoma overview scan" width="220"></a><br>10x 官方分析摘要内嵌 `overview_scan`；标题为 `Human FFPE Kidney - Human Renal Cell Carcinoma (FFPE)` |
 | Xenium RNA and Immunofluorescence Protein Profiling of FFPE Human Breast Cancer, Replicate 1<br><code>2023_nc_10x_breast_cancer_HBC_rep1</code> | [10x Genomics 数据记录](https://www.10xgenomics.com/products/xenium-in-situ/preview-dataset-human-breast) · [GSM7780153](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7780153) | [同切片 H&E OME-TIFF（约 1.43 GB）](https://cf.10xgenomics.com/samples/xenium/1.0.1/Xenium_FFPE_Human_Breast_Cancer_Rep1/Xenium_FFPE_Human_Breast_Cancer_Rep1_he_image.ome.tif)<br>[同切片 H&E TIFF（约 1.70 GB）](https://cf.10xgenomics.com/samples/xenium/1.0.1/Xenium_FFPE_Human_Breast_Cancer_Rep1/Xenium_FFPE_Human_Breast_Cancer_Rep1_he_image.tif) | <a href="https://cf.10xgenomics.com/samples/xenium/1.0.1/Xenium_FFPE_Human_Breast_Cancer_Rep1/Xenium_FFPE_Human_Breast_Cancer_Rep1_he_image.ome.tif"><img src="assets/static/database_thumbnails/2023_nc_10x_breast_cancer_HBC_rep1.webp" alt="Xenium human breast cancer H&amp;E thumbnail" width="220"></a><br>10x 官方 H&E 切片预览 |
 
+## 本地 WSI 入库状态
+
+2026-08-12 已将三个可下载 WSI 作为所属 Database 的辅助文件注册。网站辅助文件 ID 均为
+`he_wsi`；可从所属数据详情页或
+`/downloads/<dataset_id>/auxiliary/he_wsi` 下载。文件保存在
+`data/datasets/<dataset_id>/auxiliary/`，不会形成独立目录条目或详情页。断点续传、完整性校验和
+使用权限说明见[数据使用说明](数据使用说明.md)。
+
+| 数据集 ID | 入库文件 | 字节数 | SHA-256 |
+| --- | --- | ---: | --- |
+| `visium_human_tonsil_rna_protein` | `CytAssist_FFPE_Protein_Expression_Human_Tonsil_tissue_image.tif` | 3,815,082,301 | `087a07f8464174a3f9c5b6300c8aadf52591c1be3b6a50922797fbec7fa5ff4c` |
+| `xenium_human_rcc_ffpe_rna_protein` | `Xenium_V1_Human_Kidney_FFPE_Protein_updated_he_image.ome.tif` | 3,720,697,771 | `5e3e35fd6dd6122a3927c01aff273a25846d7a2532191b547eeacba46e1dacde` |
+| `2023_nc_10x_breast_cancer_HBC_rep1` | `Xenium_FFPE_Human_Breast_Cancer_Rep1_he_image.ome.tif` | 1,427,110,955 | `3c2bd89588f97e886dc1288e68d4eaae1b21231cd59774bc01d2d7e3876430f0` |
+
+乳腺癌条目只入库 OME-TIFF，没有重复保存普通 TIFF 版本。三个正式副本均已通过远端长度、
+本地长度、SHA-256、TIFF/BigTIFF 首 IFD、OME XML、manifest、详情页、JSON API、HEAD 和 Range
+下载验证。
+
 ## 核查说明
 
 - “未发现”表示在数据集记录页、原始数据仓库及其公开补充文件中未找到满足上述严格定义的文件，不表示研究过程中一定没有采集过组织图像。
@@ -54,4 +72,4 @@
 - Stereo-CITE-seq 的 Zenodo 处理包只含 RNA/ADT H5AD，没有独立图像。仅 `sample_01` 能与论文明确标注的 “mouse thymus 1” Extended Data Fig. 8 一一对应；`sample_02`、`sample_03` 未使用其他切片图像代替。STOmicsDB 原项目的组织切片染色协议为 IF，不是 H&E。
 - Xenium RCC 缩略图直接解码自同一 10x 分析摘要的 `overview_scan` 字段；页面样本标题和本库切片一致。其 H&E WSI 仍使用 10x 发布的同一运行 OME-TIFF。
 - 完整性校验：报告中的 35 个数据集 ID 与 `catalog.db` 的 35 个 `full` 数据集逐项一致且无重复；32 个网页图片链接均存在、可解码为 WebP，且最长边不超过 640 px。采集阶段保存的 GSE213264 8 张原图均与作者 GitHub API 返回的 Git blob SHA-1 一致；STARmap ZIP 的 MD5 为 Zenodo 记录给出的 `a7f5a84973bf7bfd58ebb1ea03a7bb3c`；Stereo-CITE-seq 论文图的 MD5 与 PMC 元数据 `16f50873f5e56bef321cebcc03b9fba1` 一致。
-- 提交到仓库的网页缩略图均保存在 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/)；文件名严格使用 `<dataset_id>.webp`，供 Database 目录页和详情页自动匹配。下载得到的原始图像仅在本地 `assets/he_wsi_thumbnails/` 保留，该目录已被忽略且不纳入版本控制。缺少 WebP 的 3 个条目在网页中不显示占位图像。
+- 提交到仓库的网页缩略图均保存在 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/)；文件名严格使用 `<dataset_id>.webp`，供 Database 目录页和详情页自动匹配。缩略图采集阶段下载的原始图像仅在本地 `assets/he_wsi_thumbnails/` 保留；正式入库的三个 WSI 则位于所属数据集的 `auxiliary/` 子目录。两处均已忽略且不纳入版本控制。缺少 WebP 的 3 个条目在网页中不显示占位图像。

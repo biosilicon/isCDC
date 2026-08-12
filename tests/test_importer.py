@@ -66,6 +66,9 @@ def test_import_creates_catalogue_and_provenance_files(settings, write_h5mu, wri
     assert result.sha256 == expected_hash
     assert (destination / "checksum.sha256").read_text().startswith(expected_hash)
     assert json.loads((destination / "validation_report.json").read_text())["valid"]
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert manifest["manifest_version"] == "1.1"
+    assert manifest["auxiliary_files"] == []
 
     engine = create_database_engine(settings.database_path)
     with create_session_factory(engine)() as session:

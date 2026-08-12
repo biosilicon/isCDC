@@ -5,11 +5,19 @@
 Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
 Committed Database thumbnails live under `assets/static/database_thumbnails/` as WebP files named
-exactly `<dataset_id>.webp`. Keep downloaded source images in the ignored
+exactly `<dataset_id>.webp`. Keep images downloaded only to produce thumbnails in the ignored
 `assets/he_wsi_thumbnails/` directory; do not commit them. A missing thumbnail is valid and must
-not produce a placeholder or empty image container. Thumbnail discovery and the stylesheet content
-version are computed at application startup, so restart a running application after adding or
-removing thumbnails or changing `assets/static/styles.css`.
+not produce a placeholder or empty image container. Store downloadable WSI and other formal
+auxiliary files under the owning dataset's ignored `data/datasets/<dataset_id>/auxiliary/`
+directory, never under assets, and register them through `add-auxiliary-file` so manifest 1.1
+records their stable ID, original filename, media type, size, SHA-256, source URL, and retrieval
+time. Auxiliary files remain part of the owning data-file detail page and JSON record; do not give
+them catalogue rows, independent detail pages, or user-controlled filesystem paths. Keep manifest
+1.0 readable for datasets without auxiliary files. Invalid or missing auxiliary files must fail
+open without breaking catalogue pages, JSON APIs, or primary downloads. Thumbnail and auxiliary
+discovery and the stylesheet content version are computed at application startup, so restart a
+running application after adding or removing thumbnails or auxiliary files, or changing
+`assets/static/styles.css`.
 
 Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
 `analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
@@ -97,6 +105,12 @@ templates, or API behavior do not require HTTP/ASGI-layer tests. Validate those 
 the importer result, `validation_report.json`, checksum and manifest consistency, and direct
 catalogue or repository reads instead. Run network-layer tests when application behavior changes,
 not merely to confirm that a data file was imported.
+
+Auxiliary-file behavior tests must cover safe manifest parsing, atomic registration rollback,
+duplicate and path rejection, fail-open discovery, detail-page and JSON exposure, HEAD and byte
+Range downloads, and 404/416 failures. A pure auxiliary-data registration using already-tested
+code does not require a new ASGI test, but it must be verified through CLI output, source and stored
+SHA-256/size equality, manifest consistency, format-specific checks, and direct endpoint reads.
 
 The complete suite requires these local real-data fixtures:
 

@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from .auxiliary import MANIFEST_VERSION
 from .schemas import MetadataDocument
 from .validation import ValidationOutcome
 
@@ -23,7 +24,7 @@ def build_manifest(
     imported_at: datetime,
 ) -> dict:
     return {
-        "manifest_version": "1.0",
+        "manifest_version": MANIFEST_VERSION,
         "dataset_id": metadata.database.dataset_id,
         "imported_at": imported_at.isoformat(),
         "database": metadata.database_values(),
@@ -49,6 +50,7 @@ def build_manifest(
             "validation_report": {"name": "validation_report.json"},
             "checksum": {"name": "checksum.sha256"},
         },
+        "auxiliary_files": [],
     }
 
 

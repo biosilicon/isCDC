@@ -187,6 +187,20 @@ async def test_database_pages_omit_thumbnail_when_unavailable(
     assert "database-thumbnail" not in detail.text
 
 
+async def test_detail_template_tolerates_missing_auxiliary_index_during_reload(
+    settings, write_h5mu, write_metadata
+):
+    app = _app_with_database(settings, write_h5mu, write_metadata)
+    app.state.templates.env.globals.pop("auxiliary_files_by_dataset", None)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        detail = await client.get("/databases/test_rna_protein")
+
+    assert detail.status_code == 200
+    assert "Auxiliary files" not in detail.text
+
+
 async def test_histone_modality_is_imported_and_filterable(
     metadata_values, settings, write_h5mu, write_metadata
 ):

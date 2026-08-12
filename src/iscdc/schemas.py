@@ -247,6 +247,17 @@ class ModalityResponse(BaseModel):
     n_vars: int
 
 
+class AuxiliaryFileResponse(BaseModel):
+    id: str
+    label: str
+    filename: str
+    media_type: str
+    size: int
+    sha256: str
+    source_url: str
+    download_url: str
+
+
 class DataFileResponse(BaseModel):
     dataset_id: str
     schema_version: str
@@ -274,6 +285,7 @@ class DataFileResponse(BaseModel):
     validation_warning_count: int
     imported_at: datetime
     downloads: dict[str, str]
+    auxiliary_files: list[AuxiliaryFileResponse]
 
 
 class DatabaseListResponse(BaseModel):

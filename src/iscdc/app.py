@@ -10,10 +10,11 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BeforeValidator
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request as StarletteRequest
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -24,6 +25,7 @@ from .analytics import (
     create_analytics_service,
     is_automated_user_agent,
 )
+from .auxiliary import AuxiliaryFile, AuxiliaryFileError, load_auxiliary_files
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .models import Dataset
@@ -238,7 +240,11 @@ def _pagination_context(
     }
 
 
-def _data_file_response(dataset: Dataset, request: Request) -> DataFileResponse:
+def _data_file_response(
+    dataset: Dataset,
+    request: Request,
+    auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+) -> DataFileResponse:
     downloads = {
         kind: str(request.url_for("download_file", dataset_id=dataset.dataset_id, kind=kind))
         for kind in DOWNLOAD_FILES
@@ -279,18 +285,47 @@ def _data_file_response(dataset: Dataset, request: Request) -> DataFileResponse:
         validation_warning_count=dataset.validation_warning_count,
         imported_at=dataset.imported_at,
         downloads=downloads,
+        auxiliary_files=[
+            {
+                "id": auxiliary_file.auxiliary_id,
+                "label": auxiliary_file.label,
+                "filename": auxiliary_file.filename,
+                "media_type": auxiliary_file.media_type,
+                "size": auxiliary_file.size,
+                "sha256": auxiliary_file.sha256,
+                "source_url": auxiliary_file.source_url,
+                "download_url": str(
+                    request.url_for(
+                        "download_auxiliary_file",
+                        dataset_id=dataset.dataset_id,
+                        auxiliary_id=auxiliary_file.auxiliary_id,
+                    )
+                ),
+            }
+            for auxiliary_file in auxiliary_files_by_dataset.get(dataset.dataset_id, ())
+        ],
     )
 
 
-def _challenge_response(challenge: Challenge, request: Request) -> ChallengeResponse:
+def _challenge_response(
+    challenge: Challenge,
+    request: Request,
+    auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+) -> ChallengeResponse:
     return ChallengeResponse(
         split_id=challenge.split_id,
         challenge_type=challenge.challenge_type,
         status=challenge.status,
         train=(
-            _data_file_response(challenge.train, request) if challenge.train is not None else None
+            _data_file_response(challenge.train, request, auxiliary_files_by_dataset)
+            if challenge.train is not None
+            else None
         ),
-        test=_data_file_response(challenge.test, request) if challenge.test is not None else None,
+        test=(
+            _data_file_response(challenge.test, request, auxiliary_files_by_dataset)
+            if challenge.test is not None
+            else None
+        ),
     )
 
 
@@ -300,6 +335,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_database_engine(settings.database_path)
     initialize_database(engine)
     session_factory = create_session_factory(engine)
+    auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]] = {}
+    with session_factory() as session:
+        dataset_locations = session.execute(
+            select(Dataset.dataset_id, Dataset.storage_dir)
+        ).all()
+    for dataset_id, storage_dir in dataset_locations:
+        try:
+            auxiliary_files_by_dataset[dataset_id] = load_auxiliary_files(
+                settings.data_root / storage_dir, dataset_id
+            )
+        except AuxiliaryFileError:
+            logger.warning(
+                "Ignoring invalid auxiliary file manifest for dataset %s",
+                dataset_id,
+                exc_info=True,
+            )
 
     analytics: AnalyticsService | None = None
     if settings.analytics_enabled:
@@ -333,16 +384,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["database_thumbnail_paths"] = _discover_database_thumbnails(
         settings.static_dir
     )
+    templates.env.globals["auxiliary_files_by_dataset"] = auxiliary_files_by_dataset
 
     application = FastAPI(
         title="isCDC Spatial Multi-omics Database",
-        version="0.2.0",
+        version="0.3.0",
         description="A read-only catalogue of databases and benchmark challenges.",
     )
     application.state.settings = settings
     application.state.engine = engine
     application.state.session_factory = session_factory
     application.state.analytics = analytics
+    application.state.templates = templates
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
         application.add_middleware(
@@ -577,6 +630,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @application.api_route(
+        "/downloads/{dataset_id}/auxiliary/{auxiliary_id}",
+        methods=["GET", "HEAD"],
+        name="download_auxiliary_file",
+    )
+    async def download_auxiliary_file(
+        request: Request,
+        dataset_id: str,
+        auxiliary_id: str,
+        session: SessionDependency,
+    ):
+        dataset = session.get(Dataset, dataset_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Data file not found")
+        auxiliary_file = next(
+            (
+                item
+                for item in auxiliary_files_by_dataset.get(dataset_id, ())
+                if item.auxiliary_id == auxiliary_id
+            ),
+            None,
+        )
+        if auxiliary_file is None:
+            raise HTTPException(status_code=404, detail="Auxiliary file not found")
+        if (
+            auxiliary_file.path.is_symlink()
+            or not auxiliary_file.path.is_file()
+            or auxiliary_file.path.stat().st_size != auxiliary_file.size
+        ):
+            raise HTTPException(status_code=404, detail="Stored auxiliary file not found")
+
+        prepare_analytics_event(
+            request,
+            "download",
+            "download_auxiliary_file",
+            {
+                "dataset_id": dataset.dataset_id,
+                "kind": "auxiliary",
+                "auxiliary_id": auxiliary_file.auxiliary_id,
+            },
+        )
+        return FileResponse(
+            auxiliary_file.path,
+            media_type=auxiliary_file.media_type,
+            filename=auxiliary_file.filename,
+        )
+
     @application.get(
         "/api/databases", response_model=DatabaseListResponse, name="api_database_list"
     )
@@ -599,7 +699,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             limit,
         )
         return DatabaseListResponse(
-            items=[_data_file_response(database, request) for database in databases],
+            items=[
+                _data_file_response(database, request, auxiliary_files_by_dataset)
+                for database in databases
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -616,7 +719,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = get_database(session, dataset_id)
         if database is None:
             raise HTTPException(status_code=404, detail="Database not found")
-        return _data_file_response(database, request)
+        return _data_file_response(database, request, auxiliary_files_by_dataset)
 
     @application.get(
         "/api/challenges", response_model=ChallengeListResponse, name="api_challenge_list"
@@ -641,7 +744,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             limit,
         )
         return ChallengeListResponse(
-            items=[_challenge_response(challenge, request) for challenge in challenges],
+            items=[
+                _challenge_response(challenge, request, auxiliary_files_by_dataset)
+                for challenge in challenges
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -658,7 +764,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         challenge = get_challenge(session, split_id)
         if challenge is None:
             raise HTTPException(status_code=404, detail="Challenge not found")
-        return _challenge_response(challenge, request)
+        return _challenge_response(challenge, request, auxiliary_files_by_dataset)
 
     return application
 

@@ -1,8 +1,9 @@
 # isCDC
 
-isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组学科研数据目录。它在导入时验证 `.h5mu`
-结构及人工维护的元数据；网页目录请求只读取 `catalog.db`，不读取大型表达矩阵，访客会话
-和行为事件则写入完全独立的 `analytics.db`。网页将 `full` 文件作为 Database 展示，并将
+isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组学科研数据目录。它在导入时验证
+`.h5mu` 结构及人工维护的元数据；网页目录请求读取 `catalog.db` 和启动时建立的辅助文件索引，
+不读取大型表达矩阵，访客会话和行为事件则写入完全独立的 `analytics.db`。网页将 `full`
+文件作为 Database 展示，并将
 相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。每个 Challenge 通过
 `derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
 
@@ -22,9 +23,10 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
 
 Database 的网页缩略图以 `<dataset_id>.webp` 命名并提交到
-`assets/static/database_thumbnails/`。下载得到的 PNG、JPEG 或 TIFF 原图只保存在被忽略的
-`assets/he_wsi_thumbnails/`，不纳入版本控制。并非每个 Database 都有缩略图；缺图时页面不
-显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
+`assets/static/database_thumbnails/`。仅用于制作缩略图的 PNG、JPEG 或 TIFF 来源文件保存在
+被忽略的 `assets/he_wsi_thumbnails/`，不纳入版本控制；正式提供下载的 WSI 则注册到所属
+数据集的 `data/datasets/<dataset_id>/auxiliary/`。并非每个 Database 都有缩略图或 WSI；缺图
+时页面不显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
 [HE WSI 图像访问链接](HE_WSI图像访问链接.md)。
 
 ## 快速开始
@@ -119,9 +121,9 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 脚本默认等待应用就绪 60 秒；可通过 `ISCDC_DEPLOY_START_TIMEOUT` 设置 1 至 600 秒的等待
 时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
 也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
-应用在启动时扫描 Database 缩略图并计算 `styles.css` 的内容版本；新增或删除缩略图、修改
-页面样式后，应执行 `./deploy_test.sh restart`。样式表 URL 会携带内容哈希，重启后浏览器会
-自动获取新版本，无需用户手动清除缓存。
+应用在启动时扫描 Database 缩略图和辅助文件 manifest，并计算 `styles.css` 的内容版本；新增
+或删除缩略图、注册或移除辅助文件、修改页面样式后，应执行 `./deploy_test.sh restart`。
+样式表 URL 会携带内容哈希，重启后浏览器会自动获取新版本，无需用户手动清除缓存。
 
 ## 使用 PyTorch 训练
 
@@ -217,6 +219,7 @@ metadata.yaml
 manifest.json
 validation_report.json
 checksum.sha256
+auxiliary/              # 可选；仅在注册辅助文件后创建
 ```
 
 重复的 `dataset_id` 会被拒绝。初版不提供覆盖、在线编辑或删除功能。
@@ -231,7 +234,28 @@ checksum.sha256
 
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
-`manifest_version` 独立描述导入清单格式，与 `.h5mu` 的 `schema_version` 无关。
+`manifest_version` 独立描述导入清单格式，与 `.h5mu` 的 `schema_version` 无关。新导入使用
+manifest 1.1；它在保持原有主文件字段不变的基础上增加 `auxiliary_files` 列表。应用仍兼容
+没有辅助文件字段的 manifest 1.0。
+
+### 辅助文件
+
+WSI 等不属于组学模态、但与某个已导入数据文件直接关联的大文件，可通过 CLI 注册为辅助
+文件：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli add-auxiliary-file DATASET_ID FILE \
+  --id he_wsi \
+  --label "H&E whole-slide image" \
+  --source-url https://example.org/source.ome.tif \
+  --media-type image/tiff
+```
+
+命令只接受常规文件，将源文件复制到数据集目录内的 `auxiliary/` 子目录，在复制过程中计算
+SHA-256，并原子更新 `manifest.json`。辅助文件 ID 在单个数据集内唯一且只使用小写字母、
+数字、下划线或连字符；命令拒绝符号链接、路径穿越、未知数据集和已有 ID/文件，不执行覆盖。
+主 `checksum.sha256` 和 `validation_report.json` 继续只描述 `.h5mu`，辅助文件大小、哈希和
+来源记录在 manifest 中。注册后需重启应用，使启动时的只读辅助文件索引重新加载。
 
 现有 schema 1.1 catalogue 升级时，先停止应用并执行只读预检，再运行正式迁移：
 
@@ -456,6 +480,8 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 - `/api/databases`、`/api/databases/{dataset_id}`：Database JSON 列表和详情。
 - `/api/challenges`、`/api/challenges/{split_id}`：按 Challenge 聚合的 JSON 列表和详情。
 - `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
+- `/downloads/{dataset_id}/auxiliary/{auxiliary_id}`：下载所属数据文件的辅助文件，支持 HTTP
+  Range 请求和断点续传。
 - `/healthz`：供部署脚本和监控使用的健康检查，不创建访客会话或行为事件。
 
 网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
@@ -468,12 +494,18 @@ Database 缩略图是样本或切片的辅助预览，并不都属于 H&E，也�
 `dataset_id` 与 `<dataset_id>.webp` 精确匹配；没有匹配文件时不渲染图片。该展示信息仅存在
 于 HTML 页面，不改变 catalogue schema、导入流程或 Database JSON API。
 
+已注册的辅助文件只在所属 Database 或 Challenge 文件的详情下载面板中显示，不形成独立的
+目录条目或详情页。Database/Challenge JSON 响应通过 `auxiliary_files` 返回稳定 ID、标签、
+文件名、媒体类型、大小、SHA-256、来源和本站下载 URL；某个数据文件的辅助清单无效、文件
+缺失或大小不符时，该清单会被隐藏，不影响主目录、API 或主文件下载。
+
 Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表示 `complete`、
 `missing_train` 或 `missing_test`，并通过 `train`、`test` 字段返回对应的完整文件记录或
 `null`。旧版 `/datasets`、
 `/datasets/{dataset_id}` 和 `/api/datasets*` 路由已经移除，不提供兼容重定向。
 
-生产部署时可以在下载路由前增加 Nginx；当前开发版本由 FastAPI 直接传输文件。
+生产部署时可以在下载路由前增加 Nginx；代理必须保留 HEAD、`Range`、`If-Range`、
+`Content-Range` 和 `Accept-Ranges` 语义。当前开发版本由 FastAPI 直接传输文件。
 
 ## 目录
 
@@ -482,9 +514,9 @@ src/iscdc/       应用、校验、导入和数据划分代码
 tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
 assets/templates 网页模板
 assets/static    页面样式及 `<dataset_id>.webp` 数据库网页缩略图
-assets/he_wsi_thumbnails  本地原始图像（忽略，不纳入版本控制）
+assets/he_wsi_thumbnails  仅用于缩略图采集的本地来源图像（忽略，不纳入版本控制）
 assets/examples  示例人工元数据
-data/            catalog.db、analytics.db 和已导入文件（不纳入版本控制）
+data/            catalog.db、analytics.db、已导入文件及其辅助文件（不纳入版本控制）
 temp/            待整理数据及其隔离的转换产物（不纳入版本控制）
 exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
 .codex/          本地 agent 角色和并发配置（不纳入版本控制）
