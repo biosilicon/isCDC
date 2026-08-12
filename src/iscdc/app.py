@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 import mimetypes
@@ -73,6 +74,13 @@ DOWNLOAD_FILES = {
 logger = logging.getLogger(__name__)
 
 DATABASE_THUMBNAIL_DIRECTORY = "database_thumbnails"
+
+
+def _static_asset_version(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return ""
 
 
 def _discover_database_thumbnails(static_dir: Path) -> dict[str, str]:
@@ -319,6 +327,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
     templates.env.filters["challenge_type_label"] = CHALLENGE_TYPE_LABELS.__getitem__
+    templates.env.globals["static_styles_version"] = _static_asset_version(
+        settings.static_dir / "styles.css"
+    )
     templates.env.globals["database_thumbnail_paths"] = _discover_database_thumbnails(
         settings.static_dir
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 from dataclasses import replace
 from urllib.parse import quote
@@ -138,6 +139,8 @@ async def test_database_pages_show_matching_thumbnail(
     static_dir = tmp_path / "static"
     thumbnail_dir = static_dir / "database_thumbnails"
     thumbnail_dir.mkdir(parents=True)
+    stylesheet_content = b".database-thumbnail-list img { max-height: 4rem; }"
+    (static_dir / "styles.css").write_bytes(stylesheet_content)
     thumbnail_content = b"test webp content"
     thumbnail_path = thumbnail_dir / "test_rna_protein.webp"
     thumbnail_path.write_bytes(thumbnail_content)
@@ -153,8 +156,10 @@ async def test_database_pages_show_matching_thumbnail(
         )
 
     expected_url = "/static/database_thumbnails/test_rna_protein.webp"
+    expected_styles_version = hashlib.sha256(stylesheet_content).hexdigest()[:12]
     for page in (listing, detail):
         assert page.status_code == 200
+        assert f"/static/styles.css?v={expected_styles_version}" in page.text
         assert expected_url in page.text
         assert "Thumbnail for Test RNA and protein dataset" in page.text
         assert 'loading="lazy"' in page.text
