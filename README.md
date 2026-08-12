@@ -21,6 +21,12 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 `.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
 
+Database 的网页缩略图以 `<dataset_id>.webp` 命名并提交到
+`assets/static/database_thumbnails/`。下载得到的 PNG、JPEG 或 TIFF 原图只保存在被忽略的
+`assets/he_wsi_thumbnails/`，不纳入版本控制。并非每个 Database 都有缩略图；缺图时页面不
+显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
+[HE WSI 图像访问链接](HE_WSI图像访问链接.md)。
+
 ## 快速开始
 
 项目使用 `conda iscdc` 环境。激活环境后：
@@ -113,6 +119,9 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 脚本默认等待应用就绪 60 秒；可通过 `ISCDC_DEPLOY_START_TIMEOUT` 设置 1 至 600 秒的等待
 时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
 也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
+应用在启动时扫描 Database 缩略图并计算 `styles.css` 的内容版本；新增或删除缩略图、修改
+页面样式后，应执行 `./deploy_test.sh restart`。样式表 URL 会携带内容哈希，重启后浏览器会
+自动获取新版本，无需用户手动清除缓存。
 
 ## 使用 PyTorch 训练
 
@@ -439,8 +448,8 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 
 ## 网页和 API
 
-- `/databases`：浏览和筛选 `full` Database 文件。
-- `/databases/{dataset_id}`：Database 元数据、模态规模、校验信息和下载。
+- `/databases`：浏览和筛选 `full` Database 文件；有图条目显示紧凑缩略图。
+- `/databases/{dataset_id}`：Database 元数据、模态规模、缩略图（如有）、校验信息和下载。
 - `/challenges`：以 `split_id` 为单位浏览和筛选 Challenge。
 - `/challenges/{split_id}`：同页查看 Challenge 对应的 train/test 文件；尚未配对时会明确
   标记缺失侧。
@@ -455,6 +464,10 @@ Challenge 的任一侧满足全部筛选条件时，响应
 仍会返回该 Challenge 已导入的完整两侧。若同一个 `split_id` 下存在多份 train 或多份
 test，目录会报告完整性错误，不会静默选择其中一份。
 
+Database 缩略图是样本或切片的辅助预览，并不都属于 H&E，也不能替代原始 WSI。页面按
+`dataset_id` 与 `<dataset_id>.webp` 精确匹配；没有匹配文件时不渲染图片。该展示信息仅存在
+于 HTML 页面，不改变 catalogue schema、导入流程或 Database JSON API。
+
 Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表示 `complete`、
 `missing_train` 或 `missing_test`，并通过 `train`、`test` 字段返回对应的完整文件记录或
 `null`。旧版 `/datasets`、
@@ -468,7 +481,8 @@ Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表�
 src/iscdc/       应用、校验、导入和数据划分代码
 tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
 assets/templates 网页模板
-assets/static    页面样式及数据库网页缩略图
+assets/static    页面样式及 `<dataset_id>.webp` 数据库网页缩略图
+assets/he_wsi_thumbnails  本地原始图像（忽略，不纳入版本控制）
 assets/examples  示例人工元数据
 data/            catalog.db、analytics.db 和已导入文件（不纳入版本控制）
 temp/            待整理数据及其隔离的转换产物（不纳入版本控制）

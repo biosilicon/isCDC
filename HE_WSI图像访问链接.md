@@ -2,11 +2,11 @@
 
 核查日期：2026-08-12
 
-本表覆盖 `catalog.db` 中全部 35 个 `dataset_type = full` 数据集。这里将 **WSI H&E** 严格限定为可访问的原始全分辨率切片文件（如 SVS、OME-TIFF 或全分辨率 TIFF）；`tissue_hires_image.png`、普通 JPEG、荧光/明场图像和论文组合图不计作 WSI。缩略图只收录能够对应到具体样本或切片的官方图像；若官方仅公开了非 WSI 的全分辨率病理 TIFF，则从该 TIFF 确定性生成缩略图并明确标注。找不到可无歧义对应的图像时标记为未找到。表中图片由本地文件显示，点击图片优先打开官方源文件或首选 WSI。
+本表覆盖 `catalog.db` 中全部 35 个 `dataset_type = full` 数据集。这里将 **WSI H&E** 严格限定为可访问的原始全分辨率切片文件（如 SVS、OME-TIFF 或全分辨率 TIFF）；`tissue_hires_image.png`、普通 JPEG、荧光/明场图像和论文组合图不计作 WSI。缩略图只收录能够对应到具体样本或切片的官方图像；若官方仅公开了非 WSI 的全分辨率病理 TIFF，则从该 TIFF 确定性生成缩略图并明确标注。找不到可无歧义对应的图像时标记为未找到。表中预览由仓库内的网页 WebP 显示；存在明确官方图片或 WSI 直链时，图片链接指向该来源，否则指向本地 WebP。
 
 核查结论：35 个数据集中有 **3 个**找到了公开、可直接访问的原始 WSI H&E 文件；有 **32 个**取得了可与样本/切片一一对应的缩略图，其中 29 个是官方现成图像，2 个由官方样本级病理 TIFF 确定性生成，1 个是明确对应单一样本的官方论文组合图。其余 3 个未发现能够保证一一对应的公开缩略图。
 
-| 数据集名称 | 数据记录页链接 | WSI H&E 直接文件链接 | 缩略图（本地） |
+| 数据集名称 | 数据记录页链接 | WSI H&E 直接文件链接 | 网页缩略图 |
 | --- | --- | --- | --- |
 | Human Lymph Node Visium CytAssist Gene and Protein Expression, Section A1<br><code>2024_nm_human_lymph_nodes_A1</code> | [GSE263617](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE263617) · [GSM8195494（RNA）](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8195494) · [GSM8195498（protein）](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8195498) | 未发现公开的原始 WSI H&E；GEO 仅提供 Space Ranger 预览/配准图像 | <a href="assets/static/database_thumbnails/2024_nm_human_lymph_nodes_A1.webp"><img src="assets/static/database_thumbnails/2024_nm_human_lymph_nodes_A1.webp" alt="A1 tissue hires thumbnail" width="220"></a><br>GEO `tissue_hires_image.png` |
 | Human Lymph Node Visium CytAssist Gene and Protein Expression, Section D1<br><code>2024_nm_human_lymph_nodes_D1</code> | [GSE263617](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE263617) · [GSM8195496（RNA）](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8195496) · [GSM8195500（protein）](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8195500) | 未发现公开的原始 WSI H&E；GEO 仅提供 Space Ranger 预览/配准图像 | <a href="assets/static/database_thumbnails/2024_nm_human_lymph_nodes_D1.webp"><img src="assets/static/database_thumbnails/2024_nm_human_lymph_nodes_D1.webp" alt="D1 tissue hires thumbnail" width="220"></a><br>GEO `tissue_hires_image.png` |
@@ -53,5 +53,5 @@
 - STARmap PLUS 两个缩略图从 Zenodo 官方归档中各自样本目录下的 `plaque.tif` 生成，原 TIFF 与数据集 replicate 名称一一对应；这些是淀粉样斑块病理图像，不是 H&E。
 - Stereo-CITE-seq 的 Zenodo 处理包只含 RNA/ADT H5AD，没有独立图像。仅 `sample_01` 能与论文明确标注的 “mouse thymus 1” Extended Data Fig. 8 一一对应；`sample_02`、`sample_03` 未使用其他切片图像代替。STOmicsDB 原项目的组织切片染色协议为 IF，不是 H&E。
 - Xenium RCC 缩略图直接解码自同一 10x 分析摘要的 `overview_scan` 字段；页面样本标题和本库切片一致。其 H&E WSI 仍使用 10x 发布的同一运行 OME-TIFF。
-- 完整性校验：报告中的 35 个数据集 ID 与 `catalog.db` 的 35 个 `full` 数据集逐项一致且无重复；32 个本地图片链接均存在并能识别为 PNG/JPEG。GSE213264 的 8 个本地文件均与作者 GitHub API 返回的 Git blob SHA-1 一致；STARmap ZIP 的 MD5 为 Zenodo 记录给出的 `a7f5a84973bf7bfd58ebb1ea03a7bb3c`；Stereo-CITE-seq 论文图的 MD5 与 PMC 元数据 `16f50873f5e56bef321cebcc03b9fba1` 一致。
-- 提交到仓库的网页缩略图均保存在 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/)；文件名使用数据集 ID，便于一一对应。下载得到的原始图像仅在本地保留，不纳入版本控制。
+- 完整性校验：报告中的 35 个数据集 ID 与 `catalog.db` 的 35 个 `full` 数据集逐项一致且无重复；32 个网页图片链接均存在、可解码为 WebP，且最长边不超过 640 px。采集阶段保存的 GSE213264 8 张原图均与作者 GitHub API 返回的 Git blob SHA-1 一致；STARmap ZIP 的 MD5 为 Zenodo 记录给出的 `a7f5a84973bf7bfd58ebb1ea03a7bb3c`；Stereo-CITE-seq 论文图的 MD5 与 PMC 元数据 `16f50873f5e56bef321cebcc03b9fba1` 一致。
+- 提交到仓库的网页缩略图均保存在 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/)；文件名严格使用 `<dataset_id>.webp`，供 Database 目录页和详情页自动匹配。下载得到的原始图像仅在本地 `assets/he_wsi_thumbnails/` 保留，该目录已被忽略且不纳入版本控制。缺少 WebP 的 3 个条目在网页中不显示占位图像。
