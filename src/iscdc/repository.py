@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Mapping
 
 from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from .schemas import ChallengeType
 
 DERIVED_DATASET_TYPES = ("train", "test")
 CHALLENGE_TYPES = ("same_slice", "cross_slice_same_subject", "cross_subject")
+ChallengeSort = Literal["newest", "difficulty_asc", "difficulty_desc"]
 
 
 class CatalogueIntegrityError(RuntimeError):
@@ -209,7 +210,13 @@ def _build_challenges(datasets: list[Dataset], split_ids: list[str]) -> list[Cha
 
 
 def list_challenges(
-    session: Session, filters: CatalogueFilters, offset: int, limit: int
+    session: Session,
+    filters: CatalogueFilters,
+    offset: int,
+    limit: int,
+    *,
+    sort: ChallengeSort = "newest",
+    difficulty_aurocs: Mapping[str, float] | None = None,
 ) -> tuple[list[Challenge], int]:
     _validate_challenge_integrity(session)
     conditions = [
@@ -224,16 +231,27 @@ def list_challenges(
         .subquery()
     )
     total = session.scalar(select(func.count()).select_from(matching_ids)) or 0
-    split_ids = list(
-        session.scalars(
-            select(Dataset.split_id)
-            .where(*conditions)
-            .group_by(Dataset.split_id)
-            .order_by(func.max(Dataset.imported_at).desc(), Dataset.split_id)
-            .offset(offset)
-            .limit(limit)
-        ).all()
+    split_id_query = (
+        select(Dataset.split_id)
+        .where(*conditions)
+        .group_by(Dataset.split_id)
+        .order_by(func.max(Dataset.imported_at).desc(), Dataset.split_id)
     )
+    if sort == "newest":
+        split_ids = list(
+            session.scalars(split_id_query.offset(offset).limit(limit)).all()
+        )
+    else:
+        difficulty_aurocs = difficulty_aurocs or {}
+        all_split_ids = list(session.scalars(split_id_query).all())
+        direction = 1 if sort == "difficulty_asc" else -1
+        all_split_ids.sort(
+            key=lambda split_id: (
+                split_id not in difficulty_aurocs,
+                direction * difficulty_aurocs.get(split_id, 0.0),
+            )
+        )
+        split_ids = all_split_ids[offset : offset + limit]
     if not split_ids:
         return [], int(total)
 

@@ -31,6 +31,8 @@
               </div>
               <h2 class="h4 mb-0"><a class="text-decoration-none" href="{{ url_for('challenge_detail', split_id=challenge.split_id) }}"><code>{{ challenge.split_id }}</code></a></h2>
             </div>
+            {% set difficulty = difficulty_by_split_id.get(challenge.split_id) %}
+            {% include "_difficulty_summary.html" %}
           </div>
           <div class="row g-3">
             {% for label, dataset in [('Train', challenge.train), ('Test', challenge.test)] %}
@@ -64,4 +66,5 @@
 
   {% include "_pagination.html" %}
 </div>
+{% include "_difficulty_modal.html" %}
 {% endblock %}

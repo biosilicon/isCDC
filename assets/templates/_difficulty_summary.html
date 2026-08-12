@@ -1,0 +1,18 @@
+<section class="difficulty-summary rounded-3 p-3" aria-label="Challenge difficulty">
+  <h3 class="h6 mb-3">
+    Difficulty
+    <sup><button class="difficulty-help" type="button" data-bs-toggle="modal" data-bs-target="#difficulty-method-modal" aria-label="How Challenge difficulty is calculated">?</button></sup>
+  </h3>
+  {% if difficulty %}
+    <dl class="row small mb-0">
+      <dt class="col-7 text-secondary fw-normal">Domain AUROC</dt>
+      <dd class="col-5 text-end fw-semibold mb-2">{{ "%.3f"|format(difficulty.mean_auroc) }}</dd>
+      <dt class="col-7 text-secondary fw-normal">Shift score</dt>
+      <dd class="col-5 text-end fw-semibold mb-2">{{ "%.3f"|format(difficulty.domain_shift_score) }}</dd>
+      <dt class="col-7 text-secondary fw-normal">Percentile</dt>
+      <dd class="col-5 text-end fw-semibold mb-0">{{ "%.1f"|format(difficulty.difficulty_percentile) }}%</dd>
+    </dl>
+  {% else %}
+    <p class="small text-secondary mb-0">Unavailable</p>
+  {% endif %}
+</section>

@@ -28,12 +28,18 @@ from .analytics import (
 from .auxiliary import AuxiliaryFile, AuxiliaryFileError, load_auxiliary_files
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
+from .difficulty_snapshot import (
+    ChallengeDifficulty,
+    DifficultySnapshotError,
+    load_difficulty_snapshot,
+)
 from .models import Dataset
 from .repository import (
     DERIVED_DATASET_TYPES,
     CatalogueFilters,
     CatalogueIntegrityError,
     Challenge,
+    ChallengeSort,
     count_challenges,
     count_databases,
     get_challenge,
@@ -43,6 +49,7 @@ from .repository import (
     list_databases,
 )
 from .schemas import (
+    ChallengeDifficultyResponse,
     ChallengeListResponse,
     ChallengeResponse,
     ChallengeType,
@@ -311,11 +318,21 @@ def _challenge_response(
     challenge: Challenge,
     request: Request,
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+    difficulty: ChallengeDifficulty | None,
 ) -> ChallengeResponse:
     return ChallengeResponse(
         split_id=challenge.split_id,
         challenge_type=challenge.challenge_type,
         status=challenge.status,
+        difficulty=(
+            ChallengeDifficultyResponse(
+                mean_auroc=difficulty.mean_auroc,
+                domain_shift_score=difficulty.domain_shift_score,
+                difficulty_percentile=difficulty.difficulty_percentile,
+            )
+            if difficulty is not None
+            else None
+        ),
         train=(
             _data_file_response(challenge.train, request, auxiliary_files_by_dataset)
             if challenge.train is not None
@@ -351,6 +368,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 dataset_id,
                 exc_info=True,
             )
+
+    difficulty_by_split_id: dict[str, ChallengeDifficulty] = {}
+    difficulty_snapshot = None
+    difficulty_path = settings.database_path.parent / "challenge_difficulty.json"
+    try:
+        with session_factory() as session:
+            catalogue_challenges, challenge_total = list_challenges(
+                session, CatalogueFilters(), offset=0, limit=1_000_000
+            )
+        if len(catalogue_challenges) != challenge_total:
+            raise DifficultySnapshotError(
+                "unable to load the complete Challenge catalogue for difficulty validation"
+            )
+        difficulty_snapshot = load_difficulty_snapshot(
+            difficulty_path, catalogue_challenges
+        )
+        difficulty_by_split_id = dict(difficulty_snapshot.by_split_id)
+    except (CatalogueIntegrityError, DifficultySnapshotError) as exc:
+        logger.warning(
+            "Challenge difficulty information is unavailable; continuing without it: %s",
+            exc,
+        )
 
     analytics: AnalyticsService | None = None
     if settings.analytics_enabled:
@@ -395,6 +434,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.engine = engine
     application.state.session_factory = session_factory
     application.state.analytics = analytics
+    application.state.difficulty_snapshot = difficulty_snapshot
+    application.state.difficulty_path = difficulty_path
     application.state.templates = templates
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
@@ -539,6 +580,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         technology: str | None = None,
         spatial_unit: str | None = None,
         challenge_type: OptionalChallengeTypeQuery = None,
+        sort: ChallengeSort = "newest",
         page: Annotated[int, Query(ge=1)] = 1,
     ):
         filters = _filters(
@@ -547,8 +589,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected = _selected_filters(
             q, organism, tissue, modality, technology, spatial_unit, challenge_type
         )
+        if sort != "newest":
+            selected["sort"] = sort
         per_page = 20
-        challenges, total = list_challenges(session, filters, (page - 1) * per_page, per_page)
+        challenges, total = list_challenges(
+            session,
+            filters,
+            (page - 1) * per_page,
+            per_page,
+            sort=sort,
+            difficulty_aurocs={
+                split_id: difficulty.mean_auroc
+                for split_id, difficulty in difficulty_by_split_id.items()
+            },
+        )
         facets = get_facets(session, DERIVED_DATASET_TYPES)
         event_type = "catalogue_search" if selected else "page_view"
         prepare_analytics_event(
@@ -565,6 +619,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "total": total,
                 "facets": facets,
                 "selected": selected,
+                "selected_sort": sort,
+                "difficulty_by_split_id": difficulty_by_split_id,
+                "difficulty_sort_options": (
+                    ("newest", "Newest"),
+                    ("difficulty_asc", "Difficulty: low to high"),
+                    ("difficulty_desc", "Difficulty: high to low"),
+                ),
                 **_pagination_context(request, selected, page, total, per_page),
             },
         )
@@ -590,7 +651,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return templates.TemplateResponse(
             request=request,
             name="challenge_detail.html",
-            context={"challenge": challenge, "download_kinds": DOWNLOAD_FILES},
+            context={
+                "challenge": challenge,
+                "difficulty": difficulty_by_split_id.get(challenge.split_id),
+                "download_kinds": DOWNLOAD_FILES,
+            },
         )
 
     @application.get("/downloads/{dataset_id}/{kind}", name="download_file")
@@ -734,6 +799,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         technology: str | None = None,
         spatial_unit: str | None = None,
         challenge_type: OptionalChallengeTypeQuery = None,
+        sort: ChallengeSort = "newest",
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> ChallengeListResponse:
@@ -742,10 +808,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _filters(q, organism, tissue, modality, technology, spatial_unit, challenge_type),
             offset,
             limit,
+            sort=sort,
+            difficulty_aurocs={
+                split_id: difficulty.mean_auroc
+                for split_id, difficulty in difficulty_by_split_id.items()
+            },
         )
         return ChallengeListResponse(
             items=[
-                _challenge_response(challenge, request, auxiliary_files_by_dataset)
+                _challenge_response(
+                    challenge,
+                    request,
+                    auxiliary_files_by_dataset,
+                    difficulty_by_split_id.get(challenge.split_id),
+                )
                 for challenge in challenges
             ],
             total=total,
@@ -764,7 +840,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         challenge = get_challenge(session, split_id)
         if challenge is None:
             raise HTTPException(status_code=404, detail="Challenge not found")
-        return _challenge_response(challenge, request, auxiliary_files_by_dataset)
+        return _challenge_response(
+            challenge,
+            request,
+            auxiliary_files_by_dataset,
+            difficulty_by_split_id.get(challenge.split_id),
+        )
 
     return application
 

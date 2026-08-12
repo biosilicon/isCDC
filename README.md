@@ -1,8 +1,9 @@
 # isCDC
 
 isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组学科研数据目录。它在导入时验证
-`.h5mu` 结构及人工维护的元数据；网页目录请求读取 `catalog.db` 和启动时建立的辅助文件索引，
-不读取大型表达矩阵，访客会话和行为事件则写入完全独立的 `analytics.db`。网页将 `full`
+`.h5mu` 结构及人工维护的元数据；网页目录请求读取 `catalog.db`、启动时建立的辅助文件索引和
+经过校验的 `challenge_difficulty.json` 快照，不读取大型表达矩阵，访客会话和行为事件则写入
+完全独立的 `analytics.db`。网页将 `full`
 文件作为 Database 展示，并将
 相同 `split_id` 的 `train`/`test` 文件聚合为一个 Challenge。每个 Challenge 通过
 `derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
@@ -123,8 +124,9 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 脚本默认等待应用就绪 60 秒；可通过 `ISCDC_DEPLOY_START_TIMEOUT` 设置 1 至 600 秒的等待
 时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
 也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
-应用在启动时扫描 Database 缩略图和辅助文件 manifest，并计算 `styles.css` 的内容版本；新增
-或删除缩略图、注册或移除辅助文件、修改页面样式后，应执行 `./deploy_test.sh restart`。
+应用在启动时扫描 Database 缩略图和辅助文件 manifest、校验 Challenge difficulty 快照，并计算
+`styles.css` 的内容版本；新增或删除缩略图、注册或移除辅助文件、重新生成 difficulty 快照或
+修改页面样式后，应执行 `./deploy_test.sh restart`。
 样式表 URL 会携带内容哈希，重启后浏览器会自动获取新版本，无需用户手动清除缓存。
 
 ## 使用 PyTorch 训练
@@ -488,13 +490,71 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 划分 ID、Challenge 类型、来源全集、选择规则、特征策略、处理说明和
 `random_seed: null`。
 
+## Challenge distribution-shift 难度参考
+
+可以通过固定的 domain classifier 离线评估全部完整 Challenge。该功能使用 RNA 输入判断每个
+observation 来自 train 还是 test；held-out AUROC 越高，只表示在统一 representation 下两侧越
+容易区分、跨分布泛化要求可能越强。它不是绝对难度、biological shift 或下游模型性能估计。
+
+先安装可选分析依赖：
+
+```bash
+conda activate iscdc
+python -m pip install -r requirements-difficulty.txt
+```
+
+然后运行：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty
+```
+
+若默认输出已经存在，应在确认需要发布新快照后执行：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty --force
+./deploy_test.sh restart
+```
+
+`--seed` 可覆盖默认随机种子，`--input-modality` 可为整个榜单选择另一输入模态，`--output`
+可写入不供网站读取的独立实验快照。网站只读取 `catalog.db` 同目录下固定名称
+`challenge_difficulty.json`；不同输入模态生成的结果不得混入同一个排名。
+
+默认以 seed 42 对每侧最多抽取 5,000 个 observation，进行 5 次重采样和每次 5-fold
+held-out evaluation。raw counts 先按 observation 归一化至总量 10,000 并 `log1p`；已经声明为
+`normalized` 的输入不再二次归一化。每个 fold 只使用其 classifier training 部分选择最多
+2,000 个高方差共同 feature、拟合 whitened 50 维 PCA 和固定 L2 logistic regression，避免
+representation 或 classifier 泄漏 held-out 数据。train/test feature 仅取稳定 ID 交集，标记为
+未测量的 feature 会被排除，不会以人工补零制造 domain 信号。
+
+结果默认原子写入 `data/challenge_difficulty.json`；已有文件必须显式使用 `--force` 替换。
+也可用 `--output`、`--seed` 和 `--input-modality` 生成独立快照，但不同输入模态的结果不应混在
+同一个榜单比较。JSON 保留每折和每次重复 AUROC、mean/std AUROC、派生 shift score、global
+及同 `challenge_type` percentile、实际样本/feature 数、文件校验和、随机种子与采样 ID hash、
+稳定性统计和 warning。单个 Challenge 失败时仍会出现在报告中，但 rank/percentile 为 `null`，
+且 CLI 返回非零状态。
+
+网站在应用启动时读取并校验该快照，确认报告版本、Challenge 集合、类型、train/test 数据集 ID
+和 SHA-256 均与当前 catalogue 一致后，才会发布其中的指标。重新生成报告后需要重启应用。
+报告缺失、损坏、过期或单个 Challenge 评估失败时，目录和 API 仍可用，对应 difficulty 显示为
+`Unavailable` 或 `null`。
+
+Challenge 目录卡片和详情页只发布 mean AUROC、shift score 与 global percentile；标题旁的
+`?` 会打开方法和解释限制说明。更完整的标准差、重复评估、采样和诊断信息只保留在离线报告
+中，不作为网页核心指标。
+
+sample、source dataset 及可用的 donor/slice 等层级只用于诊断潜在混杂，不参与 AUROC 修正。
+domain classifier 无法区分 biological 与 technical shift；normalization、平台、batch 或样本边界
+均可能造成高 separability，解释排名时必须结合 `challenge_type`、metadata hierarchy 和 warning。
+
 ## 网页和 API
 
 - `/databases`：浏览和筛选 `full` Database 文件；有图条目显示紧凑缩略图。
 - `/databases/{dataset_id}`：Database 元数据、模态规模、缩略图（如有）、校验信息和下载。
-- `/challenges`：以 `split_id` 为单位浏览和筛选 Challenge。
-- `/challenges/{split_id}`：同页查看 Challenge 对应的 train/test 文件；尚未配对时会明确
-  标记缺失侧。
+- `/challenges`：以 `split_id` 为单位浏览和筛选 Challenge，并可按 difficulty 从低到高或
+  从高到低排序。
+- `/challenges/{split_id}`：同页查看 Challenge 对应的 train/test 文件和 difficulty 核心指标；
+  尚未配对时会明确标记缺失侧。
 - `/api/databases`、`/api/databases/{dataset_id}`：Database JSON 列表和详情。
 - `/api/challenges`、`/api/challenges/{split_id}`：按 Challenge 聚合的 JSON 列表和详情。
 - `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
@@ -503,7 +563,10 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 - `/healthz`：供部署脚本和监控使用的健康检查，不创建访客会话或行为事件。
 
 网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
-筛选；Challenge 列表还支持 `challenge_type`，API 列表另外支持 `limit`、`offset`。
+筛选；Challenge 列表还支持 `challenge_type` 和
+`sort=newest|difficulty_asc|difficulty_desc`，API 列表另外支持 `limit`、`offset`。difficulty
+排序先作用于完整筛选结果再分页；没有可用指标的 Challenge 在两个 difficulty 方向中都排在
+末尾。
 Challenge 的任一侧满足全部筛选条件时，响应
 仍会返回该 Challenge 已导入的完整两侧。若同一个 `split_id` 下存在多份 train 或多份
 test，目录会报告完整性错误，不会静默选择其中一份。
@@ -520,7 +583,8 @@ Database 是例外：其 WebP 必须直接由对应 WSI 副本生成，但仍只
 
 Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表示 `complete`、
 `missing_train` 或 `missing_test`，并通过 `train`、`test` 字段返回对应的完整文件记录或
-`null`。旧版 `/datasets`、
+`null`。`difficulty` 返回可空的 `mean_auroc`、`domain_shift_score` 和全局
+`difficulty_percentile`；这些字段仅是 train/test separability proxy。旧版 `/datasets`、
 `/datasets/{dataset_id}` 和 `/api/datasets*` 路由已经移除，不提供兼容重定向。
 
 生产部署时可以在下载路由前增加 Nginx；代理必须保留 HEAD、`Range`、`If-Range`、
@@ -535,7 +599,7 @@ assets/templates 网页模板
 assets/static    页面样式；本地 `<dataset_id>.webp` 缩略图被忽略
 assets/he_wsi_thumbnails  仅用于缩略图采集的本地来源图像（忽略，不纳入版本控制）
 assets/examples  示例人工元数据
-data/            catalog.db、analytics.db、已导入文件及其辅助文件（不纳入版本控制）
+data/            catalog.db、analytics.db、difficulty 快照、已导入文件及辅助文件（忽略）
 temp/            待整理数据及其隔离的转换产物（不纳入版本控制）
 exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
 .codex/          本地 agent 角色和并发配置（不纳入版本控制）

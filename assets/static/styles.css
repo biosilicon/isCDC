@@ -44,6 +44,37 @@ a {
   border: 1px solid #e2e7f0;
 }
 
+.difficulty-summary {
+  min-width: 13rem;
+  background: #fff;
+  border: 1px solid #dce3ef;
+}
+
+.difficulty-detail .difficulty-summary {
+  max-width: 24rem;
+  background: var(--catalogue-wash);
+}
+
+.difficulty-help {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  color: var(--catalogue-blue);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+  vertical-align: super;
+  background: #fff;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+}
+
+.difficulty-help:hover,
+.difficulty-help:focus-visible {
+  color: #fff;
+  background: var(--catalogue-blue);
+}
+
 .database-thumbnail img {
   display: block;
   width: auto;

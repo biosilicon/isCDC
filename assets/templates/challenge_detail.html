@@ -19,6 +19,10 @@
     {% endif %}
   </div>
 
+  <div class="mt-4 difficulty-detail">
+    {% include "_difficulty_summary.html" %}
+  </div>
+
   {% if challenge.train %}
     {% set dataset = challenge.train %}
     {% set challenge_file = true %}
@@ -43,4 +47,5 @@
     </section>
   {% endif %}
 </div>
+{% include "_difficulty_modal.html" %}
 {% endblock %}

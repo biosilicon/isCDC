@@ -25,6 +25,17 @@ discovery and the stylesheet content version are computed at application startup
 running application after adding or removing thumbnails or auxiliary files, or changing
 `assets/static/styles.css`.
 
+Challenge difficulty is an offline, catalogue-wide distribution-separability snapshot stored in
+the ignored `challenge_difficulty.json` beside `catalog.db`; do not add it to the catalogue schema,
+train/test `.h5mu` files, metadata, or manifests. Generate it with the fixed domain-classifier
+workflow and publish only mean AUROC, shift score, and global percentile on Challenge list/detail
+pages and JSON responses. The website must validate the complete Challenge set, type, input
+modality, train/test IDs and checksums, and metric consistency at startup. Missing, invalid, stale,
+or individually failed results must fail open as unavailable without breaking the catalogue.
+Difficulty ordering must be applied after filtering and before pagination, with unavailable items
+last in either direction. Re-evaluate after any Challenge import, replacement, or removal, and
+restart the application after replacing the snapshot.
+
 Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
 `analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
 writes, and retention cleanup must fail open so catalogue pages, JSON APIs, and downloads remain
@@ -72,6 +83,16 @@ The project uses requirements files and a small Makefile command set documented 
 - `make lint` — run Ruff static-analysis checks.
 - `make run` — start the FastAPI application with Uvicorn.
 - `make import-example` — import the documented example dataset into the local catalogue.
+
+Install the optional domain-classifier dependency set through `requirements-difficulty.txt` (it is
+already included by `requirements-dev.txt`) and evaluate the complete Challenge catalogue with:
+
+```bash
+PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty [--force]
+```
+
+The default published destination is `challenge_difficulty.json` beside `catalog.db`. A non-default
+`--output` is an experiment snapshot and is not read by the website.
 
 Invoke the standalone schema 1.2 splitter with:
 
@@ -124,6 +145,12 @@ protection, atomic replacement rollback, invalid inputs, single-dataset and `--a
 batch skipping, and partial failures. Real WSI thumbnail generation additionally requires visual
 inspection for completeness, orientation, tile seams, and black borders, plus direct detail-page
 and static-file reads after restarting the application.
+
+Difficulty publication tests must cover strict snapshot validation, startup-only loading,
+fail-open missing/corrupt/stale reports, nullable API results, list/detail presentation, one shared
+accessible method modal per page, ascending and descending ordering before pagination, and
+unavailable items sorting last. Domain-classifier tests must retain same-distribution, clear-shift,
+label-swap, reproducibility, seed stability, and class-imbalance sanity checks.
 
 The complete suite requires these local real-data fixtures:
 

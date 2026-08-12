@@ -1,0 +1,18 @@
+<div class="modal fade" id="difficulty-method-modal" tabindex="-1" aria-labelledby="difficulty-method-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="difficulty-method-title">How difficulty is calculated</h2>
+      </div>
+      <div class="modal-body">
+        <p>Difficulty is a train–test distribution-separability proxy. A fixed logistic regression domain classifier predicts whether each observation comes from train or test using a leakage-controlled PCA representation of their common input features.</p>
+        <p>AUROC comes only from held-out predictions after reproducible, balanced sampling. A value near 0.5 means the domains are difficult to distinguish; a higher value indicates a larger measured shift.</p>
+        <p>The shift score is <code>2 × (AUROC − 0.5)</code>, clipped to 0–1. Percentile is the Challenge's relative position among successfully evaluated Challenges in the current catalogue.</p>
+        <p class="mb-0"><strong>This is not an absolute difficulty score.</strong> It cannot distinguish biological from technical shift and does not predict downstream model performance.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from copy import deepcopy
 from dataclasses import replace
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import httpx
@@ -17,6 +19,7 @@ from iscdc.app import create_app
 from iscdc.database import create_database_engine, create_session_factory
 from iscdc.importer import import_dataset
 from iscdc.models import Dataset, Modality
+from iscdc.repository import CatalogueFilters, list_challenges
 from iscdc.splitter import spatial_split
 
 pytestmark = pytest.mark.anyio
@@ -109,6 +112,118 @@ def _app_with_challenge(
         product_path, metadata_path = products[side]
         import_dataset(product_path, _write_product_metadata(product_path, metadata_path), settings)
     return create_app(settings)
+
+
+def _write_difficulty_report(settings, scores):  # noqa: ANN001, ANN202
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        challenges, total = list_challenges(
+            session, CatalogueFilters(), offset=0, limit=1_000_000
+        )
+        assert len(challenges) == total
+        rows = []
+        successful_scores = [score for score in scores.values() if score is not None]
+        for challenge in challenges:
+            score = scores.get(challenge.split_id)
+            common = {
+                "split_id": challenge.split_id,
+                "challenge_type": challenge.challenge_type,
+                "input_modality": "rna",
+            }
+            if score is None:
+                rows.append({**common, "status": "failed"})
+                continue
+            assert challenge.train is not None and challenge.test is not None
+            lower_count = sum(value < score for value in successful_scores)
+            percentile = (
+                100 * lower_count / (len(successful_scores) - 1)
+                if len(successful_scores) > 1
+                else 0.0
+            )
+            rows.append(
+                {
+                    **common,
+                    "status": "success",
+                    "train": {
+                        "dataset_id": challenge.train.dataset_id,
+                        "sha256": challenge.train.sha256,
+                    },
+                    "test": {
+                        "dataset_id": challenge.test.dataset_id,
+                        "sha256": challenge.test.sha256,
+                    },
+                    "mean_auroc": score,
+                    "domain_shift_score": max(0.0, min(1.0, 2 * (score - 0.5))),
+                    "difficulty_percentile": percentile,
+                }
+            )
+    engine.dispose()
+    report = {
+        "report_version": "1.0",
+        "method_version": "1.0",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "parameters": {"input_modality": "rna"},
+        "challenge_count": len(rows),
+        "success_count": sum(row["status"] == "success" for row in rows),
+        "failure_count": sum(row["status"] == "failed" for row in rows),
+        "challenges": rows,
+    }
+    path = settings.database_path.parent / "challenge_difficulty.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return path
+
+
+def _clone_challenge(settings, source_split_id, split_id, suffix):  # noqa: ANN001, ANN202
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        sources = list(
+            session.scalars(select(Dataset).where(Dataset.split_id == source_split_id)).all()
+        )
+        assert len(sources) == 2
+        for source in sources:
+            derivation = deepcopy(source.derivation)
+            assert derivation is not None
+            derivation["split_id"] = split_id
+            clone = Dataset(
+                dataset_id=f"{source.dataset_id}_{suffix}",
+                schema_version=source.schema_version,
+                dataset_type=source.dataset_type,
+                title=f"{source.title} {suffix}",
+                description=source.description,
+                source=deepcopy(source.source),
+                organism=deepcopy(source.organism),
+                tissue=deepcopy(source.tissue),
+                spatial_unit=source.spatial_unit,
+                coordinate_unit=source.coordinate_unit,
+                pairing_type=source.pairing_type,
+                derivation=derivation,
+                split_id=split_id,
+                sample_ids=deepcopy(source.sample_ids),
+                keywords=deepcopy(source.keywords),
+                license=deepcopy(source.license),
+                publication=deepcopy(source.publication),
+                additional_metadata=deepcopy(source.additional_metadata),
+                n_obs=source.n_obs,
+                coordinate_dimensions=source.coordinate_dimensions,
+                file_size=source.file_size,
+                sha256=source.sha256,
+                storage_dir=f"{source.storage_dir}_{suffix}",
+                validation_warning_count=source.validation_warning_count,
+                imported_at=source.imported_at,
+                modalities=[
+                    Modality(
+                        name=modality.name,
+                        technology=deepcopy(modality.technology),
+                        value_type=modality.value_type,
+                        n_obs=modality.n_obs,
+                        n_vars=modality.n_vars,
+                    )
+                    for modality in source.modalities
+                ],
+            )
+            session.add(clone)
+        session.commit()
+    engine.dispose()
 
 
 async def test_home_and_database_pages_use_new_entry_points(
@@ -311,6 +426,123 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
     with analytics.session_factory() as session:
         event_types = session.scalars(select(VisitEvent.event_type)).all()
     assert "challenge_detail_view" in event_types
+
+
+async def test_challenge_difficulty_is_shown_in_pages_api_and_method_modal(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    _write_difficulty_report(settings, {"web_split_v1": 0.75})
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get("/challenges")
+        detail = await client.get("/challenges/web_split_v1")
+        api_listing = await client.get("/api/challenges")
+        api_detail = await client.get("/api/challenges/web_split_v1")
+
+    expected = {
+        "mean_auroc": 0.75,
+        "domain_shift_score": 0.5,
+        "difficulty_percentile": 0.0,
+    }
+    for page in (listing, detail):
+        assert page.status_code == 200
+        assert "Domain AUROC" in page.text
+        assert "0.750" in page.text
+        assert "Shift score" in page.text
+        assert "0.500" in page.text
+        assert "0.0%" in page.text
+        assert page.text.count('id="difficulty-method-modal"') == 1
+        assert "train–test distribution-separability proxy" in page.text
+        assert "not an absolute difficulty score" in page.text
+        modal = page.text.split('id="difficulty-method-modal"', maxsplit=1)[1]
+        assert modal.count('data-bs-dismiss="modal"') == 1
+        assert ">Close</button>" in modal
+    assert api_listing.json()["items"][0]["difficulty"] == expected
+    assert api_detail.json()["difficulty"] == expected
+
+
+async def test_challenge_difficulty_sorting_precedes_pagination_and_places_missing_last(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    _clone_challenge(settings, "web_split_v1", "low_shift", "low")
+    _clone_challenge(settings, "web_split_v1", "unavailable_shift", "unavailable")
+    _write_difficulty_report(
+        settings,
+        {
+            "web_split_v1": 0.8,
+            "low_shift": 0.6,
+            "unavailable_shift": None,
+        },
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        ascending = await client.get("/api/challenges?sort=difficulty_asc")
+        descending = await client.get("/api/challenges?sort=difficulty_desc")
+        second_descending = await client.get(
+            "/api/challenges?sort=difficulty_desc&limit=1&offset=1"
+        )
+        listing = await client.get("/challenges?sort=difficulty_desc")
+        invalid = await client.get("/api/challenges?sort=unknown")
+
+    assert [item["split_id"] for item in ascending.json()["items"]] == [
+        "low_shift",
+        "web_split_v1",
+        "unavailable_shift",
+    ]
+    assert [item["split_id"] for item in descending.json()["items"]] == [
+        "web_split_v1",
+        "low_shift",
+        "unavailable_shift",
+    ]
+    assert second_descending.json()["total"] == 3
+    assert second_descending.json()["items"][0]["split_id"] == "low_shift"
+    assert descending.json()["items"][-1]["difficulty"] is None
+    assert listing.text.index("web_split_v1") < listing.text.index("low_shift")
+    assert listing.text.index("low_shift") < listing.text.index("unavailable_shift")
+    assert 'option value="difficulty_desc" selected' in listing.text
+    assert invalid.status_code == 422
+
+
+async def test_challenge_difficulty_snapshot_is_fail_open_and_loaded_only_at_startup(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    report_path = _write_difficulty_report(settings, {"web_split_v1": 0.7})
+    app = create_app(settings)
+    _write_difficulty_report(settings, {"web_split_v1": 0.9})
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        unchanged = await client.get("/api/challenges/web_split_v1")
+    assert unchanged.json()["difficulty"]["mean_auroc"] == 0.7
+
+    refreshed_app = create_app(settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=refreshed_app), base_url="http://test"
+    ) as client:
+        refreshed = await client.get("/api/challenges/web_split_v1")
+    assert refreshed.json()["difficulty"]["mean_auroc"] == 0.9
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["challenges"][0]["train"]["sha256"] = "0" * 64
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    stale_app = create_app(settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=stale_app), base_url="http://test"
+    ) as client:
+        stale_page = await client.get("/challenges")
+        stale_api = await client.get("/api/challenges/web_split_v1")
+    assert stale_page.status_code == 200
+    assert "Unavailable" in stale_page.text
+    assert stale_api.status_code == 200
+    assert stale_api.json()["difficulty"] is None
 
 
 async def test_challenge_filter_matches_one_side_but_returns_both(

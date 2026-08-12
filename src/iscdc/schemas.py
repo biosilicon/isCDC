@@ -295,10 +295,17 @@ class DatabaseListResponse(BaseModel):
     offset: int
 
 
+class ChallengeDifficultyResponse(BaseModel):
+    mean_auroc: float
+    domain_shift_score: float
+    difficulty_percentile: float
+
+
 class ChallengeResponse(BaseModel):
     split_id: str
     challenge_type: ChallengeType
     status: Literal["complete", "missing_train", "missing_test"]
+    difficulty: ChallengeDifficultyResponse | None
     train: DataFileResponse | None
     test: DataFileResponse | None
 

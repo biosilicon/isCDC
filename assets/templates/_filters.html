@@ -25,6 +25,14 @@
         </select>
       </div>
     {% endfor %}
+    {% if difficulty_sort_options is defined %}
+      <div class="col-sm-6 col-lg">
+        <label class="form-label" for="sort">Sort</label>
+        <select class="form-select" id="sort" name="sort">
+          {% for value, label in difficulty_sort_options %}<option value="{{ value }}" {% if selected_sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
     <div class="col-12 d-flex gap-2">
       <button class="btn btn-primary" type="submit">Apply filters</button>
       <a class="btn btn-outline-secondary" href="{{ url_for(clear_endpoint) }}">Clear</a>

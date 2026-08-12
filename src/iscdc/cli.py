@@ -97,6 +97,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Atomically replace existing thumbnails."
     )
 
+    difficulty_parser = subparsers.add_parser(
+        "evaluate-challenge-difficulty",
+        help="Evaluate and rank Challenge train-test separability offline.",
+    )
+    difficulty_parser.add_argument(
+        "--input-modality",
+        default="rna",
+        help="Use one input modality consistently across the generated ranking (default: rna).",
+    )
+    difficulty_parser.add_argument(
+        "--seed", type=int, default=42, help="Base seed for deterministic repeated evaluation."
+    )
+    difficulty_parser.add_argument(
+        "--output",
+        type=Path,
+        help="JSON destination (default: beside catalog.db as challenge_difficulty.json).",
+    )
+    difficulty_parser.add_argument(
+        "--force", action="store_true", help="Atomically replace an existing report."
+    )
+
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
         help="Stage, validate, back up, and activate the schema 1.2 catalogue.",
@@ -298,6 +319,45 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "generate-wsi-thumbnails":
         return _run_wsi_thumbnail_generation(args)
+    if args.command == "evaluate-challenge-difficulty":
+        try:
+            from .difficulty import (
+                DifficultyConfig,
+                DifficultyEvaluationError,
+                evaluate_and_write,
+            )
+        except ModuleNotFoundError:
+            print(
+                "challenge difficulty evaluation requires optional analysis dependencies; "
+                "install requirements-difficulty.txt",
+                file=sys.stderr,
+            )
+            return 1
+        settings = Settings.from_environment()
+        output = args.output or settings.database_path.parent / "challenge_difficulty.json"
+        try:
+            report = evaluate_and_write(
+                settings,
+                output,
+                config=DifficultyConfig(input_modality=args.input_modality, seed=args.seed),
+                force=args.force,
+            )
+        except (DifficultyEvaluationError, OSError, SQLAlchemyError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(
+            json.dumps(
+                {
+                    "output": str(output.expanduser().resolve()),
+                    "challenge_count": report["challenge_count"],
+                    "success_count": report["success_count"],
+                    "failure_count": report["failure_count"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0 if report["failure_count"] == 0 else 1
     if args.command == "migrate-schema-1-2":
         settings = Settings.from_environment()
         options = {"dry_run": args.dry_run}
