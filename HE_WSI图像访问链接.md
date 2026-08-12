@@ -72,4 +72,4 @@
 - Stereo-CITE-seq 的 Zenodo 处理包只含 RNA/ADT H5AD，没有独立图像。仅 `sample_01` 能与论文明确标注的 “mouse thymus 1” Extended Data Fig. 8 一一对应；`sample_02`、`sample_03` 未使用其他切片图像代替。STOmicsDB 原项目的组织切片染色协议为 IF，不是 H&E。
 - Xenium RCC 缩略图直接解码自同一 10x 分析摘要的 `overview_scan` 字段；页面样本标题和本库切片一致。其 H&E WSI 仍使用 10x 发布的同一运行 OME-TIFF。
 - 完整性校验：报告中的 35 个数据集 ID 与 `catalog.db` 的 35 个 `full` 数据集逐项一致且无重复；32 个网页图片链接均存在、可解码为 WebP，且最长边不超过 640 px。采集阶段保存的 GSE213264 8 张原图均与作者 GitHub API 返回的 Git blob SHA-1 一致；STARmap ZIP 的 MD5 为 Zenodo 记录给出的 `a7f5a84973bf7bfd58ebb1ea03a7bb3c`；Stereo-CITE-seq 论文图的 MD5 与 PMC 元数据 `16f50873f5e56bef321cebcc03b9fba1` 一致。
-- 提交到仓库的网页缩略图均保存在 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/)；文件名严格使用 `<dataset_id>.webp`，供 Database 目录页和详情页自动匹配。缩略图采集阶段下载的原始图像仅在本地 `assets/he_wsi_thumbnails/` 保留；正式入库的三个 WSI 则位于所属数据集的 `auxiliary/` 子目录。两处均已忽略且不纳入版本控制。缺少 WebP 的 3 个条目在网页中不显示占位图像。
+- 网页缩略图仅在本地 [`assets/static/database_thumbnails/`](assets/static/database_thumbnails/) 保留，已从 Git 追踪中移除；文件名严格使用 `<dataset_id>.webp`，供 Database 目录页和详情页自动匹配。缩略图采集阶段下载的原始图像仅在本地 `assets/he_wsi_thumbnails/` 保留；正式入库的三个 WSI 则位于所属数据集的 `auxiliary/` 子目录。三处均已忽略且不纳入版本控制。缺少 WebP 的 3 个条目在网页中不显示占位图像。

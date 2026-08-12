@@ -4,10 +4,10 @@
 
 Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
-Committed Database thumbnails live under `assets/static/database_thumbnails/` as WebP files named
-exactly `<dataset_id>.webp`. Keep images downloaded only to produce thumbnails in the ignored
-`assets/he_wsi_thumbnails/` directory; do not commit them. A missing thumbnail is valid and must
-not produce a placeholder or empty image container. Store downloadable WSI and other formal
+Local Database thumbnails live under the ignored `assets/static/database_thumbnails/` directory
+as WebP files named exactly `<dataset_id>.webp`; do not commit them. Keep images downloaded only
+to produce thumbnails in the separately ignored `assets/he_wsi_thumbnails/` directory. A missing
+thumbnail is valid and must not produce a placeholder or empty image container. Store downloadable WSI and other formal
 auxiliary files under the owning dataset's ignored `data/datasets/<dataset_id>/auxiliary/`
 directory, never under assets, and register them through `add-auxiliary-file` so manifest 1.1
 records their stable ID, original filename, media type, size, SHA-256, source URL, and retrieval

@@ -22,9 +22,10 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 `.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
 
-Database 的网页缩略图以 `<dataset_id>.webp` 命名并提交到
-`assets/static/database_thumbnails/`。仅用于制作缩略图的 PNG、JPEG 或 TIFF 来源文件保存在
-被忽略的 `assets/he_wsi_thumbnails/`，不纳入版本控制；正式提供下载的 WSI 则注册到所属
+Database 的网页缩略图以 `<dataset_id>.webp` 命名，保存在被忽略的
+`assets/static/database_thumbnails/`，不纳入版本控制；新工作区和部署环境需要单独准备这些本地
+文件。仅用于制作缩略图的 PNG、JPEG 或 TIFF 来源文件保存在被忽略的
+`assets/he_wsi_thumbnails/`；正式提供下载的 WSI 则注册到所属
 数据集的 `data/datasets/<dataset_id>/auxiliary/`。并非每个 Database 都有缩略图或 WSI；缺图
 时页面不显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
 [HE WSI 图像访问链接](HE_WSI图像访问链接.md)。
@@ -513,7 +514,7 @@ Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表�
 src/iscdc/       应用、校验、导入和数据划分代码
 tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
 assets/templates 网页模板
-assets/static    页面样式及 `<dataset_id>.webp` 数据库网页缩略图
+assets/static    页面样式；本地 `<dataset_id>.webp` 缩略图被忽略
 assets/he_wsi_thumbnails  仅用于缩略图采集的本地来源图像（忽略，不纳入版本控制）
 assets/examples  示例人工元数据
 data/            catalog.db、analytics.db、已导入文件及其辅助文件（不纳入版本控制）

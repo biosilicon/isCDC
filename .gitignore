@@ -9,3 +9,4 @@ temp/
 .vscode/
 .codex/
 assets/he_wsi_thumbnails/
+assets/static/database_thumbnails/*.webp
