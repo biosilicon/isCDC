@@ -70,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("h5mu", type=Path)
     import_parser.add_argument("metadata", type=Path)
+    import_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help=(
+            "Atomically replace the indexed dataset while preserving its identity and "
+            "auxiliaries."
+        ),
+    )
 
     auxiliary_parser = subparsers.add_parser(
         "add-auxiliary-file",
@@ -269,7 +277,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "import-dataset":
         try:
-            result = import_dataset(args.h5mu, args.metadata, Settings.from_environment())
+            result = import_dataset(
+                args.h5mu,
+                args.metadata,
+                Settings.from_environment(),
+                replace=args.replace,
+            )
         except (CatalogueSchemaError, DatasetImportError, MetadataLoadError) as exc:
             print(str(exc), file=sys.stderr)
             if isinstance(exc, DatasetImportError) and exc.report:

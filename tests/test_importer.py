@@ -10,6 +10,7 @@ import pytest
 import yaml
 from sqlalchemy import func, select
 
+from iscdc.auxiliary import register_auxiliary_file
 from iscdc.database import create_database_engine, create_session_factory
 from iscdc.importer import DatasetImportError, import_dataset
 from iscdc.models import Dataset
@@ -86,6 +87,74 @@ def test_duplicate_dataset_is_rejected(settings, write_h5mu, write_metadata):
 
     with pytest.raises(DatasetImportError, match="already indexed"):
         import_dataset(source, metadata, settings)
+
+
+def test_replace_atomically_updates_dataset_and_preserves_auxiliary_files(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    source = write_h5mu()
+    metadata = write_metadata()
+    original = import_dataset(source, metadata, settings)
+    auxiliary_source = tmp_path / "slide.svs"
+    auxiliary_source.write_bytes(b"small deterministic slide")
+    register_auxiliary_file(
+        original.dataset_id,
+        auxiliary_source,
+        settings,
+        auxiliary_id="he_wsi",
+        label="H&E whole-slide image",
+        source_url="https://example.org/slide.svs",
+        media_type="image/tiff",
+    )
+
+    replacement = md.read_h5mu(source)
+    replacement_path = tmp_path / "replacement.h5mu"
+    try:
+        replacement.mod["rna"].X[0, 0] = 99
+        replacement.write_h5mu(replacement_path)
+    finally:
+        replacement.file.close()
+
+    result = import_dataset(replacement_path, metadata, settings, replace=True)
+
+    assert result.sha256 != original.sha256
+    destination = settings.data_root / original.dataset_id
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert [entry["id"] for entry in manifest["auxiliary_files"]] == ["he_wsi"]
+    assert (destination / "auxiliary" / "slide.svs").read_bytes() == auxiliary_source.read_bytes()
+    staging_root = settings.data_root / ".staging"
+    assert not staging_root.exists() or list(staging_root.iterdir()) == []
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        assert session.scalar(select(func.count()).select_from(Dataset)) == 1
+        assert session.get(Dataset, original.dataset_id).sha256 == result.sha256
+    engine.dispose()
+
+
+def test_failed_replace_leaves_original_dataset_untouched(
+    metadata_values, settings, write_h5mu, write_metadata
+):
+    source = write_h5mu()
+    metadata = write_metadata()
+    original = import_dataset(source, metadata, settings)
+    invalid_values = deepcopy(metadata_values)
+    invalid_values["database"]["tissue"] = "lung"
+
+    with pytest.raises(DatasetImportError, match="validation failed"):
+        import_dataset(
+            source,
+            write_metadata(invalid_values, "invalid.yaml"),
+            settings,
+            replace=True,
+        )
+
+    destination = settings.data_root / original.dataset_id
+    stored_hash = hashlib.sha256((destination / "dataset.h5mu").read_bytes()).hexdigest()
+    assert stored_hash == original.sha256
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        assert session.get(Dataset, original.dataset_id).sha256 == original.sha256
+    engine.dispose()
 
 
 def test_failed_validation_leaves_no_dataset(metadata_values, settings, write_h5mu, write_metadata):

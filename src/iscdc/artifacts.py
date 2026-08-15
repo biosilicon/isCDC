@@ -22,6 +22,7 @@ def build_manifest(
     file_size: int,
     sha256: str,
     imported_at: datetime,
+    auxiliary_files: list[dict] | None = None,
 ) -> dict:
     return {
         "manifest_version": MANIFEST_VERSION,
@@ -50,7 +51,7 @@ def build_manifest(
             "validation_report": {"name": "validation_report.json"},
             "checksum": {"name": "checksum.sha256"},
         },
-        "auxiliary_files": [],
+        "auxiliary_files": auxiliary_files or [],
     }
 
 
@@ -62,10 +63,18 @@ def write_dataset_artifacts(
     sha256: str,
     imported_at: datetime,
     checked_at: datetime,
+    auxiliary_files: list[dict] | None = None,
 ) -> None:
     write_json(
         directory / "manifest.json",
-        build_manifest(metadata, outcome, file_size, sha256, imported_at),
+        build_manifest(
+            metadata,
+            outcome,
+            file_size,
+            sha256,
+            imported_at,
+            auxiliary_files=auxiliary_files,
+        ),
     )
     write_json(
         directory / "validation_report.json",

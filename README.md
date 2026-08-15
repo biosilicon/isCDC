@@ -10,6 +10,9 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 
 面向数据访问者的下载、`.h5mu` 结构、元数据字段和分析注意事项见
 [数据使用说明](数据使用说明.md)。
+Schema 1.2 还允许在来源标签完整对齐时保存统一格式的可选
+`mdata.obs["cell_type"]`；当前 catalogue 的逐数据集来源结论见
+[cell type 来源核验记录](cell_type来源核验记录.md)。
 
 ## 目录约定
 
@@ -142,6 +145,7 @@ python -m pip install -r requirements-pytorch.txt
 表达矩阵载入内存。默认样本包含模态张量、模态存在性 mask、特征测量 mask、空间坐标和
 观测 ID。两模态 schema 1.2 文件始终完全配对；三个及以上模态的 `partially_shared`
 文件仍以零向量表示缺失模态，训练时必须同时使用 mask，不能将占位零解释为真实测量值。
+`cell_type` 不是每个文件都有；只有确认列存在后才能将它加入 `obs_columns`。
 
 ```python
 import torch
@@ -214,6 +218,12 @@ make import-example
 PYTHONPATH=src python -m iscdc.cli import-dataset dataset.h5mu metadata.yaml
 ```
 
+替换已经入库的同一数据集必须显式执行：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli import-dataset dataset.h5mu metadata.yaml --replace
+```
+
 导入会在临时目录完成复制、SHA-256 计算、结构验证和元数据一致性检查。全部成功后，
 正式目录包含：
 
@@ -226,7 +236,11 @@ checksum.sha256
 auxiliary/              # 可选；仅在注册辅助文件后创建
 ```
 
-重复的 `dataset_id` 会被拒绝。初版不提供覆盖、在线编辑或删除功能。
+重复的 `dataset_id` 默认会被拒绝。管理员可显式使用 `import-dataset --replace` 原子替换
+同一数据集；替换必须保持 `dataset_type`，衍生数据还须保持
+`derivation.construction_type`、按顺序排列的 `source_dataset_ids`、`split_id` 和
+`challenge_type` 不变，并会校验和保留已注册的辅助文件。校验或事务失败时原目录与
+catalogue 记录保持不变。该命令不提供在线编辑或删除功能。
 
 目录严格只接受 `schema_version: "1.2"`，不兼容 1.1 或更早版本。恰好两个模态时必须为
 `same_unit`；三个及以上模态可为 `same_unit` 或 `partially_shared`，但不接受 `unpaired`。
@@ -235,6 +249,17 @@ auxiliary/              # 可选；仅在注册辅助文件后创建
 数据集。导入器会对照来源文件验证每个来源观测对象和特征合并策略；若目录中已经存在
 相同 `split_id` 的另一侧，还会检查 train/test 的 `challenge_type` 一致且不包含重复来源
 观测对象。
+
+### 可选 cell type 注释
+
+`cell_type` 只存放在顶层 `mdata.obs["cell_type"]`，不写入 `metadata.yaml`，也不增加
+catalogue 列、网页/API 字段或筛选项。原始公开来源提供与全部顶层 observation 一一对齐的
+离散标签时才应加入；只覆盖部分 observation 时省略整列，不用空值或推断标签补齐。
+
+存在时必须是无序 pandas categorical，所有 category 都是非空、无首尾空白的字符串，并且
+不得保留未使用 category。保留来源的分类层级、语义与拼写，不强行把不同数据集映射到统一
+ontology；来源明确使用 `Unlabeled` 等类别时可以原样保留。完整规则见
+[数据库存储规范 1.2 的顶层观测章节](数据库存储规范_v1.2.md)。
 
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
@@ -421,6 +446,8 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 `regions` 中出现的样本完整进入训练集。两侧必须都非空，并且每个来源模态在两侧均须
 有观测。空间划分固定使用 `feature_merge_policy: preserve`，保留来源特征顺序、矩阵值、
 坐标、观测 ID、模态成员关系以及 `histone_mark`、`genome_assembly` 等附加数据库元数据。
+若来源包含有效且完整的 `cell_type`，两侧会按各自 observation 子集传播该列并移除未使用
+category；来源没有该列时，产物也不创建该列。
 
 ### 按完整全集组合
 
@@ -454,6 +481,8 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 同一个全集不能分配给两侧。每侧只有一个来源时记录为 `subset`，多个来源时记录为
 `composite`。所有来源必须使用相同的空间单位和坐标单位，同名模态必须使用相同的
 `value_type`，最终 train/test 模态集合必须一致且至少包含两个模态。
+每个输出侧仅在分配给该侧的所有来源都包含有效、完整 `cell_type` 时保留该列，并按来源顺序
+及标签首次出现顺序合并 category；任一来源缺少该列时，该输出侧省略整列。
 
 `spatial` 和 `compose` 配置都必须显式声明 `challenge_type`，可选值为：
 

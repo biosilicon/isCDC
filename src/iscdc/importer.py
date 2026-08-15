@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 
 from .artifacts import write_dataset_artifacts
+from .auxiliary import AuxiliaryFileError, load_auxiliary_files
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .models import Dataset, Modality
@@ -44,6 +45,67 @@ def _copy_and_hash(source: Path, destination: Path) -> tuple[int, str]:
             size += len(chunk)
     shutil.copystat(source, destination)
     return size, digest.hexdigest()
+
+
+def _replacement_identity(value: Dataset | MetadataDocument) -> dict[str, Any]:
+    if isinstance(value, Dataset):
+        dataset_type = value.dataset_type
+        derivation = value.derivation
+    else:
+        dataset_type = value.database.dataset_type
+        derivation = (
+            value.database.derivation.model_dump(mode="python")
+            if value.database.derivation
+            else None
+        )
+    identity: dict[str, Any] = {"dataset_type": dataset_type}
+    if derivation is not None:
+        identity.update(
+            {
+                "construction_type": derivation.get("construction_type"),
+                "source_dataset_ids": list(derivation.get("source_dataset_ids", [])),
+                "split_id": derivation.get("split_id"),
+                "challenge_type": derivation.get("challenge_type"),
+            }
+        )
+    return identity
+
+
+def _stage_auxiliary_files(
+    existing_dir: Path, stage_dir: Path, dataset_id: str
+) -> list[dict]:
+    try:
+        files = load_auxiliary_files(existing_dir, dataset_id)
+    except AuxiliaryFileError as exc:
+        raise DatasetImportError(
+            f"Cannot safely preserve auxiliary files for {dataset_id!r}: {exc}"
+        ) from exc
+    if not files:
+        return []
+
+    auxiliary_dir = stage_dir / "auxiliary"
+    auxiliary_dir.mkdir()
+    entries: list[dict] = []
+    for auxiliary in files:
+        destination = auxiliary_dir / auxiliary.filename
+        size, sha256 = _copy_and_hash(auxiliary.path, destination)
+        if size != auxiliary.size or sha256 != auxiliary.sha256:
+            raise DatasetImportError(
+                f"Auxiliary file changed or failed checksum validation: {auxiliary.path}"
+            )
+        entries.append(
+            {
+                "id": auxiliary.auxiliary_id,
+                "label": auxiliary.label,
+                "media_type": auxiliary.media_type,
+                "name": auxiliary.name,
+                "retrieved_at": auxiliary.retrieved_at.isoformat(),
+                "sha256": auxiliary.sha256,
+                "size": auxiliary.size,
+                "source_url": auxiliary.source_url,
+            }
+        )
+    return entries
 
 
 def build_dataset_record(
@@ -94,7 +156,13 @@ def build_dataset_record(
     return dataset
 
 
-def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> ImportResult:
+def import_dataset(
+    h5mu_path: Path,
+    metadata_path: Path,
+    settings: Settings,
+    *,
+    replace: bool = False,
+) -> ImportResult:
     h5mu_path = h5mu_path.expanduser().resolve()
     metadata_path = metadata_path.expanduser().resolve()
     if not h5mu_path.is_file():
@@ -116,9 +184,23 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
     session_factory = create_session_factory(engine)
     source_paths: dict[str, Path] = {}
     peer_paths: list[Path] = []
+    expected_identity: dict[str, Any] | None = None
     with session_factory() as session:
-        if session.scalar(select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id)):
+        existing = session.get(Dataset, dataset_id)
+        if existing is not None and not replace:
             raise DatasetImportError(f"Dataset '{dataset_id}' is already indexed.")
+        if existing is None and replace:
+            raise DatasetImportError(
+                f"Dataset '{dataset_id}' is not indexed and cannot be replaced."
+            )
+        if existing is not None:
+            expected_identity = _replacement_identity(existing)
+            requested_identity = _replacement_identity(metadata)
+            if expected_identity != requested_identity:
+                raise DatasetImportError(
+                    "Replacement must preserve dataset type and derivation identity; "
+                    f"indexed={expected_identity!r}, requested={requested_identity!r}."
+                )
         derivation = metadata.database.derivation
         if derivation is not None:
             sources = list(
@@ -161,11 +243,15 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
                 ).all()
             )
             peer_paths = [settings.data_root / peer.storage_dir / "dataset.h5mu" for peer in peers]
-    if final_dir.exists():
+    if final_dir.exists() and not replace:
         raise DatasetImportError(f"Dataset directory already exists: {final_dir}")
+    if replace and not final_dir.is_dir():
+        raise DatasetImportError(f"Indexed dataset directory is missing: {final_dir}")
 
     stage_dir = Path(tempfile.mkdtemp(prefix=f"{dataset_id}-", dir=staging_root))
-    renamed = False
+    backup_dir: Path | None = None
+    old_moved = False
+    new_moved = False
     try:
         staged_h5mu = stage_dir / "dataset.h5mu"
         file_size, sha256 = _copy_and_hash(h5mu_path, staged_h5mu)
@@ -182,6 +268,9 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
 
         shutil.copy2(metadata_path, stage_dir / "metadata.yaml")
         imported_at = checked_at
+        auxiliary_files = (
+            _stage_auxiliary_files(final_dir, stage_dir, dataset_id) if replace else []
+        )
         write_dataset_artifacts(
             stage_dir,
             metadata,
@@ -190,26 +279,47 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
             sha256,
             imported_at,
             checked_at,
+            auxiliary_files=auxiliary_files,
         )
 
         with session_factory() as session:
             try:
-                if session.scalar(
-                    select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id)
-                ):
+                current = session.get(Dataset, dataset_id)
+                if replace:
+                    if current is None or _replacement_identity(current) != expected_identity:
+                        raise DatasetImportError(
+                            f"Dataset '{dataset_id}' changed while replacement was staged."
+                        )
+                    session.delete(current)
+                    session.flush()
+                elif current is not None:
                     raise DatasetImportError(f"Dataset '{dataset_id}' is already indexed.")
                 session.add(
                     build_dataset_record(metadata, outcome, file_size, sha256, imported_at)
                 )
                 session.flush()
+                if replace:
+                    backup_dir = Path(
+                        tempfile.mkdtemp(prefix=f"{dataset_id}-backup-", dir=staging_root)
+                    )
+                    backup_dir.rmdir()
+                    os.replace(final_dir, backup_dir)
+                    old_moved = True
                 os.replace(stage_dir, final_dir)
-                renamed = True
+                new_moved = True
                 session.commit()
             except Exception:
                 session.rollback()
-                if renamed and final_dir.exists():
-                    shutil.rmtree(final_dir)
+                if new_moved and final_dir.exists():
+                    os.replace(final_dir, stage_dir)
+                    new_moved = False
+                if old_moved and backup_dir is not None and backup_dir.exists():
+                    os.replace(backup_dir, final_dir)
+                    old_moved = False
                 raise
+
+        if backup_dir is not None and backup_dir.exists():
+            shutil.rmtree(backup_dir)
 
         return ImportResult(
             dataset_id=dataset_id,
@@ -221,6 +331,8 @@ def import_dataset(h5mu_path: Path, metadata_path: Path, settings: Settings) -> 
     finally:
         if stage_dir.exists():
             shutil.rmtree(stage_dir)
+        if backup_dir is not None and backup_dir.exists() and not final_dir.exists():
+            os.replace(backup_dir, final_dir)
         try:
             staging_root.rmdir()
         except OSError:

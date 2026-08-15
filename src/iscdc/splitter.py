@@ -596,6 +596,7 @@ def _minimal_mudata(
     source_obs_ids: Sequence[str],
     coordinates: np.ndarray,
     database: Mapping[str, Any],
+    cell_types: Sequence[str] | None = None,
 ) -> md.MuData:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=FutureWarning, module="mudata")
@@ -611,6 +612,13 @@ def _minimal_mudata(
         positions
     ].tolist()
     result.obs["source_obs_id"] = np.asarray(source_obs_ids, dtype=object)[positions].tolist()
+    if cell_types is not None:
+        labels = np.asarray(cell_types, dtype=object)[positions].tolist()
+        result.obs["cell_type"] = pd.Categorical(
+            labels,
+            categories=list(dict.fromkeys(labels)),
+            ordered=False,
+        )
     result.obsm["spatial"] = np.asarray(coordinates)[positions].copy()
     result.uns["database"] = deepcopy(dict(database))
     return result
@@ -721,6 +729,11 @@ def _build_spatial_product(
         selected_names,
         np.asarray(source.mdata.obsm["spatial"])[source_positions],
         database,
+        (
+            source.mdata.obs.iloc[source_positions]["cell_type"].astype(object).tolist()
+            if "cell_type" in source.mdata.obs.columns
+            else None
+        ),
     )
 
 
@@ -864,6 +877,9 @@ def _build_composite_product(
     sample_ids: list[str] = []
     source_dataset_ids: list[str] = []
     source_obs_ids: list[str] = []
+    cell_types: list[str] | None = [] if all(
+        "cell_type" in source.mdata.obs.columns for source in sources
+    ) else None
     coordinates: list[np.ndarray] = []
     for source in sources:
         source_names = source.obs_names
@@ -874,6 +890,8 @@ def _build_composite_product(
         )
         source_dataset_ids.extend([source.dataset_id] * len(source_names))
         source_obs_ids.extend(source_names)
+        if cell_types is not None:
+            cell_types.extend(source.mdata.obs["cell_type"].astype(object).tolist())
         coordinates.append(np.asarray(source.mdata.obsm["spatial"]))
 
     pairing_type = _computed_pairing_type(modalities)
@@ -905,6 +923,7 @@ def _build_composite_product(
         source_obs_ids,
         np.vstack(coordinates),
         database,
+        cell_types,
     )
 
 

@@ -55,6 +55,7 @@ def _write_full(
     value_types: dict[str, str] | None = None,
     technologies: dict[str, str] | None = None,
     database_extra: dict | None = None,
+    cell_types: list[str] | None = None,
 ) -> Path:
     obs_names = obs_names or ["cell_1", "cell_2"]
     samples = samples or ["sample_1"] * len(obs_names)
@@ -94,6 +95,12 @@ def _write_full(
         mdata = md.MuData(modalities)
         mdata = mdata[obs_names, :].copy()
     mdata.obs["sample_id"] = samples
+    if cell_types is not None:
+        mdata.obs["cell_type"] = pd.Categorical(
+            cell_types,
+            categories=list(dict.fromkeys(cell_types)),
+            ordered=False,
+        )
     mdata.obsm["spatial"] = np.asarray(coordinates)
     mdata.uns["database"] = {
         "schema_version": schema_version,
@@ -327,6 +334,34 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         source_data.file.close()
 
 
+def test_spatial_propagates_optional_cell_type(tmp_path):
+    source = _write_full(
+        tmp_path,
+        "spatial_labels",
+        obs_names=["c1", "c2", "c3", "c4"],
+        coordinates=np.asarray([[0, 0], [1, 1], [2, 2], [3, 3]], dtype=np.float32),
+        cell_types=["Astro", "Micro", "Astro", "Oligo"],
+    )
+    config = _spatial_config(
+        tmp_path,
+        source,
+        [{"sample_id": "sample_1", "x_min": 1, "x_max": 2, "y_min": 1, "y_max": 2}],
+        output_name="spatial_labels_output",
+    )
+
+    train_path, test_path = spatial_split(config)
+    train = _read(train_path)
+    test = _read(test_path)
+    try:
+        assert list(test.obs["cell_type"].astype(object)) == ["Micro", "Astro"]
+        assert list(test.obs["cell_type"].cat.categories) == ["Micro", "Astro"]
+        assert list(train.obs["cell_type"].astype(object)) == ["Astro", "Oligo"]
+        assert not test.obs["cell_type"].cat.ordered
+    finally:
+        train.file.close()
+        test.file.close()
+
+
 @pytest.mark.parametrize(
     "region",
     [
@@ -448,6 +483,63 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
     finally:
         train.file.close()
         test.file.close()
+
+
+def test_compose_keeps_cell_type_only_when_all_sources_are_annotated(tmp_path):
+    source_a = _write_full(
+        tmp_path,
+        "labels_a",
+        cell_types=["Astro", "Micro"],
+    )
+    source_b = _write_full(
+        tmp_path,
+        "labels_b",
+        cell_types=["Micro", "Oligo"],
+    )
+    source_c = _write_full(
+        tmp_path,
+        "labels_c",
+        cell_types=["Astro", "Oligo"],
+    )
+    source_d = _write_full(tmp_path, "labels_d")
+
+    complete_config = _compose_config(
+        tmp_path,
+        "preserve",
+        [source_a, source_b],
+        [source_c],
+        output_name="complete_labels",
+    )
+    complete_train_path, _ = compose_split(complete_config)
+    complete_train = _read(complete_train_path)
+    try:
+        assert list(complete_train.obs["cell_type"].astype(object)) == [
+            "Astro",
+            "Micro",
+            "Micro",
+            "Oligo",
+        ]
+        assert list(complete_train.obs["cell_type"].cat.categories) == [
+            "Astro",
+            "Micro",
+            "Oligo",
+        ]
+    finally:
+        complete_train.file.close()
+
+    partial_config = _compose_config(
+        tmp_path,
+        "preserve",
+        [source_a, source_d],
+        [source_b],
+        output_name="partial_labels",
+    )
+    partial_train_path, _ = compose_split(partial_config)
+    partial_train = _read(partial_train_path)
+    try:
+        assert "cell_type" not in partial_train.obs.columns
+    finally:
+        partial_train.file.close()
 
 
 def _feature_sources(tmp_path: Path) -> tuple[Path, Path, Path]:

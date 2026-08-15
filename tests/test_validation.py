@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 import mudata as md
+import pandas as pd
 import pytest
 
 from iscdc.schemas import load_metadata
@@ -15,6 +16,58 @@ def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
     assert outcome.valid
     assert outcome.n_obs == 2
     assert set(outcome.modalities) == {"rna", "protein"}
+
+
+def _write_cell_type_variant(path, destination, values) -> None:  # noqa: ANN001
+    mdata = md.read_h5mu(path)
+    try:
+        mdata.obs["cell_type"] = values
+        mdata.write_h5mu(destination)
+    finally:
+        mdata.file.close()
+
+
+def test_optional_cell_type_categorical_passes(tmp_path, write_h5mu, write_metadata):
+    path = tmp_path / "with-cell-type.h5mu"
+    _write_cell_type_variant(
+        write_h5mu(),
+        path,
+        pd.Categorical(["T cell", "B cell"], categories=["T cell", "B cell"]),
+    )
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert outcome.valid
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_code"),
+    [
+        ([1, 2], "invalid_cell_type_dtype"),
+        (pd.Categorical(["T cell", None]), "null_cell_type"),
+        (pd.Categorical(["T cell", " B cell"]), "noncanonical_cell_type_label"),
+        (
+            pd.Categorical(
+                ["T cell", "B cell"], categories=["T cell", "B cell", "Unused"]
+            ),
+            "unused_cell_type_category",
+        ),
+        (
+            pd.Categorical(["T cell", "B cell"], ordered=True),
+            "ordered_cell_type",
+        ),
+    ],
+)
+def test_invalid_optional_cell_type_is_rejected(
+    tmp_path, values, expected_code, write_h5mu, write_metadata
+):
+    path = tmp_path / f"invalid-{expected_code}.h5mu"
+    _write_cell_type_variant(write_h5mu(), path, values)
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert expected_code in {issue.code for issue in outcome.errors}
 
 
 def test_histone_is_a_standard_modality(metadata_values, write_h5mu, write_metadata):

@@ -8,6 +8,7 @@ from typing import Any
 
 import mudata
 import numpy as np
+import pandas as pd
 from pydantic import ValidationError
 from scipy import sparse
 
@@ -176,6 +177,63 @@ def _computed_pairing_type(mdata) -> str:  # noqa: ANN001
     return "unpaired"
 
 
+def _validate_cell_type(mdata, outcome: ValidationOutcome) -> None:  # noqa: ANN001
+    """Validate the optional, observation-aligned canonical cell-type annotation."""
+    if "cell_type" not in mdata.obs.columns:
+        return
+
+    values = mdata.obs["cell_type"]
+    path = "/obs/cell_type"
+    if not isinstance(values.dtype, pd.CategoricalDtype):
+        _error(
+            outcome,
+            "invalid_cell_type_dtype",
+            "Optional obs['cell_type'] must use pandas categorical dtype.",
+            path,
+        )
+        return
+    if values.cat.ordered:
+        _error(
+            outcome,
+            "ordered_cell_type",
+            "Optional obs['cell_type'] must be an unordered categorical.",
+            path,
+        )
+    if not values.notna().all():
+        _error(
+            outcome,
+            "null_cell_type",
+            "Optional obs['cell_type'] must cover every observation when present.",
+            path,
+        )
+
+    categories = list(values.cat.categories)
+    if any(not isinstance(label, str) for label in categories):
+        _error(
+            outcome,
+            "invalid_cell_type_label",
+            "Cell-type categories must be strings.",
+            path,
+        )
+        return
+    if any(not label or label != label.strip() for label in categories):
+        _error(
+            outcome,
+            "noncanonical_cell_type_label",
+            "Cell-type categories must be non-blank strings without surrounding whitespace.",
+            path,
+        )
+    used = set(values.dropna().astype(object))
+    unused = [label for label in categories if label not in used]
+    if unused:
+        _error(
+            outcome,
+            "unused_cell_type_category",
+            "Cell-type categorical metadata must not contain unused categories.",
+            path,
+        )
+
+
 def _validate_common(
     mdata,
     outcome: ValidationOutcome,
@@ -273,6 +331,8 @@ def _validate_common(
                 "Sample IDs differ between the file and metadata YAML.",
                 "/metadata/sample_ids",
             )
+
+    _validate_cell_type(mdata, outcome)
 
     if "spatial" not in mdata.obsm:
         _error(outcome, "missing_spatial", "obsm['spatial'] is required.", "/obsm/spatial")

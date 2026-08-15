@@ -72,6 +72,25 @@ Reject `unpaired` files and do not make the importer silently discard observatio
 `modality_count` from the modality relationship rather than adding a persisted catalogue field,
 and visibly annotate files with more than two modalities in pages and JSON responses.
 
+Top-level `mdata.obs["cell_type"]` is an optional schema 1.2 annotation. Include it only when a
+public source supplies discrete labels aligned to every top-level observation; partial coverage
+requires omitting the whole column. When present, it must be an unordered pandas categorical with
+non-null, non-blank, whitespace-trimmed string labels and no unused categories. Preserve the
+source's biological semantics and spelling rather than imposing a cross-dataset ontology; an
+explicit source category such as `Unlabeled` is valid. Do not add cell type to `metadata.yaml`,
+catalogue tables, pages, JSON responses, or filters. Spatial splits propagate the source column.
+Each composed output side includes it only when every full source assigned to that side has a
+valid complete column; categories are merged in source and first-seen order, otherwise the output
+omits the column.
+
+`import-dataset` rejects existing IDs unless `--replace` is explicit. Replacement must preserve
+the indexed `dataset_type` and, for derived data, the construction type, ordered source IDs,
+`split_id`, and `challenge_type`. It must stage and validate the new data first, checksum and
+preserve registered auxiliary files, and restore the original database record and directory if
+the transaction or filesystem switch fails. Serialize catalogue writes. Rebuild dependent
+Challenges after changing a full source when their propagated annotations need updating, then
+re-evaluate the catalogue-wide difficulty snapshot.
+
 ## Build, Test, and Development Commands
 
 All project commands must be run in the Conda environment named `iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running tests, linting, or starting the application.
