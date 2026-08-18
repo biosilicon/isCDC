@@ -1,0 +1,41 @@
+reference_id: census_human_skin_symbols_2025_11_08
+species: Homo sapiens
+tissue: healthy adult skin
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 73f82ac8-15cc-4fcd-87f8-5683723fce7f
+  dataset_id: f0f0d7c4-3bec-428e-9539-c99d36548d96
+  dataset_version_id: a195debd-2179-4626-be55-68fa6e05d19d
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Reynolds et al. (2021), Science, doi:10.1126/science.aba6500"
+obs_filter: tissue_general == 'skin of body' and disease == 'normal'
+holdout_donor: S4
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE213264_human_skin_spatial_citeseq/dataset.h5mu
+  sha256: c6d831b9dd0b2da3cc49876b155a237987cdd5481a5fc94ff33ed6b700b5b9ee
+  modality: rna
+  min_shared_genes: 10000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 120
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

@@ -1,6 +1,7 @@
 <section class="data-file-section {% if challenge_file %}mt-5 pt-4 border-top{% endif %}">
   <div class="row g-5">
     <div class="col-lg-8">
+      {% if not suppress_summary|default(false) %}
       <div class="d-flex gap-2 flex-wrap mb-3">
         <span class="badge text-bg-primary">{{ dataset.dataset_type }}</span>
         {% for modality in dataset.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
@@ -20,6 +21,7 @@
         <figure class="database-thumbnail database-thumbnail-detail mt-4 mb-0">
           <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ dataset.title }}" loading="lazy" decoding="async">
         </figure>
+      {% endif %}
       {% endif %}
 
       <section class="mt-5">

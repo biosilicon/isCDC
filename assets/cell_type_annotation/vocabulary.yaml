@@ -1,0 +1,25 @@
+schema_version: "1.0"
+vocabulary_version: "2026-08-18"
+cell_types:
+  - {name: B cell, ontology_id: "CL:0000236"}
+  - {name: T cell, ontology_id: "CL:0000084"}
+  - {name: CD4-positive T cell, ontology_id: "CL:0000624"}
+  - {name: CD8-positive T cell, ontology_id: "CL:0000625"}
+  - {name: dendritic cell, ontology_id: "CL:0000451"}
+  - {name: macrophage, ontology_id: "CL:0000235"}
+  - {name: mast cell, ontology_id: "CL:0000097"}
+  - {name: endothelial cell, ontology_id: "CL:0000115"}
+  - {name: epithelial cell, ontology_id: "CL:0000066"}
+  - {name: stromal cell, ontology_id: "CL:0000499"}
+  - {name: astrocyte, ontology_id: "CL:0000127"}
+  - {name: oligodendrocyte, ontology_id: "CL:0000128"}
+  - {name: oligodendrocyte precursor cell, ontology_id: "CL:0002453"}
+  - {name: microglial cell, ontology_id: "CL:0000129"}
+  - {name: neuron, ontology_id: "CL:0000540"}
+  - {name: inhibitory interneuron, ontology_id: "CL:0000498"}
+  - {name: smooth muscle cell, ontology_id: "CL:0000192"}
+prediction_statuses:
+  - name: Mixed
+    description: Multiple biological types contribute materially to an RCTD composition.
+  - name: Uncertain
+    description: Quality, calibration, convergence, or separability is insufficient.

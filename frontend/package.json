@@ -1,0 +1,22 @@
+{
+  "name": "iscdc-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^24.0.0"
+  },
+  "scripts": {
+    "build": "esbuild src/cell_type_visualization.js --bundle --minify --tree-shaking=true --platform=browser --target=es2022 --outfile=../assets/static/cell_type_visualization.js",
+    "test": "node --test",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@deck.gl/core": "9.3.7",
+    "@deck.gl/layers": "9.3.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "esbuild": "0.28.1"
+  }
+}

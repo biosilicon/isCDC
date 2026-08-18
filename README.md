@@ -12,7 +12,9 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 [数据使用说明](数据使用说明.md)。
 Schema 1.2 还允许在来源标签完整对齐时保存统一格式的可选
 `mdata.obs["cell_type"]`；当前 catalogue 的逐数据集来源结论见
-[cell type 来源核验记录](cell_type来源核验记录.md)。
+[cell type 来源核验记录](cell_type来源核验记录.md)。离线推断与空间可视化的最终架构和
+35 数据集运行经验见 [实施与完成记录](plan.md) 和
+[细胞类型注释经验总结](annotation/细胞类型注释经验总结.md)。
 
 ## 目录约定
 
@@ -131,6 +133,54 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 `styles.css` 的内容版本；新增或删除缩略图、注册或移除辅助文件、重新生成 difficulty 快照或
 修改页面样式后，应执行 `./deploy_test.sh restart`。
 样式表 URL 会携带内容哈希，重启后浏览器会自动获取新版本，无需用户手动清除缓存。
+
+### Cell type 空间可视化
+
+Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h5mu`、catalogue schema、
+公共 `/api/databases*` 响应和筛选字段均不因此改变。应用默认在
+`data/cell_type_visualizations/` 查找产物，也可设置
+`ISCDC_CELL_TYPE_VISUALIZATION_ROOT`。启动时会校验最新 `status.json`、源文件 SHA-256、
+二维坐标声明、manifest 与各压缩点位文件；缺失、失败、过期或损坏的项目不会在页面产生
+占位区。替换产物后必须重启应用。
+
+2026-08-18 的当前全量结果为 35/35 Database success：3 个使用来源标签，1 个 Xenium
+使用 SingleR，31 个 bin/spot 使用 RCTD `full`。这只是当前 sidecar 快照，不把推断标签提升
+为 canonical dataset metadata。完整 provenance/QC 结果见
+[`iteration_history.yaml`](assets/cell_type_annotation/iteration_history.yaml)，方法学与失败修复经验见
+[`annotation/细胞类型注释经验总结.md`](annotation/细胞类型注释经验总结.md)。
+
+参考构建、SingleR、RCTD、校准、生成和审计必须在隔离环境中运行，不能向网站使用的
+`iscdc` 环境安装 R 或注释依赖：
+
+```bash
+conda env create -f annotation/environment.yml
+conda run -n iscdc-cell-annotation Rscript -e \
+  'options(timeout=600); install.packages("https://cloud.r-project.org/src/contrib/renv_1.2.4.tar.gz", repos=NULL, type="source")'
+conda run -n iscdc-cell-annotation Rscript -e \
+  'renv::restore(lockfile="annotation/renv.lock", library=.libPaths()[1], prompt=FALSE)'
+
+conda run -n iscdc-cell-annotation env PYTHONPATH=src \
+  python -m iscdc.cell_type_annotation build-cell-type-reference REFERENCE_ID
+conda run -n iscdc-cell-annotation env PYTHONPATH=src \
+  python -m iscdc.cell_type_annotation generate-cell-type-visualization DATASET_ID [--force]
+conda run -n iscdc-cell-annotation env PYTHONPATH=src \
+  python -m iscdc.cell_type_annotation audit-cell-type-visualizations --all --jobs 20
+```
+
+来源已有完整标签的 Database 直接保留原始 `mdata.obs["cell_type"]` 拼写；Xenium 推断使用
+SingleR，bin/spot 使用 RCTD `full` mode。推断生物类型映射到稳定 CL ID，`Mixed` 和
+`Uncertain` 仅作为无 CL ID 的预测状态。完整分数或 weights、校准结果和 QC 报告只保存于
+sidecar generation。科学质量门槛失败会发布完整失败状态并立即撤下旧成功结果。
+
+浏览器端源码与锁文件位于 `frontend/`，生产 bundle 会提交到 `assets/static/`。构建机固定
+使用 Node 24 LTS；Node 不属于 `iscdc` Conda 环境：
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
 
 ## 使用 PyTorch 训练
 
@@ -255,6 +305,10 @@ catalogue 记录保持不变。该命令不提供在线编辑或删除功能。
 `cell_type` 只存放在顶层 `mdata.obs["cell_type"]`，不写入 `metadata.yaml`，也不增加
 catalogue 列、网页/API 字段或筛选项。原始公开来源提供与全部顶层 observation 一一对齐的
 离散标签时才应加入；只覆盖部分 observation 时省略整列，不用空值或推断标签补齐。
+
+Database 页面可以另外显示独立、版本化并经启动校验的 cell type sidecar；其中的推断标签、
+confidence、`Mixed` 和 `Uncertain` 不属于本字段，也不会写回 `.h5mu` 或公共 JSON。该边界见
+[Cell type 空间可视化](#cell-type-空间可视化)。
 
 存在时必须是无序 pandas categorical，所有 category 都是非空、无首尾空白的字符串，并且
 不得保留未使用 category。保留来源的分类层级、语义与拼写，不强行把不同数据集映射到统一

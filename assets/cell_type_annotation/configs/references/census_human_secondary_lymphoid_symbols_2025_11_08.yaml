@@ -1,0 +1,42 @@
+reference_id: census_human_secondary_lymphoid_symbols_2025_11_08
+species: Homo sapiens
+tissue: lymph node and spleen
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: cc431242-35ea-41e1-a100-41e0dec2665b
+  dataset_id: 1b350d0a-4535-4879-beb6-1142f3f94947
+  dataset_version_id: 7c98dadf-b249-4873-83be-51776674e9e1
+  license: &census_license
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Immune aging project, Nature Immunology (2025), doi:10.1038/s41590-025-02241-4"
+obs_filter: >-
+  (tissue_general == 'lymph node' or tissue_general == 'spleen') and disease == 'normal'
+holdout_donor: 778C
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/2024_nm_human_lymph_nodes_A1/dataset.h5mu
+  sha256: 823d1832b31a03b9a727f2066890e25659cde2717b9dac7c6e934ed966eaefac
+  modality: rna
+  min_shared_genes: 12000
+sampling: &standard_sampling
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration: &standard_calibration
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 120
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

@@ -1,0 +1,46 @@
+reference_id: census_mouse_kidney_symbols_2025_11_08
+species: Mus musculus
+tissue: kidney
+version: "2025-11-08.2"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 0b9d8a04-bb9d-44da-aa27-705bb65b54eb
+  dataset_id: 48b37086-25f7-4ecd-be66-f5bb378e3aea
+  dataset_version_id: e2ffd4e4-9e8e-43c7-acb5-79486754ffd0
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Tabula Muris Senis (2020), Nature, doi:10.1038/s41586-020-2496-1"
+obs_filter: >-
+  tissue_general == 'kidney' and disease == 'normal' and
+  cell_type_ontology_term_id != 'CL:0000542' and
+  cell_type_ontology_term_id != 'CL:0000394' and
+  cell_type_ontology_term_id != 'CL:0002306' and
+  cell_type_ontology_term_id != 'CL:1001016'
+holdout_donor: 30-M-2
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE213264_mouse_kidney_spatial_citeseq/dataset.h5mu
+  sha256: 93c26f0f2d21a6c52251c1b2ea59f6c8883c3b97f9e2fefa6daa713f2f8aff07
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 500
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 30
+  mixed_spots: 360
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

@@ -1,0 +1,45 @@
+reference_id: census_mouse_thalamus_e18_symbols_2025_11_08
+species: Mus musculus
+tissue: developing thalamus, E16.5-E18.5 proxy for E18.5 brain
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: d5cad3f0-56b6-4fbe-8f2b-be92a8c7820f
+  dataset_id: 79a2344d-eddd-45b1-b376-39eddfab1899
+  dataset_version_id: 54750b7d-dee9-4c09-ab1b-914973b7662d
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Atlas of the developing mouse thalamus, doi:10.1101/2022.02.18.481097"
+obs_filter: >-
+  tissue_general == 'brain' and disease == 'normal' and
+  (donor_id == 'e16.5_control_rep1' or donor_id == 'e16.5_control_rep2' or
+  donor_id == 'e16.5_control_rep3' or donor_id == 'e18.5_control_rep1' or
+  donor_id == 'e18.5_control_rep2' or donor_id == 'e18.5_control_rep3')
+holdout_donor: e18.5_control_rep3
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/MISAR_seq_mouse_brain_E18_5_S1/dataset.h5mu
+  sha256: 4f9dcda9ce0f8018cde542394c3d3a5637457c79f3289b6afb223d83ebb76dc4
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260819
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 500
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 30
+  mixed_spots: 240
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

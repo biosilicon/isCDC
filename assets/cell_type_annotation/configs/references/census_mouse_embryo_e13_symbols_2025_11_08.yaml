@@ -1,0 +1,44 @@
+reference_id: census_mouse_embryo_e13_symbols_2025_11_08
+species: Mus musculus
+tissue: whole embryo E11.5-E13.5 proxy
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 45d5d2c3-bc28-4814-aed6-0bb6f0e11c82
+  dataset_id: dcfd4feb-18a3-4b30-81d7-1b0c544a8ab3
+  dataset_version_id: a5a85963-8004-41a1-8eb5-ca65266d89c3
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Qiu et al. (2024), Nature, doi:10.1038/s41586-024-07069-w"
+obs_filter: >-
+  tissue_general == 'embryo' and disease == 'normal' and
+  (development_stage == 'Theiler stage 21' or development_stage == 'Theiler stage 22' or
+  development_stage == 'Theiler stage 23')
+holdout_donor: embryo_53
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE205055_mouse_embryo_e13_25um_atac_rna/dataset.h5mu
+  sha256: a338b929bea9a9d6a41c27b8b315dc1a2bcb56ee70f3d214321c6a8f81406728
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 150
+  max_holdout_cells_per_type: 100
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 4
+  mixed_spots: 200
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

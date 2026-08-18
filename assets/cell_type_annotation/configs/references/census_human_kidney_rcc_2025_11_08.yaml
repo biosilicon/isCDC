@@ -1,0 +1,40 @@
+reference_id: census_human_kidney_rcc_2025_11_08
+species: Homo sapiens
+tissue: kidney / renal cell carcinoma
+version: "2025-11-08.2"
+method: singler
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: f7cecffa-00b4-4560-a29a-8ad626b8ee08
+  dataset_id: 5af90777-6760-4003-9dba-8f945fec6fdf
+  dataset_version_id: a2cdf9eb-7b76-40ef-a13e-7704d9321e21
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Li et al. (2022), Cancer Cell, doi:10.1016/j.ccell.2022.11.001"
+obs_filter: >-
+  tissue_general == 'kidney' and disease in
+  ['normal', 'nonpapillary renal cell carcinoma']
+holdout_donor: PD43824
+gene_key: feature_id
+target_panel:
+  h5mu_path: ../../../../data/datasets/xenium_human_rcc_ffpe_rna_protein/dataset.h5mu
+  sha256: 916a82f08906763356f9a9c7cd15c317a59346b9a530028c3be6285107f364fe
+  modality: rna
+  min_shared_genes: 300
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 400
+  max_holdout_cells_per_type: 250
+calibration:
+  delta_weight: 0.5
+  uncertain_score_quantile: 0.05
+  uncertain_delta_quantile: 0.05
+  match_target_count_depth: true
+  target_depth_sample_size: 8192

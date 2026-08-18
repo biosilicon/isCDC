@@ -10,3 +10,7 @@ temp/
 .codex/
 assets/he_wsi_thumbnails/
 assets/static/database_thumbnails/*.webp
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+assets/static/*.js.map

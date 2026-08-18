@@ -1,0 +1,345 @@
+schema_version: "1.0"
+pilot_ids:
+  - 2023_nc_10x_breast_cancer_HBC_rep1
+  - xenium_human_rcc_ffpe_rna_protein
+  - GSE205055_mouse_brain_p21_20um_atac_rna
+  - visium_human_tonsil_rna_protein
+datasets:
+  - dataset_id: 2023_nc_10x_breast_cancer_HBC_rep1
+    method: source
+    complete: true
+    source_evidence: cell_type来源核验记录.md (2026-08-15), source cell type
+    parameters: {}
+    qc: {require_calibration: false}
+  - dataset_id: starmap_plus_ad_13m_disease_rep1
+    method: source
+    complete: true
+    source_evidence: cell_type来源核验记录.md (2026-08-15), top_level_cell_type
+    parameters: {}
+    qc: {require_calibration: false}
+  - dataset_id: starmap_plus_ad_13m_disease_rep2
+    method: source
+    complete: true
+    source_evidence: cell_type来源核验记录.md (2026-08-15), top_level_cell_type
+    parameters: {}
+    qc: {require_calibration: false}
+  - dataset_id: xenium_human_rcc_ffpe_rna_protein
+    method: singler
+    reference_id: census_human_kidney_rcc_2025_11_08
+    complete: true
+    parameters:
+      cores: 30
+      exclusive: false
+      curation_status: donor_holdout_target_depth_calibrated_v2
+    qc:
+      min_shared_genes: 300
+      min_balanced_accuracy: 0.55
+      min_macro_f1: 0.55
+      max_ece: 0.10
+      max_uncertain_fraction: 0.60
+  - dataset_id: 2024_nm_human_lymph_nodes_A1
+    method: rctd
+    reference_id: census_human_secondary_lymphoid_symbols_2025_11_08
+    complete: true
+    parameters: &rctd_round1_lymphoid
+      rctd_mode: full
+      cores: 3
+      curation_status: matched_tissue_calibrated_round1
+      uncertain_min_confidence: 0.20
+      mixed_min_top_weight: 0.35
+      mixed_min_delta: 0.05
+      mixed_max_entropy: 0.95
+    qc: &human_12k_qc
+      min_shared_genes: 12000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: 2024_nm_human_lymph_nodes_D1
+    method: rctd
+    reference_id: census_human_secondary_lymphoid_symbols_2025_11_08
+    complete: true
+    parameters: *rctd_round1_lymphoid
+    qc: *human_12k_qc
+  - dataset_id: GSE205055_human_hippocampus_50um_atac_rna
+    method: rctd
+    reference_id: census_human_hippocampus_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
+    qc: &human_15k_qc
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE205055_mouse_brain_p21_20um_atac_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: &rctd_round1_brain
+      rctd_mode: full
+      cores: 3
+      curation_status: pseudo_spot_calibrated_round1
+      uncertain_min_confidence: 0.20
+      mixed_min_top_weight: 0.35
+      mixed_min_delta: 0.05
+      mixed_max_entropy: 0.95
+    qc:
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.95
+      min_macro_f1: 0.95
+      max_ece: 0.10
+      max_uncertain_fraction: 0.50
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE205055_mouse_brain_p21_20um_atac_rna_rep2
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: *rctd_round1_brain
+    qc: &mouse_brain_qc
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.95
+      min_macro_f1: 0.95
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE205055_mouse_brain_p21_20um_h3k27ac_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: pseudo_spot_calibrated}
+    qc: *mouse_brain_qc
+  - dataset_id: GSE205055_mouse_brain_p21_20um_h3k27ac_rna_rep2
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: *rctd_round1_brain
+    qc:
+      min_shared_genes: 14000
+      min_balanced_accuracy: 0.95
+      min_macro_f1: 0.95
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE205055_mouse_brain_p22_20um_atac_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters:
+      <<: *rctd_round1_brain
+      curation_status: adjacent_age_proxy_calibrated_round1
+    qc: *mouse_brain_qc
+  - dataset_id: GSE205055_mouse_brain_p22_20um_h3k27ac_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: adjacent_age_proxy_calibrated}
+    qc: *mouse_brain_qc
+  - dataset_id: GSE205055_mouse_brain_p22_20um_h3k27me3_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: adjacent_age_proxy_calibrated}
+    qc: *mouse_brain_qc
+  - dataset_id: GSE205055_mouse_brain_p22_20um_h3k4me3_rna
+    method: rctd
+    reference_id: census_mouse_brain_p21_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: adjacent_age_proxy_calibrated}
+    qc: *mouse_brain_qc
+  - dataset_id: GSE205055_mouse_embryo_e13_25um_atac_rna
+    method: rctd
+    reference_id: census_mouse_embryo_e13_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: matched_stage_calibrated}
+    qc: &mouse_15k_qc
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE205055_mouse_embryo_e13_50um_atac_rna
+    method: rctd
+    reference_id: census_mouse_embryo_e13_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: matched_stage_calibrated}
+    qc: *mouse_15k_qc
+  - dataset_id: GSE213264_human_gbm_spatial_citeseq
+    method: rctd
+    reference_id: census_human_gbm_symbols_2025_11_08
+    complete: true
+    parameters:
+      rctd_mode: full
+      cores: 5
+      curation_status: disease_matched_isotonic_calibrated_round2
+      uncertain_min_confidence: 0.20
+      mixed_min_top_weight: 0.35
+      mixed_min_delta: 0.05
+      mixed_max_entropy: 0.95
+    qc:
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE213264_human_skin_spatial_citeseq
+    method: rctd
+    reference_id: census_human_skin_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
+    qc: &human_10k_qc
+      min_shared_genes: 10000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE213264_human_spleen_spatial_citeseq
+    method: rctd
+    reference_id: census_human_secondary_lymphoid_symbols_2025_11_08
+    complete: true
+    parameters: &rctd_round1_spot
+      rctd_mode: full
+      cores: 3
+      curation_status: matched_tissue_calibrated_round1
+      uncertain_min_confidence: 0.20
+      mixed_min_top_weight: 0.35
+      mixed_min_delta: 0.05
+      mixed_max_entropy: 0.95
+    qc: *human_12k_qc
+  - dataset_id: GSE213264_human_thymus_spatial_citeseq
+    method: rctd
+    reference_id: census_human_thymus_symbols_2025_11_08
+    complete: true
+    parameters: *rctd_round1_spot
+    qc: *human_15k_qc
+  - dataset_id: GSE213264_human_tonsil_spatial_citeseq
+    method: rctd
+    reference_id: census_human_tonsil_symbols_2025_11_08
+    complete: true
+    parameters:
+      <<: *rctd_round1_spot
+      curation_status: matched_gene_key_calibrated_round1
+    qc:
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.95
+      min_macro_f1: 0.95
+      max_ece: 0.10
+      max_uncertain_fraction: 0.50
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE213264_mouse_colon_spatial_citeseq
+    method: rctd
+    reference_id: census_mouse_gastrointestinal_symbols_2025_11_08
+    complete: true
+    parameters: &rctd_round1_gi
+      rctd_mode: full
+      cores: 5
+      curation_status: hierarchy_pruned_balanced_donor_isotonic_calibrated_round3
+      uncertain_min_confidence: 0.20
+      mixed_min_top_weight: 0.35
+      mixed_min_delta: 0.05
+      mixed_max_entropy: 0.95
+    qc: &mouse_14k_qc
+      min_shared_genes: 14000
+      min_balanced_accuracy: 0.80
+      min_macro_f1: 0.80
+      max_ece: 0.10
+      max_uncertain_fraction: 0.70
+      max_mixed_fraction: 0.95
+  - dataset_id: GSE213264_mouse_intestine_spatial_citeseq
+    method: rctd
+    reference_id: census_mouse_gastrointestinal_symbols_2025_11_08
+    complete: true
+    parameters: *rctd_round1_gi
+    qc: *mouse_14k_qc
+  - dataset_id: GSE213264_mouse_kidney_spatial_citeseq
+    method: rctd
+    reference_id: census_mouse_kidney_symbols_2025_11_08
+    complete: true
+    parameters:
+      <<: *rctd_round1_spot
+      cores: 5
+      curation_status: hierarchy_pruned_broad_donor_isotonic_calibrated_round3
+    qc: *mouse_15k_qc
+  - dataset_id: GSE213264_mouse_spleen_spatial_citeseq
+    method: rctd
+    reference_id: census_mouse_spleen_symbols_2025_11_08
+    complete: true
+    parameters: *rctd_round1_spot
+    qc: *mouse_14k_qc
+  - dataset_id: MISAR_seq_mouse_brain_E13_5_S1
+    method: rctd
+    reference_id: census_mouse_thalamus_e13_symbols_2025_11_08
+    complete: true
+    parameters:
+      <<: &rctd_round1_developing_brain
+        rctd_mode: full
+        cores: 5
+        curation_status: stage_matched_thalamus_proxy_round2
+        uncertain_min_confidence: 0.20
+        mixed_min_top_weight: 0.35
+        mixed_min_delta: 0.05
+        mixed_max_entropy: 0.95
+      cores: 12
+      curation_status: hierarchy_pruned_complex_mixture_calibrated_round3
+    qc: *mouse_15k_qc
+  - dataset_id: MISAR_seq_mouse_brain_E15_5_S1
+    method: rctd
+    reference_id: census_mouse_thalamus_e15_symbols_2025_11_08
+    complete: true
+    parameters:
+      <<: *rctd_round1_developing_brain
+      curation_status: hierarchy_pruned_stage_matched_thalamus_proxy_round2
+    qc: *mouse_15k_qc
+  - dataset_id: MISAR_seq_mouse_brain_E18_5_S1
+    method: rctd
+    reference_id: census_mouse_thalamus_e18_symbols_2025_11_08
+    complete: true
+    parameters: *rctd_round1_developing_brain
+    qc: *mouse_15k_qc
+  - dataset_id: gse198353_spots_mouse_spleen_rep1
+    method: rctd
+    reference_id: census_mouse_spleen_ensembl_2025_11_08
+    complete: true
+    parameters: *rctd_round1_spot
+    qc: *mouse_14k_qc
+  - dataset_id: gse198353_spots_mouse_spleen_rep2
+    method: rctd
+    reference_id: census_mouse_spleen_ensembl_2025_11_08
+    complete: true
+    parameters: *rctd_round1_spot
+    qc: *mouse_14k_qc
+  - dataset_id: visium_human_tonsil_rna_protein
+    method: rctd
+    reference_id: census_human_tonsil_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 12, curation_status: pseudo_spot_calibrated}
+    qc:
+      min_shared_genes: 15000
+      min_balanced_accuracy: 0.95
+      min_macro_f1: 0.95
+      max_ece: 0.10
+      max_uncertain_fraction: 0.50
+      max_mixed_fraction: 0.95
+  - dataset_id: zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_01
+    method: rctd
+    reference_id: census_mouse_thymus_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
+    qc: *mouse_15k_qc
+  - dataset_id: zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_02
+    method: rctd
+    reference_id: census_mouse_thymus_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
+    qc: *mouse_15k_qc
+  - dataset_id: zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_03
+    method: rctd
+    reference_id: census_mouse_thymus_symbols_2025_11_08
+    complete: true
+    parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
+    qc: *mouse_15k_qc

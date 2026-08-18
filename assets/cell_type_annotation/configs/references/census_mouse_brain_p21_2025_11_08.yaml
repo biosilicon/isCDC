@@ -1,0 +1,43 @@
+reference_id: census_mouse_brain_p21_2025_11_08
+species: Mus musculus
+tissue: brain (4-week whole-brain proxy for P21)
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 31937775-0602-4e52-a799-b6acdd2bac2e
+  dataset_id: 3bbb6cf9-72b9-41be-b568-656de6eb18b5
+  dataset_version_id: 03390dd0-fe16-4cef-b430-ab451e85c448
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Allen et al. (2023), Cell, doi:10.1016/j.cell.2022.12.010; GSE207848"
+obs_filter: >-
+  tissue_general == 'brain' and disease == 'normal' and
+  development_stage == '4-week-old stage'
+holdout_donor: 10X_MsBrainAgingSpatialDonor_5
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE205055_mouse_brain_p21_20um_atac_rna/dataset.h5mu
+  sha256: 14e98df9f10899c4b990f236e0af3cf3ee3c7fdcee35a0660ef89c3771ff8f0f
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 90
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

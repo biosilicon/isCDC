@@ -16,6 +16,13 @@ from sqlalchemy import select
 
 from iscdc.analytics import VisitEvent
 from iscdc.app import create_app
+from iscdc.cell_type_visualization import (
+    POINT_MEDIA_TYPE,
+    build_point_representations,
+    encode_points,
+    publish_failure,
+    publish_generation,
+)
 from iscdc.database import create_database_engine, create_session_factory
 from iscdc.importer import import_dataset
 from iscdc.models import Dataset, Modality
@@ -61,6 +68,93 @@ def _write_product_metadata(path, destination):  # noqa: ANN001, ANN202
 def _app_with_database(settings, write_h5mu, write_metadata):  # noqa: ANN202
     import_dataset(write_h5mu(), write_metadata(), settings)
     return create_app(settings)
+
+
+def _publish_test_cell_type_visualization(root, source_sha):  # noqa: ANN001, ANN202
+    dataset_id = "test_rna_protein"
+    generation_id = "test-generation-v1"
+    points = encode_points([0.0, 2.0], [1.0, 3.0], [0, 1])
+    report_document = {
+        "report_version": 1,
+        "dataset_id": dataset_id,
+        "generation_id": generation_id,
+        "source_sha256": source_sha,
+        "status": "passed",
+        "quality_control": {"aligned": True},
+        "thresholds": {},
+        "warnings": [],
+    }
+    report = json.dumps(report_document, sort_keys=True).encode() + b"\n"
+    files = {"report.json": report}
+
+    def file_record(path, payload):  # noqa: ANN001, ANN202
+        return {
+            "path": path,
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+
+    representations = {}
+    suffixes = {"identity": ".bin", "gzip": ".bin.gz", "br": ".bin.br"}
+    encoded_points = build_point_representations(points)
+    for encoding, encoded in encoded_points.items():
+        path = f"samples/sample_01{suffixes[encoding]}"
+        files[path] = encoded
+        representations[encoding] = {
+            **file_record(path, encoded),
+            "encoding": encoding,
+            "content_size": len(points),
+            "content_sha256": hashlib.sha256(points).hexdigest(),
+        }
+    manifest = {
+        "manifest_version": 1,
+        "dataset_id": dataset_id,
+        "generation_id": generation_id,
+        "generated_at": "2026-08-18T12:00:00+00:00",
+        "source": {
+            "sha256": source_sha,
+            "obs_order_sha256": "a" * 64,
+            "observation_count": 2,
+            "coordinate_dimensions": 2,
+            "sample_ids": ["sample_01"],
+        },
+        "annotation": {"kind": "source", "method": "mdata.obs[cell_type]"},
+        "coordinates": {"system": "global", "unit": "micrometer", "y_axis": "down"},
+        "categories": [
+            {
+                "type_id": 0,
+                "label": "T cell",
+                "color": "#3366CC",
+                "count": 1,
+                "state": "biological",
+            },
+            {
+                "type_id": 1,
+                "label": "B cell",
+                "color": "#DC3912",
+                "count": 1,
+                "state": "biological",
+            },
+        ],
+        "samples": [
+            {
+                "key": "sample_01",
+                "id": "sample_01",
+                "count": 2,
+                "bounds": [0.0, 1.0, 2.0, 3.0],
+                "category_counts": {"0": 1, "1": 1},
+                "representations": representations,
+            }
+        ],
+        "report": file_record("report.json", report),
+        "provenance": {
+            "environment_lock_sha256": "b" * 64,
+            "references": [],
+            "parameters": {},
+        },
+    }
+    publish_generation(root, manifest, files)
+    return generation_id, points, encoded_points
 
 
 def _app_with_challenge(
@@ -300,6 +394,135 @@ async def test_database_pages_omit_thumbnail_when_unavailable(
     assert detail.status_code == 200
     assert "database-thumbnail" not in listing.text
     assert "database-thumbnail" not in detail.text
+
+
+async def test_cell_type_visualization_is_conditional_internal_and_content_negotiated(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    visualization_root = tmp_path / "cell-type-visualizations"
+    visualization_settings = replace(
+        settings, cell_type_visualization_root=visualization_root
+    )
+    imported = import_dataset(
+        write_h5mu(), write_metadata(), visualization_settings
+    )
+    baseline_app = create_app(visualization_settings)
+    baseline_transport = httpx.ASGITransport(app=baseline_app)
+    async with httpx.AsyncClient(
+        transport=baseline_transport, base_url="http://test"
+    ) as client:
+        baseline_page = await client.get("/databases/test_rna_protein")
+        baseline_api = (await client.get("/api/databases/test_rna_protein")).json()
+    assert "cell-type-visualization" not in baseline_page.text
+
+    generation_id, identity, encoded_points = _publish_test_cell_type_visualization(
+        visualization_root, imported.sha256
+    )
+    app = create_app(visualization_settings)
+    transport = httpx.ASGITransport(app=app)
+    endpoint = (
+        "/databases/test_rna_protein/cell-type-visualization/"
+        f"{generation_id}/sample_01"
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        detail = await client.get("/databases/test_rna_protein")
+        listing = await client.get("/databases")
+        api = await client.get("/api/databases/test_rna_protein")
+        openapi = await client.get("/openapi.json")
+        point_file = await client.get(endpoint, headers={"Accept-Encoding": "identity"})
+        gzip_file = await client.get(endpoint, headers={"Accept-Encoding": "gzip"})
+        brotli_file = await client.get(endpoint, headers={"Accept-Encoding": "br"})
+        head = await client.head(endpoint, headers={"Accept-Encoding": "identity"})
+        unacceptable = await client.get(
+            endpoint,
+            headers={"Accept-Encoding": "br;q=0,gzip;q=0,identity;q=0"},
+        )
+        missing_generation = await client.get(
+            endpoint.replace(generation_id, "not-current")
+        )
+        missing_sample = await client.get(endpoint.replace("sample_01", "other"))
+
+    assert detail.status_code == 200
+    assert 'id="cell-type-visualization"' in detail.text
+    assert "cell_type_visualization.js?v=" in detail.text
+    assert endpoint in detail.text
+    assert "cell-type-visualization" not in listing.text
+    assert api.json() == baseline_api
+    assert not any(
+        "cell-type-visualization" in path for path in openapi.json()["paths"]
+    )
+    for response, encoding in ((point_file, None), (gzip_file, "gzip"), (brotli_file, "br")):
+        assert response.status_code == 200
+        # httpx always decodes gzip, while Brotli decoding depends on the optional
+        # client extra. Accept only the canonical content or the exact stored bytes.
+        expected_encoding = "identity" if encoding is None else encoding
+        assert response.content in {identity, encoded_points[expected_encoding]}
+        assert response.headers["content-type"].startswith(POINT_MEDIA_TYPE)
+        assert response.headers.get("content-encoding") == encoding
+        assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+        assert response.headers["vary"] == "Accept-Encoding"
+    assert head.status_code == 200
+    assert head.content == b""
+    assert unacceptable.status_code == 406
+    assert missing_generation.status_code == 404
+    assert missing_sample.status_code == 404
+
+    analytics = app.state.analytics
+    assert analytics is not None
+    with analytics.session_factory() as session:
+        endpoint_events = session.scalars(
+            select(VisitEvent).where(
+                VisitEvent.path.like("%/cell-type-visualization/%")
+            )
+        ).all()
+    assert endpoint_events == []
+
+
+async def test_latest_cell_type_failure_withdraws_old_generation_after_restart(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    visualization_root = tmp_path / "cell-type-visualizations"
+    visualization_settings = replace(
+        settings, cell_type_visualization_root=visualization_root
+    )
+    imported = import_dataset(
+        write_h5mu(), write_metadata(), visualization_settings
+    )
+    generation_id, _, _ = _publish_test_cell_type_visualization(
+        visualization_root, imported.sha256
+    )
+    old_app = create_app(visualization_settings)
+    publish_failure(
+        visualization_root,
+        "test_rna_protein",
+        "calibration quality gate failed",
+    )
+    restarted_app = create_app(visualization_settings)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=old_app), base_url="http://test"
+    ) as client:
+        old_page = await client.get("/databases/test_rna_protein")
+        old_points = await client.get(
+            "/databases/test_rna_protein/cell-type-visualization/"
+            f"{generation_id}/sample_01",
+            headers={"Accept-Encoding": "identity"},
+        )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=restarted_app), base_url="http://test"
+    ) as client:
+        new_page = await client.get("/databases/test_rna_protein")
+        new_points = await client.get(
+            "/databases/test_rna_protein/cell-type-visualization/"
+            f"{generation_id}/sample_01",
+            headers={"Accept-Encoding": "identity"},
+        )
+
+    assert 'id="cell-type-visualization"' in old_page.text
+    assert old_points.status_code == 200
+    assert "cell-type-visualization" not in new_page.text
+    assert "Visualization unavailable" not in new_page.text
+    assert new_points.status_code == 404
 
 
 async def test_detail_template_tolerates_missing_auxiliary_index_during_reload(

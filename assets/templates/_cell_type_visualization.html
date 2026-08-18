@@ -1,0 +1,34 @@
+<section id="cell-type-visualization" class="cell-type-visualization mt-5" aria-labelledby="cell-type-visualization-title">
+  <div class="cell-type-visualization-heading d-flex flex-wrap align-items-end justify-content-between gap-3">
+    <div>
+      <p class="text-uppercase small fw-semibold text-primary mb-1">Spatial annotation</p>
+      <h2 id="cell-type-visualization-title" class="h3 mb-1">Cell type visualization</h2>
+      <p class="small text-secondary mb-0">Explore cell type assignments without modifying the source data file.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <label class="small fw-semibold"{% if cell_type_visualization.samples|length == 1 %} hidden{% endif %}>Sample
+        <select class="form-select form-select-sm mt-1" data-cell-type-sample>
+          {% for sample in cell_type_visualization.samples %}
+            <option value="{{ sample.key }}">{{ sample.id }} · {{ "{:,}".format(sample.count) }} points</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-reset>Reset view</button>
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-close aria-label="Close cell type visualization">Close</button>
+    </div>
+  </div>
+  <div class="cell-type-visualization-layout mt-3">
+    <div class="cell-type-stage" data-cell-type-stage>
+      <div class="cell-type-canvas" data-cell-type-canvas aria-label="Interactive spatial cell type map"></div>
+      <div class="cell-type-status" data-cell-type-status role="status">Visualization loads when it enters the viewport.</div>
+      <div class="cell-type-tooltip" data-cell-type-tooltip hidden></div>
+      <button class="btn btn-sm btn-primary cell-type-retry" type="button" data-cell-type-retry hidden>Retry</button>
+    </div>
+    <aside class="cell-type-legend" aria-label="Cell type legend">
+      <p class="small fw-semibold mb-2">Cell types</p>
+      <div data-cell-type-legend></div>
+    </aside>
+  </div>
+  <script id="cell-type-visualization-config" type="application/json">{{ cell_type_visualization|tojson }}</script>
+  <script type="module" src="{{ url_for('static', path='/cell_type_visualization.js') }}{% if cell_type_bundle_version %}?v={{ cell_type_bundle_version }}{% endif %}"></script>
+</section>

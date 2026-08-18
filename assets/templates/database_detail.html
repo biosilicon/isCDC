@@ -5,6 +5,26 @@
   <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ database.dataset_id }}</span></nav>
   {% set dataset = database %}
   {% set challenge_file = false %}
+  <header class="database-detail-header">
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      <span class="badge text-bg-primary">{{ database.dataset_type }}</span>
+      {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+      {% if database.modalities|length > 2 %}<span class="badge text-bg-info">{{ database.modalities|length }} modalities</span>{% endif %}
+      <span class="badge text-bg-light">Schema {{ database.schema_version }}</span>
+    </div>
+    <h1 class="display-6 fw-bold">{{ database.title }}</h1>
+    <p class="lead text-secondary">{{ database.description }}</p>
+    {% set thumbnail_path = (database_thumbnail_paths|default({})).get(database.dataset_id) %}
+    {% if thumbnail_path %}
+      <figure class="database-thumbnail database-thumbnail-detail mt-4 mb-0">
+        <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+      </figure>
+    {% endif %}
+  </header>
+  {% if cell_type_visualization %}
+    {% include "_cell_type_visualization.html" %}
+  {% endif %}
+  {% set suppress_summary = true %}
   {% include "_data_file_detail.html" %}
 </div>
 {% endblock %}

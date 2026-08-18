@@ -1,0 +1,46 @@
+reference_id: census_mouse_developing_brain_symbols_2025_11_08
+species: Mus musculus
+tissue: developing cerebellum proxy for embryonic brain
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 72d37bc9-76cc-442d-9131-da0e273862db
+  dataset_id: 72eb2332-b308-4014-8d25-95233a9aff1e
+  dataset_version_id: 3f9aafdc-6154-4f94-9e99-cf9e740405d4
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Aldinger et al. (2023), Nature, doi:10.1038/s41586-023-06884-x"
+obs_filter: >-
+  tissue_general == 'brain' and disease == 'normal' and
+  (development_stage == 'Theiler stage 21' or development_stage == 'Theiler stage 22' or
+  development_stage == 'Theiler stage 23' or development_stage == 'Theiler stage 24' or
+  development_stage == 'Theiler stage 25' or development_stage == 'Theiler stage 26' or
+  development_stage == 'Theiler stage 27')
+holdout_donor: 041218 M3
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/MISAR_seq_mouse_brain_E13_5_S1/dataset.h5mu
+  sha256: fdd6a15b586a63e74a285f37d6e8e25eb8a8af2161bd74095fed97561c9962e8
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 120
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

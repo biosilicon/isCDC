@@ -1,0 +1,41 @@
+reference_id: census_mouse_thymus_symbols_2025_11_08
+species: Mus musculus
+tissue: thymus
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 7e216a15-82df-46ee-b454-d0261d99e5f5
+  dataset_id: c14c54f8-85d8-45db-9de7-6ab572cc748a
+  dataset_version_id: e18d8bc7-2474-4536-9f06-b4f948d8043d
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Chopp et al. (2023), Nature Immunology, doi:10.1038/s41590-023-01584-0"
+obs_filter: tissue == 'thymus' and disease == 'normal'
+holdout_donor: B6_r4
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_01/dataset.h5mu
+  sha256: 08a7187c3767003b827708da04fbbe70827f3369cfaa96ef91bcd5fb585cb33d
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 120
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

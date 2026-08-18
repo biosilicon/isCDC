@@ -126,6 +126,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Atomically replace an existing report."
     )
 
+    reference_parser = subparsers.add_parser(
+        "build-cell-type-reference",
+        help="Build a frozen SingleR/RCTD reference in the annotation environment.",
+    )
+    reference_parser.add_argument("reference_id")
+
+    visualization_parser = subparsers.add_parser(
+        "generate-cell-type-visualization",
+        help="Generate and atomically publish one offline cell type visualization.",
+    )
+    visualization_parser.add_argument("dataset_id")
+    visualization_parser.add_argument(
+        "--force", action="store_true", help="Replace the current successful generation."
+    )
+
+    annotation_audit_parser = subparsers.add_parser(
+        "audit-cell-type-visualizations",
+        help="Audit configured visualization artifacts and run eligible annotation jobs.",
+    )
+    annotation_audit_parser.add_argument("dataset_ids", nargs="*")
+    annotation_audit_parser.add_argument(
+        "--all", action="store_true", help="Audit the complete configured Database catalogue."
+    )
+    annotation_audit_parser.add_argument(
+        "--jobs", type=int, default=1, help="Maximum concurrent dataset jobs (default: 1)."
+    )
+
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
         help="Stage, validate, back up, and activate the schema 1.2 catalogue.",
@@ -371,6 +398,58 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0 if report["failure_count"] == 0 else 1
+    if args.command in {
+        "build-cell-type-reference",
+        "generate-cell-type-visualization",
+        "audit-cell-type-visualizations",
+    }:
+        try:
+            from .cell_type_annotation import (
+                CellTypeAnnotationError,
+                audit_cell_type_visualizations,
+                build_cell_type_reference,
+                generate_cell_type_visualization,
+            )
+        except ModuleNotFoundError:
+            print(
+                "cell type annotation tooling is unavailable; run this command through "
+                "conda run -n iscdc-cell-annotation",
+                file=sys.stderr,
+            )
+            return 1
+        settings = Settings.from_environment()
+        try:
+            if args.command == "build-cell-type-reference":
+                payload = build_cell_type_reference(args.reference_id, settings)
+            elif args.command == "generate-cell-type-visualization":
+                payload = generate_cell_type_visualization(
+                    args.dataset_id, settings, force=args.force
+                )
+            else:
+                if args.jobs < 1:
+                    print("--jobs must be a positive integer", file=sys.stderr)
+                    return 2
+                if args.all == bool(args.dataset_ids):
+                    print(
+                        "choose exactly one of --all or one or more DATASET_ID values",
+                        file=sys.stderr,
+                    )
+                    return 2
+                payload = audit_cell_type_visualizations(
+                    None if args.all else args.dataset_ids,
+                    settings,
+                    all_datasets=args.all,
+                    jobs=args.jobs,
+                )
+        except (CellTypeAnnotationError, OSError, SQLAlchemyError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if hasattr(payload, "as_dict"):
+            payload = payload.as_dict()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        if isinstance(payload, dict) and payload.get("failure_count", 0):
+            return 1
+        return 0
     if args.command == "migrate-schema-1-2":
         settings = Settings.from_environment()
         options = {"dry_run": args.dry_run}

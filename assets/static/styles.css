@@ -112,3 +112,105 @@ a {
   overflow-wrap: anywhere;
   font-size: 0.75rem;
 }
+
+.cell-type-visualization {
+  padding: clamp(1rem, 2vw, 1.75rem);
+  background: var(--catalogue-wash);
+  border: 1px solid #dce3ef;
+  border-radius: 1rem;
+}
+
+.cell-type-visualization-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+  gap: 1rem;
+}
+
+.cell-type-stage {
+  position: relative;
+  min-height: min(68vh, 46rem);
+  overflow: hidden;
+  background: #101625;
+  border-radius: 0.75rem;
+}
+
+.cell-type-canvas,
+.cell-type-canvas > div,
+.cell-type-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.cell-type-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.cell-type-status {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  max-width: 28rem;
+  padding: 0.65rem 0.9rem;
+  color: #e9edf6;
+  text-align: center;
+  background: rgb(10 15 26 / 82%);
+  border-radius: 0.5rem;
+  transform: translate(-50%, -50%);
+}
+
+.cell-type-retry {
+  position: absolute;
+  top: calc(50% + 3rem);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cell-type-tooltip {
+  position: absolute;
+  z-index: 3;
+  max-width: 18rem;
+  padding: 0.45rem 0.6rem;
+  color: #fff;
+  pointer-events: none;
+  background: rgb(10 15 26 / 92%);
+  border-radius: 0.35rem;
+  transform: translate(0.75rem, 0.75rem);
+}
+
+.cell-type-legend {
+  max-height: min(68vh, 46rem);
+  padding: 0.75rem;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #dce3ef;
+  border-radius: 0.75rem;
+}
+
+.cell-type-legend label {
+  display: grid;
+  grid-template-columns: auto 0.75rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.cell-type-legend-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+}
+
+@media (max-width: 767.98px) {
+  .cell-type-visualization-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cell-type-stage {
+    min-height: 30rem;
+  }
+
+  .cell-type-legend {
+    max-height: 16rem;
+  }
+}

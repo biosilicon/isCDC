@@ -76,9 +76,23 @@ Challenge difficulty 随后按完整 27 个 Challenge 重算，27 项均成功�
 | `zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_02` | 同上。 |
 | `zenodo_10362607_stereo_cite_seq_mouse_thymus_19adt_sample_03` | 同上。 |
 
+## 与推断可视化 sidecar 的关系
+
+本记录只判断公开来源是否提供可写入正式 `mdata.obs["cell_type"]` 的完整标签，不判断离线
+计算注释是否可行。2026-08-18 完成的 cell type 空间可视化为全部 35 个 Database 建立了
+独立 sidecar：上述 3 个确认包含来源标签的数据集直接使用原始标签，其余 32 个分别使用
+SingleR 或 RCTD `full` 推断。
+
+推断 sidecar 不改变本表的“未发现来源标签”结论，也不把计算结果写回 `.h5mu`、catalogue
+字段或公共 JSON。页面中的 `Computationally inferred`、confidence、`Mixed` 和 `Uncertain`
+必须与来源 `cell_type` 明确区分。最终方法、QC 和 provenance 见
+[实施与完成记录](plan.md)；科学迭代经验见
+[细胞类型注释经验总结](annotation/细胞类型注释经验总结.md)。
+
 ## 入库规则
 
 统一字段为顶层 `mdata.obs["cell_type"]`，且为可选项。存在时必须是完整覆盖的无序 pandas
 categorical，category 为非空、无首尾空白的字符串且没有未使用类别；保留来源语义和拼写。
 空间切分按 observation 传播，组合切分仅在所有来源均有完整有效标签时保留，否则省略该列。
-`cell_type` 不增加 catalogue 列、网页/API 字段或筛选项。
+canonical `cell_type` 不增加 catalogue 列、网页/API 字段或筛选项；Database 页面可另行读取
+经严格校验的独立 sidecar，但该展示不改变来源标签的入库规则。

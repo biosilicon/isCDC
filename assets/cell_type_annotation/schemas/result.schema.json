@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iscdc.example/schemas/cell-type-result-1.0.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "dataset_id", "source_sha256", "method", "status", "generated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "method": {"enum": ["source", "singler", "rctd"]},
+    "reference_id": {"type": ["string", "null"]},
+    "parameters": {"type": "object"},
+    "qc_gates": {"type": "object"},
+    "status": {"enum": ["success", "failure", "scientific_failure"]},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "detail": {"type": "string"}
+  }
+}

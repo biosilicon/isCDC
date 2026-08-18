@@ -1,0 +1,41 @@
+reference_id: census_human_tonsil_symbols_2025_11_08
+species: Homo sapiens
+tissue: tonsil
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 3a2af25b-2338-4266-aad3-aa8d07473f50
+  dataset_id: 44882825-0da1-4547-b721-2c6105d4a9d1
+  dataset_version_id: b034283e-dafd-4d92-a8f1-6169a99799b1
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "King et al. (2021), Science Immunology, doi:10.1126/sciimmunol.abe6291"
+obs_filter: tissue == 'tonsil' and disease == 'normal'
+holdout_donor: BCP5
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE213264_human_tonsil_spatial_citeseq/dataset.h5mu
+  sha256: 3199266c6f473d35de48f6012aaa829f2d4724dcf1e7b7df37a18fb315671394
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 120
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

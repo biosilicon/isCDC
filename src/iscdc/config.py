@@ -52,6 +52,7 @@ class Settings:
     analytics_enabled: bool
     analytics_retention_days: int
     analytics_cookie_secure: bool
+    cell_type_visualization_root: Path | None = None
 
     @classmethod
     def from_environment(cls, project_root: Path = PROJECT_ROOT) -> Settings:
@@ -76,5 +77,10 @@ class Settings:
             ),
             analytics_cookie_secure=_configured_bool(
                 "ISCDC_ANALYTICS_COOKIE_SECURE", False
+            ),
+            cell_type_visualization_root=_configured_path(
+                "ISCDC_CELL_TYPE_VISUALIZATION_ROOT",
+                project_root / "data" / "cell_type_visualizations",
+                project_root,
             ),
         )

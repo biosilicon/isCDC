@@ -1,0 +1,41 @@
+reference_id: census_mouse_spleen_ensembl_2025_11_08
+species: Mus musculus
+tissue: spleen
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 0b9d8a04-bb9d-44da-aa27-705bb65b54eb
+  dataset_id: 48b37086-25f7-4ecd-be66-f5bb378e3aea
+  dataset_version_id: e2ffd4e4-9e8e-43c7-acb5-79486754ffd0
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Tabula Muris Senis (2020), Nature, doi:10.1038/s41586-020-2496-1"
+obs_filter: tissue_general == 'spleen' and disease == 'normal'
+holdout_donor: 3-F-56
+gene_key: feature_id
+target_panel:
+  h5mu_path: ../../../../data/datasets/gse198353_spots_mouse_spleen_rep1/dataset.h5mu
+  sha256: 53807495b71c09190a5b9c8bd0d595e00e6a617478f2aec93e9b2fc8bb7f26f5
+  modality: rna
+  min_shared_genes: 14000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 90
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

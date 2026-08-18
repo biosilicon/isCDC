@@ -4,6 +4,13 @@
 
 Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
 
+The tracked `annotation/` directory contains the isolated R/Conda environment declarations and R
+adapters for offline cell type work. The tracked `frontend/` directory contains the Node 24 source,
+lock file, and tests used to build committed browser bundles; neither toolchain is a website runtime
+dependency. The completed 35-dataset implementation and operational lessons are documented in
+`plan.md` and `annotation/细胞类型注释经验总结.md`; keep those records synchronized when methods,
+QC gates, scheduling limits, or sidecar contracts change.
+
 Local Database thumbnails live under the ignored `assets/static/database_thumbnails/` directory
 as WebP files named exactly `<dataset_id>.webp`; do not commit them. Keep images downloaded only
 to produce thumbnails in the separately ignored `assets/he_wsi_thumbnails/` directory. A missing
@@ -77,8 +84,11 @@ public source supplies discrete labels aligned to every top-level observation; p
 requires omitting the whole column. When present, it must be an unordered pandas categorical with
 non-null, non-blank, whitespace-trimmed string labels and no unused categories. Preserve the
 source's biological semantics and spelling rather than imposing a cross-dataset ontology; an
-explicit source category such as `Unlabeled` is valid. Do not add cell type to `metadata.yaml`,
-catalogue tables, pages, JSON responses, or filters. Spatial splits propagate the source column.
+explicit source category such as `Unlabeled` is valid. Do not add canonical cell type metadata to
+`metadata.yaml`, catalogue tables, public JSON responses, or filters. The Database detail page may
+render a separately versioned, startup-validated cell type visualization sidecar; that sidecar and
+its internal data endpoint must not present inferred labels as canonical dataset metadata. Spatial
+splits propagate the source column.
 Each composed output side includes it only when every full source assigned to that side has a
 valid complete column; categories are merged in source and first-seen order, otherwise the output
 omits the column.
@@ -93,7 +103,11 @@ re-evaluate the catalogue-wide difficulty snapshot.
 
 ## Build, Test, and Development Commands
 
-All project commands must be run in the Conda environment named `iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running tests, linting, or starting the application.
+Website, catalogue, and general development commands must be run in the Conda environment named
+`iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running normal
+tests, linting, or starting the application. Cell type reference, annotation, calibration, artifact,
+and annotation-audit commands are the sole exception: run them through the separately locked Conda
+environment `iscdc-cell-annotation`, never through the website environment.
 
 The project uses requirements files and a small Makefile command set documented in `README.md`:
 

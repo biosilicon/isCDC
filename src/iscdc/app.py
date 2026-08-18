@@ -26,6 +26,11 @@ from .analytics import (
     is_automated_user_agent,
 )
 from .auxiliary import AuxiliaryFile, AuxiliaryFileError, load_auxiliary_files
+from .cell_type_visualization import (
+    POINT_MEDIA_TYPE,
+    CellTypeVisualization,
+    load_cell_type_visualizations,
+)
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .difficulty_snapshot import (
@@ -83,6 +88,40 @@ DOWNLOAD_FILES = {
 logger = logging.getLogger(__name__)
 
 DATABASE_THUMBNAIL_DIRECTORY = "database_thumbnails"
+
+
+def _preferred_content_encoding(
+    value: str | None, available: set[str]
+) -> str | None:
+    """Select a validated representation without deriving a filesystem path."""
+    if value is None:
+        return "identity" if "identity" in available else None
+    qualities: dict[str, float] = {}
+    for item in value.split(","):
+        parts = [part.strip() for part in item.split(";")]
+        encoding = parts[0].lower()
+        quality = 1.0
+        for parameter in parts[1:]:
+            if parameter.lower().startswith("q="):
+                try:
+                    quality = float(parameter[2:])
+                except ValueError:
+                    quality = 0.0
+        if 0 <= quality <= 1:
+            qualities[encoding] = quality
+    candidates: list[tuple[float, int, str]] = []
+    for priority, encoding in enumerate(("br", "gzip", "identity"), start=1):
+        if encoding not in available:
+            continue
+        if encoding in qualities:
+            quality = qualities[encoding]
+        elif encoding == "identity":
+            quality = qualities.get("*", 1.0)
+        else:
+            quality = qualities.get("*", 0.0)
+        if quality > 0:
+            candidates.append((quality, -priority, encoding))
+    return max(candidates)[2] if candidates else None
 
 
 def _static_asset_version(path: Path) -> str:
@@ -354,10 +393,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]] = {}
     with session_factory() as session:
-        dataset_locations = session.execute(
-            select(Dataset.dataset_id, Dataset.storage_dir)
-        ).all()
-    for dataset_id, storage_dir in dataset_locations:
+        catalogue_datasets = session.scalars(select(Dataset)).all()
+    for dataset in catalogue_datasets:
+        dataset_id = dataset.dataset_id
+        storage_dir = dataset.storage_dir
         try:
             auxiliary_files_by_dataset[dataset_id] = load_auxiliary_files(
                 settings.data_root / storage_dir, dataset_id
@@ -367,6 +406,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Ignoring invalid auxiliary file manifest for dataset %s",
                 dataset_id,
                 exc_info=True,
+            )
+
+    cell_type_visualizations: dict[str, CellTypeVisualization] = {}
+    if (
+        settings.cell_type_visualization_root is not None
+        and settings.cell_type_visualization_root.is_dir()
+    ):
+        try:
+            cell_type_visualizations = load_cell_type_visualizations(
+                settings.cell_type_visualization_root,
+                (
+                    {
+                        "dataset_id": dataset.dataset_id,
+                        "dataset_type": dataset.dataset_type,
+                        "sha256": dataset.sha256,
+                        "n_obs": dataset.n_obs,
+                        "coordinate_dimensions": dataset.coordinate_dimensions,
+                        "sample_ids": dataset.sample_ids,
+                    }
+                    for dataset in catalogue_datasets
+                    if dataset.dataset_type == "full"
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Cell type visualizations are unavailable; continuing without them"
             )
 
     difficulty_by_split_id: dict[str, ChallengeDifficulty] = {}
@@ -420,6 +485,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["static_styles_version"] = _static_asset_version(
         settings.static_dir / "styles.css"
     )
+    templates.env.globals["cell_type_bundle_version"] = _static_asset_version(
+        settings.static_dir / "cell_type_visualization.js"
+    )
     templates.env.globals["database_thumbnail_paths"] = _discover_database_thumbnails(
         settings.static_dir
     )
@@ -436,6 +504,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.analytics = analytics
     application.state.difficulty_snapshot = difficulty_snapshot
     application.state.difficulty_path = difficulty_path
+    application.state.cell_type_visualizations = cell_type_visualizations
     application.state.templates = templates
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
@@ -563,10 +632,97 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "database_detail",
             {"dataset_id": database.dataset_id},
         )
+        visualization = cell_type_visualizations.get(database.dataset_id)
+        visualization_config = None
+        if visualization is not None:
+            samples = [
+                {
+                    "key": sample.key,
+                    "id": sample.id,
+                    "count": sample.count,
+                    "url": str(
+                        request.url_for(
+                            "cell_type_visualization_points",
+                            dataset_id=database.dataset_id,
+                            generation_id=visualization.generation_id,
+                            sample_key=sample.key,
+                        )
+                    ),
+                }
+                for sample in visualization.samples.values()
+            ]
+            visualization_config = {
+                "datasetId": database.dataset_id,
+                "generationId": visualization.generation_id,
+                "annotationKind": visualization.annotation_kind,
+                "yAxis": visualization.y_axis,
+                "categories": [
+                    {
+                        "code": category.type_id,
+                        "label": category.label,
+                        "color": category.color,
+                        "count": category.count,
+                        "cellOntologyId": category.cell_ontology_id,
+                    }
+                    for category in visualization.categories
+                ],
+                "samples": samples,
+                "initialSampleKey": samples[0]["key"],
+            }
         return templates.TemplateResponse(
             request=request,
             name="database_detail.html",
-            context={"database": database, "download_kinds": DOWNLOAD_FILES},
+            context={
+                "database": database,
+                "download_kinds": DOWNLOAD_FILES,
+                "cell_type_visualization": visualization_config,
+            },
+        )
+
+    @application.api_route(
+        "/databases/{dataset_id}/cell-type-visualization/{generation_id}/{sample_key}",
+        methods=["GET", "HEAD"],
+        name="cell_type_visualization_points",
+        include_in_schema=False,
+    )
+    async def cell_type_visualization_points(
+        request: Request,
+        dataset_id: str,
+        generation_id: str,
+        sample_key: str,
+    ):
+        visualization = cell_type_visualizations.get(dataset_id)
+        if visualization is None or visualization.generation_id != generation_id:
+            raise HTTPException(status_code=404, detail="Visualization not found")
+        sample = visualization.samples.get(sample_key)
+        if sample is None:
+            raise HTTPException(status_code=404, detail="Visualization sample not found")
+        encoding = _preferred_content_encoding(
+            request.headers.get("accept-encoding"), set(sample.representations)
+        )
+        if encoding is None:
+            raise HTTPException(
+                status_code=406, detail="No acceptable visualization encoding"
+            )
+        representation = sample.resolve(encoding)
+        if (
+            representation.path.is_symlink()
+            or not representation.path.is_file()
+            or representation.path.stat().st_size != representation.size
+        ):
+            raise HTTPException(status_code=404, detail="Visualization file not found")
+        headers = {
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{representation.sha256}"',
+            "Vary": "Accept-Encoding",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if encoding != "identity":
+            headers["Content-Encoding"] = encoding
+        return FileResponse(
+            representation.path,
+            media_type=POINT_MEDIA_TYPE,
+            headers=headers,
         )
 
     @application.get("/challenges", response_class=HTMLResponse, name="challenge_list")

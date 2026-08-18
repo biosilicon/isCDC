@@ -1,0 +1,41 @@
+reference_id: census_human_gbm_symbols_2025_11_08
+species: Homo sapiens
+tissue: glioblastoma
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: 999f2a15-3d7e-440b-96ae-2c806799c08c
+  dataset_id: 56c4912d-2bae-4b64-98f2-af8a84389208
+  dataset_version_id: 7ee66f63-b132-4d4c-9cd6-d2fbc46e7b94
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "Extended GBmap, bioRxiv (2022), doi:10.1101/2022.08.27.505439"
+obs_filter: disease == 'glioblastoma'
+holdout_donor: Patient_4
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE213264_human_gbm_spatial_citeseq/dataset.h5mu
+  sha256: 9ad7d36c4fabb0902347661cf50afeabe4fc43587174e4c97e894b4404053f1b
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 500
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 30
+  mixed_spots: 360
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5

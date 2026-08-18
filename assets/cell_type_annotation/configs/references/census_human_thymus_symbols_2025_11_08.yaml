@@ -1,0 +1,41 @@
+reference_id: census_human_thymus_symbols_2025_11_08
+species: Homo sapiens
+tissue: thymus
+version: "2025-11-08.1"
+method: rctd
+builder_script: ../../../../annotation/build_census_reference.R
+fetch_script: ../../../../annotation/fetch_census_reference.py
+source:
+  provider: CZ CELLxGENE Census
+  census_release: "2025-11-08"
+  collection_id: fc19ae6c-d7c1-4dce-b703-62c5d52061b4
+  dataset_id: 29244e1d-02e6-4133-b411-516ef7474638
+  dataset_version_id: 793b3f67-ecf7-4f8e-bdf6-63129d579f2e
+  license:
+    name: Source-specific terms; no SPDX license supplied by Census
+    identifier: LicenseRef-CELLxGENE-Source-Terms
+    url: https://cellxgene.cziscience.com/tos
+  citation: "thymus scRNA-seq atlas, Nature (2024), doi:10.1038/s41586-024-07944-6"
+obs_filter: tissue == 'thymus'
+holdout_donor: TSC-CT10
+gene_key: feature_name
+target_panel:
+  h5mu_path: ../../../../data/datasets/GSE213264_human_thymus_spatial_citeseq/dataset.h5mu
+  sha256: 660e395c528c2b45a07aedb892e6c227133f0e9c6a92736b254704cb073a1aa6
+  modality: rna
+  min_shared_genes: 15000
+sampling:
+  seed: 20260818
+  min_train_cells_per_type: 100
+  min_holdout_cells_per_type: 50
+  max_train_cells_per_type: 500
+  max_holdout_cells_per_type: 250
+calibration:
+  workers: 3
+  cells_per_pseudo_spot: 10
+  pure_spots_per_type: 12
+  mixed_spots: 150
+  mixed_min_top_weight: 0.65
+  mixed_min_delta: 0.15
+  mixed_max_entropy: 0.75
+  uncertain_min_confidence: 0.5
