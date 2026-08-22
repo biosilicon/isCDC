@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -27,6 +28,9 @@ CONFIG_POLICIES = {"preserve", "intersection", "union", "reference"}
 CHALLENGE_TYPES = {"same_slice", "cross_slice_same_subject", "cross_subject"}
 DATASET_TYPES = {"train", "test"}
 FEATURE_MASK_KEY = "feature_measured_by_source"
+FEATURE_HARMONIZATION_KEY = "feature_harmonization"
+COORDINATE_HARMONIZATION_KEY = "coordinate_harmonization"
+SOURCE_FEATURE_COLUMN_PREFIX = "source_feature_ids__"
 
 REQUIRED_DATABASE_FIELDS = {
     "schema_version",
@@ -83,6 +87,40 @@ class ComposeSide:
 
 
 @dataclass(frozen=True)
+class FeatureRule:
+    kind: str
+    column: str | None = None
+    mapping: tuple[tuple[str, str], ...] = ()
+    mapping_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class ModalityHarmonization:
+    namespace: str
+    sources: dict[str, FeatureRule]
+
+
+@dataclass(frozen=True)
+class FeatureHarmonization:
+    modalities: dict[str, ModalityHarmonization]
+
+
+@dataclass(frozen=True)
+class CoordinateRule:
+    kind: str
+    key: str | None = None
+    x: str | None = None
+    y: str | None = None
+
+
+@dataclass(frozen=True)
+class CoordinateHarmonization:
+    spatial_unit: str
+    coordinate_unit: str
+    sources: dict[str, CoordinateRule]
+
+
+@dataclass(frozen=True)
 class ComposeConfig:
     path: Path
     split_id: str
@@ -91,6 +129,8 @@ class ComposeConfig:
     output_dir: Path
     train: ComposeSide
     test: ComposeSide
+    feature_harmonization: FeatureHarmonization | None = None
+    coordinate_harmonization: CoordinateHarmonization | None = None
 
 
 @dataclass
@@ -288,6 +328,125 @@ def _load_compose_side(value: Any, base: Path, name: str) -> ComposeSide:
     )
 
 
+def _load_feature_rule(value: Any, base: Path, context: str) -> FeatureRule:
+    rule = _as_mapping(value, context)
+    kind = _required_string(rule.get("kind"), f"{context}.kind")
+    if kind == "identity":
+        _check_keys(rule, {"kind"}, {"kind"}, context)
+        return FeatureRule(kind=kind)
+    if kind == "var_column":
+        _check_keys(rule, {"kind", "column"}, {"kind", "column"}, context)
+        return FeatureRule(
+            kind=kind,
+            column=_required_string(rule["column"], f"{context}.column"),
+        )
+    if kind != "mapping_file":
+        raise SplitterError(f"{context}.kind must be identity, var_column, or mapping_file")
+    _check_keys(rule, {"kind", "path"}, {"kind", "path"}, context)
+    mapping_path = _config_path(rule["path"], base, f"{context}.path")
+    try:
+        raw_bytes = mapping_path.read_bytes()
+        raw_mapping = yaml.safe_load(raw_bytes)
+    except OSError as exc:
+        raise SplitterError(f"unable to read feature mapping '{mapping_path}': {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise SplitterError(f"invalid feature mapping YAML '{mapping_path}': {exc}") from exc
+    mapping = _as_mapping(raw_mapping, f"feature mapping '{mapping_path}'")
+    cleaned: list[tuple[str, str]] = []
+    for raw_feature, canonical_feature in mapping.items():
+        original = _required_string(
+            raw_feature, f"feature mapping '{mapping_path}' original feature"
+        )
+        canonical = _required_string(
+            canonical_feature, f"feature mapping '{mapping_path}' canonical feature"
+        )
+        cleaned.append((original, canonical))
+    if not cleaned:
+        raise SplitterError(f"feature mapping '{mapping_path}' must not be empty")
+    return FeatureRule(
+        kind=kind,
+        mapping=tuple(cleaned),
+        mapping_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+    )
+
+
+def _load_feature_harmonization(
+    value: Any, base: Path
+) -> FeatureHarmonization:
+    context = "compose config feature_harmonization"
+    values = _as_mapping(value, context)
+    fields = {"version", "scope", "aggregation", "modalities"}
+    _check_keys(values, fields, fields, context)
+    if values["version"] != "1.0":
+        raise SplitterError(f"{context}.version must be '1.0'")
+    if values["scope"] != "all_challenge_sources":
+        raise SplitterError(f"{context}.scope must be 'all_challenge_sources'")
+    if values["aggregation"] != "sum":
+        raise SplitterError(f"{context}.aggregation must be 'sum'")
+    raw_modalities = _as_mapping(values["modalities"], f"{context}.modalities")
+    if len(raw_modalities) < 2:
+        raise SplitterError(f"{context}.modalities must contain at least two modalities")
+    modalities: dict[str, ModalityHarmonization] = {}
+    for raw_modality, raw_spec in raw_modalities.items():
+        modality = _required_string(raw_modality, f"{context}.modalities name")
+        modality_context = f"{context}.modalities.{modality}"
+        spec = _as_mapping(raw_spec, modality_context)
+        _check_keys(spec, {"namespace", "sources"}, {"namespace", "sources"}, modality_context)
+        raw_sources = _as_mapping(spec["sources"], f"{modality_context}.sources")
+        if not raw_sources:
+            raise SplitterError(f"{modality_context}.sources must not be empty")
+        sources = {
+            _dataset_id(source_id, f"{modality_context}.sources dataset_id"): _load_feature_rule(
+                rule, base, f"{modality_context}.sources.{source_id}"
+            )
+            for source_id, rule in raw_sources.items()
+        }
+        modalities[modality] = ModalityHarmonization(
+            namespace=_required_string(spec["namespace"], f"{modality_context}.namespace"),
+            sources=sources,
+        )
+    return FeatureHarmonization(modalities=modalities)
+
+
+def _load_coordinate_harmonization(value: Any) -> CoordinateHarmonization:
+    context = "compose config coordinate_harmonization"
+    values = _as_mapping(value, context)
+    fields = {"version", "spatial_unit", "coordinate_unit", "sources"}
+    _check_keys(values, fields, fields, context)
+    if values["version"] != "1.0":
+        raise SplitterError(f"{context}.version must be '1.0'")
+    raw_sources = _as_mapping(values["sources"], f"{context}.sources")
+    if not raw_sources:
+        raise SplitterError(f"{context}.sources must not be empty")
+    sources: dict[str, CoordinateRule] = {}
+    for raw_source_id, raw_rule in raw_sources.items():
+        source_id = _dataset_id(raw_source_id, f"{context}.sources dataset_id")
+        rule_context = f"{context}.sources.{source_id}"
+        rule = _as_mapping(raw_rule, rule_context)
+        kind = _required_string(rule.get("kind"), f"{rule_context}.kind")
+        if kind == "obsm":
+            _check_keys(rule, {"kind", "key"}, {"kind", "key"}, rule_context)
+            sources[source_id] = CoordinateRule(
+                kind=kind, key=_required_string(rule["key"], f"{rule_context}.key")
+            )
+        elif kind == "obs_columns":
+            _check_keys(rule, {"kind", "x", "y"}, {"kind", "x", "y"}, rule_context)
+            sources[source_id] = CoordinateRule(
+                kind=kind,
+                x=_required_string(rule["x"], f"{rule_context}.x"),
+                y=_required_string(rule["y"], f"{rule_context}.y"),
+            )
+        else:
+            raise SplitterError(f"{rule_context}.kind must be obsm or obs_columns")
+    return CoordinateHarmonization(
+        spatial_unit=_required_string(values["spatial_unit"], f"{context}.spatial_unit"),
+        coordinate_unit=_required_string(
+            values["coordinate_unit"], f"{context}.coordinate_unit"
+        ),
+        sources=sources,
+    )
+
+
 def load_compose_config(path: Path | str) -> ComposeConfig:
     config_path, values = _load_yaml(path)
     fields = {
@@ -299,7 +458,8 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
         "train",
         "test",
     }
-    _check_keys(values, fields, fields, "compose config")
+    optional = {"feature_harmonization", "coordinate_harmonization"}
+    _check_keys(values, fields, fields | optional, "compose config")
     _check_config_version(values["schema_version"])
     policy = values["feature_merge_policy"]
     if policy not in CONFIG_POLICIES:
@@ -320,6 +480,18 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
             raise SplitterError("reference policy requires a reference_dataset_id on both sides")
     elif train.reference_dataset_id is not None or test.reference_dataset_id is not None:
         raise SplitterError("reference_dataset_id must be null unless policy is 'reference'")
+    feature_harmonization = (
+        _load_feature_harmonization(values["feature_harmonization"], base)
+        if "feature_harmonization" in values
+        else None
+    )
+    if feature_harmonization is not None and policy != "intersection":
+        raise SplitterError("feature_harmonization requires feature_merge_policy intersection")
+    coordinate_harmonization = (
+        _load_coordinate_harmonization(values["coordinate_harmonization"])
+        if "coordinate_harmonization" in values
+        else None
+    )
     return ComposeConfig(
         path=config_path,
         split_id=_required_string(values["split_id"], "compose config split_id"),
@@ -330,6 +502,8 @@ def load_compose_config(path: Path | str) -> ComposeConfig:
         output_dir=_config_path(values["output_dir"], base, "compose config output_dir"),
         train=train,
         test=test,
+        feature_harmonization=feature_harmonization,
+        coordinate_harmonization=coordinate_harmonization,
     )
 
 
@@ -461,16 +635,19 @@ def _deduplicated_metadata(sources: Sequence[SourceDataset], field: str) -> str 
     return values[0] if len(values) == 1 else values
 
 
-def _ensure_source_compatibility(sources: Sequence[SourceDataset]) -> None:
+def _ensure_source_compatibility(
+    sources: Sequence[SourceDataset], *, coordinates_harmonized: bool = False
+) -> None:
     if not sources:
         raise SplitterError("at least one source is required")
     dataset_ids = [source.dataset_id for source in sources]
     if len(set(dataset_ids)) != len(dataset_ids):
         raise SplitterError("source dataset_id values must be unique")
-    for field in ("spatial_unit", "coordinate_unit"):
-        values = {source.database[field] for source in sources}
-        if len(values) != 1:
-            raise SplitterError(f"all sources must have the same {field}")
+    if not coordinates_harmonized:
+        for field in ("spatial_unit", "coordinate_unit"):
+            values = {source.database[field] for source in sources}
+            if len(values) != 1:
+                raise SplitterError(f"all sources must have the same {field}")
     modalities = {name for source in sources for name in source.mdata.mod}
     for modality in modalities:
         value_types = {
@@ -480,6 +657,108 @@ def _ensure_source_compatibility(sources: Sequence[SourceDataset]) -> None:
         }
         if len(value_types) != 1:
             raise SplitterError(f"all sources for modality '{modality}' must share value_type")
+
+
+def _feature_rule_mapping(
+    source: SourceDataset, modality: str, rule: FeatureRule
+) -> tuple[dict[str, str], list[str]]:
+    if modality not in source.mdata.mod:
+        raise SplitterError(
+            f"feature harmonization source '{source.dataset_id}' lacks modality '{modality}'"
+        )
+    adata = source.mdata.mod[modality]
+    raw_features = list(map(str, adata.var_names))
+    if rule.kind == "identity":
+        values = raw_features
+    elif rule.kind == "var_column":
+        assert rule.column is not None
+        if rule.column not in adata.var:
+            raise SplitterError(
+                f"source '{source.dataset_id}' modality '{modality}' lacks "
+                f"var[{rule.column!r}]"
+            )
+        raw_values = adata.var[rule.column]
+        if not raw_values.notna().all():
+            raise SplitterError(
+                f"source '{source.dataset_id}' modality '{modality}' "
+                f"var[{rule.column!r}] contains null values"
+            )
+        values = [str(value).strip() for value in raw_values]
+    else:
+        configured = dict(rule.mapping)
+        unknown = sorted(set(configured).difference(raw_features))
+        if unknown:
+            raise SplitterError(
+                f"feature mapping for source '{source.dataset_id}' modality '{modality}' "
+                f"contains unknown feature(s): {', '.join(unknown[:5])}"
+            )
+        values = [configured.get(feature, "") for feature in raw_features]
+    if any(not value for value in values if value is not None):
+        if rule.kind != "mapping_file":
+            raise SplitterError(
+                f"feature mapping for source '{source.dataset_id}' modality '{modality}' "
+                "contains a blank canonical feature"
+            )
+    mapping = {
+        raw_feature: canonical
+        for raw_feature, canonical in zip(raw_features, values, strict=True)
+        if canonical
+    }
+    ordered = list(
+        dict.fromkeys(mapping[feature] for feature in raw_features if feature in mapping)
+    )
+    if not ordered:
+        raise SplitterError(
+            f"feature mapping for source '{source.dataset_id}' modality '{modality}' is empty"
+        )
+    return mapping, ordered
+
+
+def _mapping_digest(source: SourceDataset, modality: str, mapping: Mapping[str, str]) -> str:
+    digest = hashlib.sha256()
+    for feature in map(str, source.mdata.mod[modality].var_names):
+        canonical = mapping.get(feature)
+        if canonical is None:
+            continue
+        digest.update(feature.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(canonical.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _coordinate_values(source: SourceDataset, rule: CoordinateRule) -> np.ndarray:
+    if rule.kind == "obsm":
+        assert rule.key is not None
+        if rule.key not in source.mdata.obsm:
+            raise SplitterError(
+                f"coordinate source '{source.dataset_id}' lacks obsm[{rule.key!r}]"
+            )
+        values = np.asarray(source.mdata.obsm[rule.key])
+    else:
+        assert rule.x is not None and rule.y is not None
+        missing = [name for name in (rule.x, rule.y) if name not in source.mdata.obs]
+        if missing:
+            raise SplitterError(
+                f"coordinate source '{source.dataset_id}' lacks obs column(s): "
+                + ", ".join(missing)
+            )
+        values = np.column_stack(
+            [source.mdata.obs[rule.x].to_numpy(), source.mdata.obs[rule.y].to_numpy()]
+        )
+    if values.ndim != 2 or values.shape[0] != source.mdata.n_obs or values.shape[1] not in (2, 3):
+        raise SplitterError(
+            f"coordinate rule for source '{source.dataset_id}' must produce an n_obs x 2/3 matrix"
+        )
+    if not np.issubdtype(values.dtype, np.number) or not np.isfinite(values).all():
+        raise SplitterError(
+            f"coordinate rule for source '{source.dataset_id}' must produce finite numbers"
+        )
+    if len(np.unique(values, axis=0)) != len(values):
+        raise SplitterError(
+            f"coordinate rule for source '{source.dataset_id}' produces duplicate coordinates"
+        )
+    return values.astype(np.float32, copy=True)
 
 
 def coordinate_ranges(path: Path | str, sample_id: str | None = None) -> dict[str, Any]:
@@ -546,6 +825,39 @@ def _align_matrix(adata: ad.AnnData, target_features: Sequence[str]) -> Any:
     if target_positions:
         matrix[:, target_positions] = np.asarray(adata.X)[:, source_positions]
     return matrix
+
+
+def _aggregate_feature_matrix(
+    adata: ad.AnnData,
+    target_features: Sequence[str],
+    mapping: Mapping[str, str],
+) -> Any:
+    target_positions = {feature: index for index, feature in enumerate(target_features)}
+    source_positions: list[int] = []
+    destination_positions: list[int] = []
+    for source_index, raw_feature in enumerate(map(str, adata.var_names)):
+        canonical = mapping.get(raw_feature)
+        if canonical in target_positions:
+            source_positions.append(source_index)
+            destination_positions.append(target_positions[canonical])
+    if not source_positions or set(destination_positions) != set(range(len(target_features))):
+        raise SplitterError("internal error: harmonized feature coverage is incomplete")
+    if sparse.issparse(adata.X):
+        projection = sparse.csr_matrix(
+            (
+                np.ones(len(source_positions), dtype=adata.X.dtype),
+                (source_positions, destination_positions),
+            ),
+            shape=(adata.n_vars, len(target_features)),
+        )
+        return (adata.X @ projection).tocsr()
+    source_matrix = np.asarray(adata.X)
+    result = np.zeros((adata.n_obs, len(target_features)), dtype=source_matrix.dtype)
+    for source_index, destination_index in zip(
+        source_positions, destination_positions, strict=True
+    ):
+        result[:, destination_index] += source_matrix[:, source_index]
+    return result
 
 
 def _stack_matrices(matrices: Sequence[Any]) -> Any:
@@ -637,6 +949,8 @@ def _derivation_database(
     processing_description: str,
     pairing_type: str,
     reference_dataset_id: str | None = None,
+    feature_harmonization: Mapping[str, Any] | None = None,
+    coordinate_harmonization: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     derivation: dict[str, Any] = {
         "construction_type": construction_type,
@@ -650,6 +964,10 @@ def _derivation_database(
     }
     if feature_policy == "reference":
         derivation["reference_dataset_id"] = reference_dataset_id
+    if feature_harmonization is not None:
+        derivation[FEATURE_HARMONIZATION_KEY] = deepcopy(dict(feature_harmonization))
+    if coordinate_harmonization is not None:
+        derivation[COORDINATE_HARMONIZATION_KEY] = deepcopy(dict(coordinate_harmonization))
     return {
         "schema_version": SCHEMA_VERSION,
         "dataset_id": dataset_id,
@@ -657,8 +975,16 @@ def _derivation_database(
         "source": _deduplicated_metadata(sources, "source"),
         "organism": _deduplicated_metadata(sources, "organism"),
         "tissue": _deduplicated_metadata(sources, "tissue"),
-        "spatial_unit": sources[0].database["spatial_unit"],
-        "coordinate_unit": sources[0].database["coordinate_unit"],
+        "spatial_unit": (
+            coordinate_harmonization["spatial_unit"]
+            if coordinate_harmonization is not None
+            else sources[0].database["spatial_unit"]
+        ),
+        "coordinate_unit": (
+            coordinate_harmonization["coordinate_unit"]
+            if coordinate_harmonization is not None
+            else sources[0].database["coordinate_unit"]
+        ),
         "pairing_type": pairing_type,
         "derivation": derivation,
     }
@@ -837,7 +1163,13 @@ def _build_composite_product(
     target_features: Mapping[str, Sequence[str]],
     reference_dataset_id: str | None,
     comparison_note: str = "",
+    all_sources: Sequence[SourceDataset] | None = None,
+    feature_spec: FeatureHarmonization | None = None,
+    feature_mappings: Mapping[str, Mapping[str, Mapping[str, str]]] | None = None,
+    coordinate_spec: CoordinateHarmonization | None = None,
 ) -> md.MuData:
+    global_sources = list(all_sources or sources)
+    global_source_ids = [source.dataset_id for source in global_sources]
     modalities: dict[str, ad.AnnData] = {}
     has_missing_features = False
     for modality, features in target_features.items():
@@ -846,7 +1178,16 @@ def _build_composite_product(
         modality_obs_names: list[str] = []
         for source in contributing:
             source_adata = source.mdata.mod[modality]
-            matrices.append(_align_matrix(source_adata, features))
+            if feature_mappings is None:
+                matrices.append(_align_matrix(source_adata, features))
+            else:
+                matrices.append(
+                    _aggregate_feature_matrix(
+                        source_adata,
+                        features,
+                        feature_mappings[modality][source.dataset_id],
+                    )
+                )
             modality_obs_names.extend(
                 f"{source.dataset_id}::{obs_name}" for obs_name in map(str, source_adata.obs_names)
             )
@@ -860,7 +1201,37 @@ def _build_composite_product(
         )
         mask = _feature_mask(sources, modality, features)
         has_missing_features = has_missing_features or not mask.all()
-        if policy == "union" or (policy == "reference" and not mask.all()):
+        if feature_mappings is not None:
+            assert feature_spec is not None
+            source_metadata: dict[str, dict[str, Any]] = {}
+            for source in global_sources:
+                mapping = feature_mappings[modality][source.dataset_id]
+                grouped: dict[str, list[str]] = {}
+                for raw_feature in map(str, source.mdata.mod[modality].var_names):
+                    canonical = mapping.get(raw_feature)
+                    if canonical in features:
+                        grouped.setdefault(canonical, []).append(raw_feature)
+                result.var[f"{SOURCE_FEATURE_COLUMN_PREFIX}{source.dataset_id}"] = [
+                    json.dumps(grouped[str(feature)], ensure_ascii=False, separators=(",", ":"))
+                    for feature in features
+                ]
+                rule = feature_spec.modalities[modality].sources[source.dataset_id]
+                source_metadata[source.dataset_id] = {
+                    "kind": rule.kind,
+                    "column": rule.column,
+                    "mapping_file_sha256": rule.mapping_sha256,
+                    "mapping_sha256": _mapping_digest(source, modality, mapping),
+                }
+            result.uns[FEATURE_HARMONIZATION_KEY] = {
+                "version": "1.0",
+                "scope": "all_challenge_sources",
+                "namespace": feature_spec.modalities[modality].namespace,
+                "aggregation": "sum",
+                "source_dataset_ids": global_source_ids,
+                "source_feature_column_prefix": SOURCE_FEATURE_COLUMN_PREFIX,
+                "sources": source_metadata,
+            }
+        elif policy == "union" or (policy == "reference" and not mask.all()):
             result.varm[FEATURE_MASK_KEY] = mask
             result.uns["feature_measurement"] = {
                 "mask_key": FEATURE_MASK_KEY,
@@ -892,7 +1263,12 @@ def _build_composite_product(
         source_obs_ids.extend(source_names)
         if cell_types is not None:
             cell_types.extend(source.mdata.obs["cell_type"].astype(object).tolist())
-        coordinates.append(np.asarray(source.mdata.obsm["spatial"]))
+        if coordinate_spec is None:
+            coordinates.append(np.asarray(source.mdata.obsm["spatial"]))
+        else:
+            coordinates.append(
+                _coordinate_values(source, coordinate_spec.sources[source.dataset_id])
+            )
 
     pairing_type = _computed_pairing_type(modalities)
     construction_type = "subset" if len(sources) == 1 else "composite"
@@ -907,15 +1283,47 @@ def _build_composite_product(
         selection_description=(
             "All observations from every assigned full source dataset were retained."
         ),
-        processing_description=_processing_description(
-            policy,
-            has_missing_features=has_missing_features,
-            comparison_note=comparison_note,
+        processing_description=(
+            "Each modality was mapped to the all-source canonical feature intersection; "
+            "duplicate raw count features were summed, retained count values were otherwise "
+            "unchanged, and source feature mappings are embedded in modality provenance. "
+            "Spatial coordinates were represented as declared per-source array indices in "
+            "source-distinguishable local coordinate systems."
+            if feature_mappings is not None
+            else _processing_description(
+                policy,
+                has_missing_features=has_missing_features,
+                comparison_note=comparison_note,
+            )
         ),
         pairing_type=pairing_type,
         reference_dataset_id=reference_dataset_id,
+        feature_harmonization=(
+            {
+                "version": "1.0",
+                "scope": "all_challenge_sources",
+                "aggregation": "sum",
+                "source_dataset_ids": global_source_ids,
+                "modalities": {
+                    modality: feature_spec.modalities[modality].namespace
+                    for modality in sorted(feature_spec.modalities)
+                },
+            }
+            if feature_spec is not None
+            else None
+        ),
+        coordinate_harmonization=(
+            {
+                "version": "1.0",
+                "spatial_unit": coordinate_spec.spatial_unit,
+                "coordinate_unit": coordinate_spec.coordinate_unit,
+                "source_dataset_ids": global_source_ids,
+            }
+            if coordinate_spec is not None
+            else None
+        ),
     )
-    return _minimal_mudata(
+    result = _minimal_mudata(
         modalities,
         top_names,
         sample_ids,
@@ -925,6 +1333,25 @@ def _build_composite_product(
         database,
         cell_types,
     )
+    if coordinate_spec is not None:
+        result.uns[COORDINATE_HARMONIZATION_KEY] = {
+            "version": "1.0",
+            "spatial_unit": coordinate_spec.spatial_unit,
+            "coordinate_unit": coordinate_spec.coordinate_unit,
+            "source_dataset_ids": global_source_ids,
+            "sources": {
+                source.dataset_id: {
+                    "kind": coordinate_spec.sources[source.dataset_id].kind,
+                    "key": coordinate_spec.sources[source.dataset_id].key,
+                    "x": coordinate_spec.sources[source.dataset_id].x,
+                    "y": coordinate_spec.sources[source.dataset_id].y,
+                    "input_spatial_unit": source.database["spatial_unit"],
+                    "input_coordinate_unit": source.database["coordinate_unit"],
+                }
+                for source in global_sources
+            },
+        }
+    return result
 
 
 def _source_pairs(mdata: md.MuData) -> frozenset[tuple[str, str]]:
@@ -1149,7 +1576,9 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
     try:
         for path in all_paths:
             sources.append(_read_source(path))
-        _ensure_source_compatibility(sources)
+        _ensure_source_compatibility(
+            sources, coordinates_harmonized=config.coordinate_harmonization is not None
+        )
         source_ids = {source.dataset_id for source in sources}
         if config.train.dataset_id in source_ids or config.test.dataset_id in source_ids:
             raise SplitterError(
@@ -1163,23 +1592,70 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             raise SplitterError(
                 "train and test must have the same final modality set with at least two modalities"
             )
+        feature_mappings: dict[str, dict[str, dict[str, str]]] | None = None
+        harmonized_targets: dict[str, list[str]] | None = None
+        if config.feature_harmonization is not None:
+            declared_modalities = set(config.feature_harmonization.modalities)
+            if declared_modalities != train_modalities:
+                raise SplitterError(
+                    "feature_harmonization modalities must exactly match the final modality set"
+                )
+            feature_mappings = {}
+            harmonized_targets = {}
+            for modality in sorted(train_modalities):
+                spec = config.feature_harmonization.modalities[modality]
+                if set(spec.sources) != source_ids:
+                    raise SplitterError(
+                        f"feature_harmonization modality '{modality}' sources must exactly "
+                        "match all challenge sources"
+                    )
+                modality_mappings: dict[str, dict[str, str]] = {}
+                ordered_by_source: dict[str, list[str]] = {}
+                for source in sources:
+                    value_type = str(source.mdata.mod[modality].uns["assay"]["value_type"])
+                    if value_type != "counts":
+                        raise SplitterError(
+                            "sum feature harmonization currently requires counts value_type"
+                        )
+                    mapping, ordered = _feature_rule_mapping(
+                        source, modality, spec.sources[source.dataset_id]
+                    )
+                    modality_mappings[source.dataset_id] = mapping
+                    ordered_by_source[source.dataset_id] = ordered
+                common = set(ordered_by_source[sources[0].dataset_id]).intersection(
+                    *(set(ordered_by_source[source.dataset_id]) for source in sources[1:])
+                )
+                targets = [
+                    feature
+                    for feature in ordered_by_source[sources[0].dataset_id]
+                    if feature in common
+                ]
+                if not targets:
+                    raise SplitterError(
+                        f"canonical feature intersection is empty for modality '{modality}'"
+                    )
+                feature_mappings[modality] = modality_mappings
+                harmonized_targets[modality] = targets
+        if config.coordinate_harmonization is not None:
+            if set(config.coordinate_harmonization.sources) != source_ids:
+                raise SplitterError(
+                    "coordinate_harmonization sources must exactly match all challenge sources"
+                )
+            for source in sources:
+                _coordinate_values(
+                    source, config.coordinate_harmonization.sources[source.dataset_id]
+                )
         train_reference = _find_reference(train_sources, config.train.reference_dataset_id)
         test_reference = _find_reference(test_sources, config.test.reference_dataset_id)
         if config.feature_merge_policy == "reference" and (
             train_reference is None or test_reference is None
         ):
             raise SplitterError("each reference_dataset_id must identify a source on its own side")
-        train_targets = _determine_target_features(
-            train_sources,
-            train_modalities,
-            config.feature_merge_policy,
-            train_reference,
+        train_targets = harmonized_targets or _determine_target_features(
+            train_sources, train_modalities, config.feature_merge_policy, train_reference
         )
-        test_targets = _determine_target_features(
-            test_sources,
-            test_modalities,
-            config.feature_merge_policy,
-            test_reference,
+        test_targets = harmonized_targets or _determine_target_features(
+            test_sources, test_modalities, config.feature_merge_policy, test_reference
         )
         if config.feature_merge_policy == "reference" and train_targets != test_targets:
             raise SplitterError("reference datasets must use identical modality feature order")
@@ -1199,6 +1675,10 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             target_features=train_targets,
             reference_dataset_id=config.train.reference_dataset_id,
             comparison_note=comparison_note,
+            all_sources=sources,
+            feature_spec=config.feature_harmonization,
+            feature_mappings=feature_mappings,
+            coordinate_spec=config.coordinate_harmonization,
         )
         test = _build_composite_product(
             test_sources,
@@ -1210,6 +1690,10 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
             target_features=test_targets,
             reference_dataset_id=config.test.reference_dataset_id,
             comparison_note=comparison_note,
+            all_sources=sources,
+            feature_spec=config.feature_harmonization,
+            feature_mappings=feature_mappings,
+            coordinate_spec=config.coordinate_harmonization,
         )
         return _write_products(
             config.output_dir,

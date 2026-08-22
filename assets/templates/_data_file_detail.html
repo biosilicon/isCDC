@@ -26,6 +26,7 @@
 
       <section class="mt-5">
         <h3 class="h4">File metadata</h3>
+        {% set sample_sources = (sample_sources_by_dataset_id|default({})).get(dataset.dataset_id, ()) %}
         <dl class="row metadata-list mt-3">
           <dt class="col-sm-4">Dataset ID</dt><dd class="col-sm-8"><code>{{ dataset.dataset_id }}</code></dd>
           <dt class="col-sm-4">Dataset type</dt><dd class="col-sm-8">{{ dataset.dataset_type }}</dd>
@@ -36,7 +37,26 @@
           <dt class="col-sm-4">Coordinates</dt><dd class="col-sm-8">{{ dataset.coordinate_dimensions }}D, {{ dataset.coordinate_unit }}</dd>
           <dt class="col-sm-4">Pairing</dt><dd class="col-sm-8">{{ dataset.pairing_type }}</dd>
           <dt class="col-sm-4">Modality count</dt><dd class="col-sm-8">{{ dataset.modalities|length }}</dd>
-          <dt class="col-sm-4">Source</dt><dd class="col-sm-8">{% for source in dataset.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+          <dt class="col-sm-4">Source</dt>
+          <dd class="col-sm-8">
+            {% if sample_sources %}
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Sample</th><th>Source</th></tr></thead>
+                  <tbody>
+                    {% for item in sample_sources %}
+                      <tr>
+                        <td><code>{{ item.sample_id }}</code></td>
+                        <td>{% for source in item.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              {% for source in dataset.source|as_list %}{% if source.startswith('http') %}<a href="{{ source }}" rel="noopener">{{ source }}</a>{% else %}{{ source }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+          </dd>
           <dt class="col-sm-4">Keywords</dt><dd class="col-sm-8">{{ dataset.keywords|join(', ') if dataset.keywords else 'None' }}</dd>
           <dt class="col-sm-4">License</dt><dd class="col-sm-8">{% if dataset.license %}{% if dataset.license.url %}<a href="{{ dataset.license.url }}" rel="noopener">{{ dataset.license.name }}</a>{% else %}{{ dataset.license.name }}{% endif %}{% else %}Not specified{% endif %}</dd>
           <dt class="col-sm-4">Publication</dt><dd class="col-sm-8">{% if dataset.publication %}{{ dataset.publication.citation or dataset.publication.doi or dataset.publication.url }}{% else %}Not specified{% endif %}</dd>
@@ -52,7 +72,26 @@
             <dt class="col-sm-4">Split ID</dt><dd class="col-sm-8"><code>{{ dataset.derivation.split_id }}</code></dd>
             <dt class="col-sm-4">Construction</dt><dd class="col-sm-8">{{ dataset.derivation.construction_type }}</dd>
             <dt class="col-sm-4">Source databases</dt>
-            <dd class="col-sm-8">{% for source_id in dataset.derivation.source_dataset_ids %}<a href="{{ url_for('database_detail', dataset_id=source_id) }}"><code>{{ source_id }}</code></a>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+            <dd class="col-sm-8">
+              {% if sample_sources %}
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Sample</th><th>Original sample</th><th>Source database</th></tr></thead>
+                    <tbody>
+                      {% for item in sample_sources %}
+                        <tr>
+                          <td><code>{{ item.sample_id }}</code></td>
+                          <td><code>{{ item.source_sample_id }}</code></td>
+                          <td><a href="{{ url_for('database_detail', dataset_id=item.source_database_id) }}">{{ item.source_database_title }} · <code>{{ item.source_database_id }}</code></a></td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                {% for source_id in dataset.derivation.source_dataset_ids %}<a href="{{ url_for('database_detail', dataset_id=source_id) }}"><code>{{ source_id }}</code></a>{% if not loop.last %}, {% endif %}{% endfor %}
+              {% endif %}
+            </dd>
             <dt class="col-sm-4">Selection</dt><dd class="col-sm-8">{{ dataset.derivation.selection_description }}</dd>
             <dt class="col-sm-4">Feature merge policy</dt><dd class="col-sm-8">{{ dataset.derivation.feature_merge_policy }}</dd>
             {% if dataset.derivation.reference_dataset_id %}<dt class="col-sm-4">Reference database</dt><dd class="col-sm-8"><code>{{ dataset.derivation.reference_dataset_id }}</code></dd>{% endif %}

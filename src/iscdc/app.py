@@ -45,6 +45,7 @@ from .repository import (
     CatalogueIntegrityError,
     Challenge,
     ChallengeSort,
+    SampleSource,
     count_challenges,
     count_databases,
     get_challenge,
@@ -52,6 +53,7 @@ from .repository import (
     get_facets,
     list_challenges,
     list_databases,
+    resolve_sample_sources,
 )
 from .schemas import (
     ChallengeDifficultyResponse,
@@ -60,6 +62,7 @@ from .schemas import (
     ChallengeType,
     DatabaseListResponse,
     DataFileResponse,
+    SampleSourceResponse,
 )
 
 CHALLENGE_TYPE_LABELS = {
@@ -319,6 +322,7 @@ def _data_file_response(
     dataset: Dataset,
     request: Request,
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+    sample_sources_by_dataset_id: dict[str, list[SampleSource]],
 ) -> DataFileResponse:
     downloads = {
         kind: str(request.url_for("download_file", dataset_id=dataset.dataset_id, kind=kind))
@@ -338,6 +342,16 @@ def _data_file_response(
         pairing_type=dataset.pairing_type,
         derivation=dataset.derivation,
         sample_ids=dataset.sample_ids,
+        sample_sources=[
+            SampleSourceResponse(
+                sample_id=item.sample_id,
+                source_sample_id=item.source_sample_id,
+                source_database_id=item.source_database_id,
+                source_database_title=item.source_database_title,
+                source=item.source,
+            )
+            for item in sample_sources_by_dataset_id.get(dataset.dataset_id, ())
+        ],
         keywords=dataset.keywords,
         license=dataset.license,
         publication=dataset.publication,
@@ -386,6 +400,7 @@ def _challenge_response(
     challenge: Challenge,
     request: Request,
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+    sample_sources_by_dataset_id: dict[str, list[SampleSource]],
     difficulty: ChallengeDifficulty | None,
 ) -> ChallengeResponse:
     return ChallengeResponse(
@@ -402,12 +417,22 @@ def _challenge_response(
             else None
         ),
         train=(
-            _data_file_response(challenge.train, request, auxiliary_files_by_dataset)
+            _data_file_response(
+                challenge.train,
+                request,
+                auxiliary_files_by_dataset,
+                sample_sources_by_dataset_id,
+            )
             if challenge.train is not None
             else None
         ),
         test=(
-            _data_file_response(challenge.test, request, auxiliary_files_by_dataset)
+            _data_file_response(
+                challenge.test,
+                request,
+                auxiliary_files_by_dataset,
+                sample_sources_by_dataset_id,
+            )
             if challenge.test is not None
             else None
         ),
@@ -838,6 +863,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "challenge_detail",
             {"split_id": challenge.split_id},
         )
+        sample_sources_by_dataset_id = resolve_sample_sources(
+            session, challenge.datasets
+        )
         return templates.TemplateResponse(
             request=request,
             name="challenge_detail.html",
@@ -845,6 +873,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "challenge": challenge,
                 "difficulty": difficulty_by_split_id.get(challenge.split_id),
                 "download_kinds": DOWNLOAD_FILES,
+                "sample_sources_by_dataset_id": sample_sources_by_dataset_id,
             },
         )
 
@@ -955,7 +984,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return DatabaseListResponse(
             items=[
-                _data_file_response(database, request, auxiliary_files_by_dataset)
+                _data_file_response(database, request, auxiliary_files_by_dataset, {})
                 for database in databases
             ],
             total=total,
@@ -974,7 +1003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = get_database(session, dataset_id)
         if database is None:
             raise HTTPException(status_code=404, detail="Database not found")
-        return _data_file_response(database, request, auxiliary_files_by_dataset)
+        return _data_file_response(database, request, auxiliary_files_by_dataset, {})
 
     @application.get(
         "/api/challenges", response_model=ChallengeListResponse, name="api_challenge_list"
@@ -1004,12 +1033,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for split_id, difficulty in difficulty_by_split_id.items()
             },
         )
+        sample_sources_by_dataset_id = resolve_sample_sources(
+            session,
+            [dataset for challenge in challenges for dataset in challenge.datasets],
+        )
         return ChallengeListResponse(
             items=[
                 _challenge_response(
                     challenge,
                     request,
                     auxiliary_files_by_dataset,
+                    sample_sources_by_dataset_id,
                     difficulty_by_split_id.get(challenge.split_id),
                 )
                 for challenge in challenges
@@ -1030,10 +1064,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         challenge = get_challenge(session, split_id)
         if challenge is None:
             raise HTTPException(status_code=404, detail="Challenge not found")
+        sample_sources_by_dataset_id = resolve_sample_sources(
+            session, challenge.datasets
+        )
         return _challenge_response(
             challenge,
             request,
             auxiliary_files_by_dataset,
+            sample_sources_by_dataset_id,
             difficulty_by_split_id.get(challenge.split_id),
         )
 

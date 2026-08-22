@@ -14,7 +14,9 @@ import yaml
 
 from iscdc.schemas import load_metadata
 from iscdc.splitter import (
+    COORDINATE_HARMONIZATION_KEY,
     FEATURE_MASK_KEY,
+    SOURCE_FEATURE_COLUMN_PREFIX,
     SplitterError,
     compose_split,
     coordinate_ranges,
@@ -215,6 +217,140 @@ def _metadata_for_product(path: Path) -> Path:
     finally:
         product.file.close()
     return _write_yaml(path.with_suffix(".metadata.yaml"), values)
+
+
+def test_compose_harmonizes_features_coordinates_and_provenance(tmp_path):
+    train_source = _write_full(
+        tmp_path,
+        "harmonized_train_source",
+        features={"rna": ["r1", "r2", "r3"], "protein": ["pa", "pb"]},
+        matrices={
+            "rna": np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.int32),
+            "protein": np.asarray([[7, 8], [9, 10]], dtype=np.int32),
+        },
+        spatial_unit="spot",
+        coordinate_unit="pixel",
+        value_types={"rna": "counts", "protein": "counts"},
+    )
+    test_source = _write_full(
+        tmp_path,
+        "harmonized_test_source",
+        features={"rna": ["G1", "G2", "G3"], "protein": ["qa", "qb"]},
+        matrices={
+            "rna": np.asarray([[11, 12, 13], [14, 15, 16]], dtype=np.int32),
+            "protein": np.asarray([[17, 18], [19, 20]], dtype=np.int32),
+        },
+        spatial_unit="bin",
+        coordinate_unit="array_index",
+        value_types={"rna": "counts", "protein": "counts"},
+    )
+    train_data = _read(train_source)
+    try:
+        train_data.mod["rna"].var["gene_symbol"] = ["G1", "G2", "G2"]
+        train_data.obs["array_col"] = [10, 20]
+        train_data.obs["array_row"] = [30, 40]
+        train_data.write_h5mu(train_source)
+    finally:
+        train_data.file.close()
+    _write_yaml(tmp_path / "train-protein.yaml", {"pa": "P1", "pb": "P2"})
+    _write_yaml(tmp_path / "test-protein.yaml", {"qa": "P1", "qb": "P2"})
+    config = _write_yaml(
+        tmp_path / "harmonized.yaml",
+        {
+            "schema_version": "1.2",
+            "split_id": "harmonized_split",
+            "challenge_type": "cross_subject",
+            "feature_merge_policy": "intersection",
+            "output_dir": "harmonized-output",
+            "train": {
+                "dataset_id": "harmonized_train",
+                "sources": [train_source.name],
+                "reference_dataset_id": None,
+            },
+            "test": {
+                "dataset_id": "harmonized_test",
+                "sources": [test_source.name],
+                "reference_dataset_id": None,
+            },
+            "feature_harmonization": {
+                "version": "1.0",
+                "scope": "all_challenge_sources",
+                "aggregation": "sum",
+                "modalities": {
+                    "rna": {
+                        "namespace": "gene_symbol",
+                        "sources": {
+                            "harmonized_train_source": {
+                                "kind": "var_column",
+                                "column": "gene_symbol",
+                            },
+                            "harmonized_test_source": {"kind": "identity"},
+                        },
+                    },
+                    "protein": {
+                        "namespace": "protein_marker",
+                        "sources": {
+                            "harmonized_train_source": {
+                                "kind": "mapping_file",
+                                "path": "train-protein.yaml",
+                            },
+                            "harmonized_test_source": {
+                                "kind": "mapping_file",
+                                "path": "test-protein.yaml",
+                            },
+                        },
+                    },
+                },
+            },
+            "coordinate_harmonization": {
+                "version": "1.0",
+                "spatial_unit": "region",
+                "coordinate_unit": "array_index",
+                "sources": {
+                    "harmonized_train_source": {
+                        "kind": "obs_columns",
+                        "x": "array_col",
+                        "y": "array_row",
+                    },
+                    "harmonized_test_source": {"kind": "obsm", "key": "spatial"},
+                },
+            },
+        },
+    )
+
+    train_path, test_path = compose_split(config)
+    train = _read(train_path)
+    test = _read(test_path)
+    try:
+        assert list(train.mod["rna"].var_names) == ["G1", "G2"]
+        assert list(test.mod["rna"].var_names) == ["G1", "G2"]
+        np.testing.assert_array_equal(
+            train.mod["rna"].X, np.asarray([[1, 5], [4, 11]], dtype=np.int32)
+        )
+        assert list(train.mod["protein"].var_names) == ["P1", "P2"]
+        np.testing.assert_array_equal(train.obsm["spatial"], [[10, 30], [20, 40]])
+        assert train.uns["database"]["spatial_unit"] == "region"
+        assert train.uns["database"]["coordinate_unit"] == "array_index"
+        assert COORDINATE_HARMONIZATION_KEY in train.uns
+        assert (
+            f"{SOURCE_FEATURE_COLUMN_PREFIX}harmonized_test_source"
+            in train.mod["rna"].var
+        )
+        assert list(
+            train.uns["database"]["derivation"]["feature_harmonization"][
+                "source_dataset_ids"
+            ]
+        ) == ["harmonized_train_source", "harmonized_test_source"]
+    finally:
+        train.file.close()
+        test.file.close()
+
+    source_paths = {
+        "harmonized_train_source": train_source,
+        "harmonized_test_source": test_source,
+    }
+    assert validate_h5mu(train_path, source_paths=source_paths).valid
+    assert validate_h5mu(test_path, source_paths=source_paths).valid
 
 
 def test_coordinate_ranges_reports_global_samples_json_and_3d(tmp_path, capsys):
@@ -483,6 +619,45 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
     finally:
         train.file.close()
         test.file.close()
+
+
+def test_validation_rejects_noncanonical_multisource_sample_ids(tmp_path):
+    source_a = _write_full(tmp_path, "sample_source_a", samples=["shared", "shared"])
+    source_b = _write_full(tmp_path, "sample_source_b", samples=["shared", "shared"])
+    source_c = _write_full(tmp_path, "sample_source_c", samples=["shared", "shared"])
+    config = _compose_config(
+        tmp_path,
+        "preserve",
+        [source_a, source_b],
+        [source_c],
+        output_name="sample_source_validation",
+    )
+    train_path, _ = compose_split(config)
+    train = _read(train_path)
+    invalid_path = tmp_path / "noncanonical_samples.h5mu"
+    try:
+        train.obs["sample_id"] = train.obs["source_dataset_id"].map(
+            {
+                "sample_source_a": "custom_sample_a",
+                "sample_source_b": "custom_sample_b",
+            }
+        )
+        train.write_h5mu(invalid_path)
+    finally:
+        train.file.close()
+
+    outcome = validate_h5mu(
+        invalid_path,
+        source_paths={
+            "sample_source_a": source_a,
+            "sample_source_b": source_b,
+        },
+    )
+
+    assert not outcome.valid
+    assert "noncanonical_composite_sample_id" in {
+        issue.code for issue in outcome.errors
+    }
 
 
 def test_compose_keeps_cell_type_only_when_all_sources_are_annotated(tmp_path):

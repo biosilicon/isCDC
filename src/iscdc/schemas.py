@@ -27,6 +27,61 @@ def _clean_scalar_or_list(value: ScalarOrList) -> ScalarOrList:
     return cleaned
 
 
+class FeatureHarmonizationMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["1.0"]
+    scope: Literal["all_challenge_sources"]
+    aggregation: Literal["sum"]
+    source_dataset_ids: list[str] = Field(min_length=2)
+    modalities: dict[str, str] = Field(min_length=2)
+
+    @field_validator("source_dataset_ids")
+    @classmethod
+    def validate_source_ids(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("entries must not be blank")
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("entries must be unique")
+        return cleaned
+
+    @field_validator("modalities")
+    @classmethod
+    def validate_namespaces(cls, values: dict[str, str]) -> dict[str, str]:
+        cleaned = {name.strip(): namespace.strip() for name, namespace in values.items()}
+        if any(not name or not namespace for name, namespace in cleaned.items()):
+            raise ValueError("modality names and namespaces must not be blank")
+        return cleaned
+
+
+class CoordinateHarmonizationMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["1.0"]
+    spatial_unit: str = Field(min_length=1)
+    coordinate_unit: str = Field(min_length=1)
+    source_dataset_ids: list[str] = Field(min_length=2)
+
+    @field_validator("spatial_unit", "coordinate_unit")
+    @classmethod
+    def strip_units(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
+    @field_validator("source_dataset_ids")
+    @classmethod
+    def validate_source_ids(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("entries must not be blank")
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("entries must be unique")
+        return cleaned
+
+
 class DerivationMetadata(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -39,6 +94,8 @@ class DerivationMetadata(BaseModel):
     processing_description: str = Field(min_length=1)
     reference_dataset_id: str | None = None
     random_seed: int | None = None
+    feature_harmonization: FeatureHarmonizationMetadata | None = None
+    coordinate_harmonization: CoordinateHarmonizationMetadata | None = None
 
     @field_validator(
         "source_dataset_ids",
@@ -73,6 +130,22 @@ class DerivationMetadata(BaseModel):
                 raise ValueError("reference_dataset_id must identify one of the sources")
         elif self.reference_dataset_id is not None:
             raise ValueError("reference_dataset_id is only valid for the reference policy")
+        if self.feature_harmonization is not None:
+            if self.feature_merge_policy != "intersection":
+                raise ValueError("feature harmonization requires the intersection policy")
+            if not set(self.source_dataset_ids).issubset(
+                self.feature_harmonization.source_dataset_ids
+            ):
+                raise ValueError(
+                    "feature harmonization sources must include every contributing source"
+                )
+        if self.coordinate_harmonization is not None:
+            if not set(self.source_dataset_ids).issubset(
+                self.coordinate_harmonization.source_dataset_ids
+            ):
+                raise ValueError(
+                    "coordinate harmonization sources must include every contributing source"
+                )
         return self
 
 
@@ -258,6 +331,14 @@ class AuxiliaryFileResponse(BaseModel):
     download_url: str
 
 
+class SampleSourceResponse(BaseModel):
+    sample_id: str
+    source_sample_id: str
+    source_database_id: str
+    source_database_title: str
+    source: ScalarOrList
+
+
 class DataFileResponse(BaseModel):
     dataset_id: str
     schema_version: str
@@ -272,6 +353,7 @@ class DataFileResponse(BaseModel):
     pairing_type: PairingType
     derivation: DerivationMetadata | None
     sample_ids: list[str]
+    sample_sources: list[SampleSourceResponse]
     keywords: list[str]
     license: dict[str, Any] | None
     publication: dict[str, Any] | None

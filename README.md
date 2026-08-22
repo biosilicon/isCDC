@@ -41,23 +41,29 @@ Database 的网页缩略图以 `<dataset_id>.webp` 命名，保存在被忽略�
 
 项目使用 `conda iscdc` 环境。激活环境后：
 
-完整测试依赖以下不会纳入版本控制的真实数据文件，并会在临时目录重跑一次空间划分：
+日常开发和 agent 修改默认只运行与本次改动直接相关的测试，优先指定精确 pytest node ID 或
+最窄的相关测试文件，不自动运行完整套件。例如：
+
+```bash
+conda activate iscdc
+make setup
+PYTHONPATH=src python -m pytest tests/test_app.py::test_multisource_challenge_shows_every_sample_source_in_page_and_api
+make lint
+make run
+```
+
+只有用户明确要求完整测试时才运行 `make test`。完整测试依赖以下不会纳入版本控制的真实数据
+文件，并会在临时目录重跑一次空间划分：
 
 ```text
 exp/xenium_human_rcc_ffpe_rna_protein.h5mu
 exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml
 ```
 
-请在运行测试前准备这两个文件，并为生成的 train/test 产物预留约 300 MB 临时空间。
+请在运行完整测试前准备这两个文件，并为生成的 train/test 产物预留约 300 MB 临时空间。
 缺失文件会使测试失败。
 
-```bash
-conda activate iscdc
-make setup
-make test
-make lint
-make run
-```
+显式完整验收使用 `make test`。
 
 完整测试包含使用多进程 `DataLoader` worker 的 PyTorch 用例，因此运行环境必须允许本地
 IPC socket。在受限沙箱中，运行 `make test` 前应申请仅覆盖本机进程间通信的最小权限；
@@ -572,12 +578,52 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 不同；发生差异时，两个产物的 `processing_description` 会明确记录。`reference` 仍要求
 两侧参考全集使用完全相同的模态和特征顺序。
 
+跨技术来源使用不同 feature ID 或空间坐标单位时，`compose` 还支持显式、可审计的
+harmonization。该模式只与 `feature_merge_policy: intersection` 配合，先在全部 Challenge
+来源上建立 canonical feature ID，再按首个 train 来源的顺序保留全局交集；同一 canonical
+feature 对应多个 raw count feature 时使用 `sum` 聚合。配置示例：
+
+```yaml
+feature_harmonization:
+  version: "1.0"
+  scope: all_challenge_sources
+  aggregation: sum
+  modalities:
+    rna:
+      namespace: gene_symbol
+      sources:
+        full_a: {kind: var_column, column: gene_symbol}
+        full_b: {kind: identity}
+    protein:
+      namespace: protein_marker
+      sources:
+        full_a: {kind: mapping_file, path: full_a_protein.yaml}
+        full_b: {kind: mapping_file, path: full_b_protein.yaml}
+coordinate_harmonization:
+  version: "1.0"
+  spatial_unit: region
+  coordinate_unit: array_index
+  sources:
+    full_a: {kind: obs_columns, x: array_col, y: array_row}
+    full_b: {kind: obsm, key: spatial}
+```
+
+feature 来源规则只能为 `identity`、`var_column` 或 `mapping_file`；mapping YAML 是 raw
+feature ID 到 canonical ID 的非空映射，路径相对 compose 配置解析。所有 Challenge 来源和
+最终模态必须完整声明，当前 `sum` 聚合只接受 `counts`。坐标规则只能从一个 `obsm` 矩阵或
+两个顶层 `obs` 列读取。输出在 derivation 中记录全局摘要，在各 modality 的 `var`/`uns` 和
+顶层 `uns["coordinate_harmonization"]` 中嵌入逐来源映射、hash 与坐标 provenance；导入器会
+对正式 full 文件重算交集并核对矩阵和坐标。没有这些配置的旧 compose 行为保持不变。
+
 组合产物的顶层观测 ID 和样本 ID 分别编码为
 `<source_dataset_id>::<source_obs_id>` 和
 `<source_dataset_id>::<original_sample_id>`。每个观测的原始来源仍保存在
 `source_dataset_id`、`source_obs_id` 中，产物的 `uns["database"]["derivation"]` 会记录
 划分 ID、Challenge 类型、来源全集、选择规则、特征策略、处理说明和
-`random_seed: null`。
+`random_seed: null`。多来源 train/test 必须使用上述 sample ID 编码；Challenge 详情页会在
+File metadata 的 Source 和 Derivation 的 Source databases 中逐 sample 展示对应关系。
+Challenge JSON 中每侧的 `sample_sources` 提供相同的结构化映射，包含 derived/original sample、
+来源 database ID/标题及该 database 自身的 Source；单来源文件返回空列表。
 
 ## Challenge distribution-shift 难度参考
 
@@ -659,6 +705,12 @@ domain classifier 无法区分 biological 与 technical shift；normalization、
 Challenge 的任一侧满足全部筛选条件时，响应
 仍会返回该 Challenge 已导入的完整两侧。若同一个 `split_id` 下存在多份 train 或多份
 test，目录会报告完整性错误，不会静默选择其中一份。
+
+当 train/test 由多个 source Databases 组成时，详情页 File metadata 的 Source 和 Derivation
+的 Source databases 均按 sample 逐行显示，不对重复 Source 合并。Challenge JSON 的每侧通过
+`sample_sources` 返回 derived sample、original sample、source Database ID/标题及该 Database
+自身的 Source；full 和单来源文件返回空列表。原有聚合 `source` 与
+`derivation.source_dataset_ids` 字段保持不变。
 
 Database 缩略图是样本或切片的辅助预览，并不都属于 H&E，也不能替代原始 WSI。页面按
 `dataset_id` 与 `<dataset_id>.webp` 精确匹配；没有匹配文件时不渲染图片。该展示信息仅存在

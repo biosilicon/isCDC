@@ -748,6 +748,108 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
     assert "challenge_detail_view" in event_types
 
 
+async def test_multisource_challenge_shows_every_sample_source_in_page_and_api(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        first_source = session.get(Dataset, "test_rna_protein")
+        train = session.get(Dataset, "web_train")
+        assert first_source is not None
+        assert train is not None and train.derivation is not None
+        first_source.title = "First source database"
+        second_source = Dataset(
+            dataset_id="second_source_database",
+            schema_version=first_source.schema_version,
+            dataset_type="full",
+            title="Second source database",
+            description=first_source.description,
+            source=deepcopy(first_source.source),
+            organism=deepcopy(first_source.organism),
+            tissue=deepcopy(first_source.tissue),
+            spatial_unit=first_source.spatial_unit,
+            coordinate_unit=first_source.coordinate_unit,
+            pairing_type=first_source.pairing_type,
+            derivation=None,
+            split_id=None,
+            sample_ids=["sample_02"],
+            keywords=deepcopy(first_source.keywords),
+            license=deepcopy(first_source.license),
+            publication=deepcopy(first_source.publication),
+            additional_metadata=deepcopy(first_source.additional_metadata),
+            n_obs=first_source.n_obs,
+            coordinate_dimensions=first_source.coordinate_dimensions,
+            file_size=first_source.file_size,
+            sha256=first_source.sha256,
+            storage_dir="second_source_database",
+            validation_warning_count=first_source.validation_warning_count,
+            imported_at=first_source.imported_at,
+            modalities=[
+                Modality(
+                    name=modality.name,
+                    technology=deepcopy(modality.technology),
+                    value_type=modality.value_type,
+                    n_obs=modality.n_obs,
+                    n_vars=modality.n_vars,
+                )
+                for modality in first_source.modalities
+            ],
+        )
+        derivation = deepcopy(train.derivation)
+        derivation["construction_type"] = "composite"
+        derivation["source_dataset_ids"] = [
+            "test_rna_protein",
+            "second_source_database",
+        ]
+        train.derivation = derivation
+        train.sample_ids = [
+            "test_rna_protein::sample_01",
+            "second_source_database::sample_02",
+        ]
+        session.add(second_source)
+        session.commit()
+    engine.dispose()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        detail = await client.get("/challenges/web_split_v1")
+        api_detail = await client.get("/api/challenges/web_split_v1")
+        api_listing = await client.get("/api/challenges")
+
+    assert detail.status_code == 200
+    assert "Original sample" in detail.text
+    assert "test_rna_protein::sample_01" in detail.text
+    assert "second_source_database::sample_02" in detail.text
+    assert "First source database" in detail.text
+    assert "Second source database" in detail.text
+    assert "/databases/test_rna_protein" in detail.text
+    assert "/databases/second_source_database" in detail.text
+
+    expected = [
+        {
+            "sample_id": "test_rna_protein::sample_01",
+            "source_sample_id": "sample_01",
+            "source_database_id": "test_rna_protein",
+            "source_database_title": "First source database",
+            "source": "TEST001",
+        },
+        {
+            "sample_id": "second_source_database::sample_02",
+            "source_sample_id": "sample_02",
+            "source_database_id": "second_source_database",
+            "source_database_title": "Second source database",
+            "source": "TEST001",
+        },
+    ]
+    assert api_detail.status_code == 200
+    assert api_detail.json()["train"]["sample_sources"] == expected
+    assert api_detail.json()["test"]["sample_sources"] == []
+    assert api_listing.status_code == 200
+    assert api_listing.json()["items"][0]["train"]["sample_sources"] == expected
+
+
 async def test_challenge_difficulty_is_shown_in_pages_api_and_method_modal(
     tmp_path, settings, write_h5mu, write_metadata
 ):
@@ -1081,6 +1183,7 @@ async def test_new_apis_and_pagination(settings, write_h5mu, write_metadata):
         payload = response.json()
         assert payload["total"] == 1
         assert payload["items"][0]["dataset_id"] == "test_rna_protein"
+        assert payload["items"][0]["sample_sources"] == []
         assert set(payload["items"][0]["downloads"]) == {
             "h5mu",
             "metadata",

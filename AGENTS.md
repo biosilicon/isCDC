@@ -71,6 +71,16 @@ side is absent, and treat multiple train files, multiple test files, a missing o
 Do not duplicate either the Database/Challenge presentation class or `challenge_type` in a
 separate catalogue column.
 
+When one train/test file has multiple direct source Databases, every derived `sample_id` must be
+`<source_dataset_id>::<original_sample_id>` and must map to an existing sample in exactly one of
+its `derivation.source_dataset_ids`. On Challenge detail pages, File metadata Source and
+Derivation Source databases must present one row per sample, including repeated source values.
+Challenge JSON must expose the same mapping through additive `sample_sources` records containing
+the derived sample, original sample, source Database ID/title, and that Database's scalar-or-list
+Source. Keep the existing aggregate `source` and `derivation.source_dataset_ids` fields unchanged;
+return an empty `sample_sources` list for full and single-source files. Missing or ambiguous
+source/sample relationships are catalogue integrity errors and must not be silently omitted.
+
 Schema 1.2 is restricted to cross-omics translation data. A file with exactly two modalities
 must use `pairing_type: same_unit`, and both modality `obs_names` sets must be identical. Files
 with three or more modalities may use `same_unit` or `partially_shared`; partially shared files
@@ -117,7 +127,8 @@ environment `iscdc-cell-annotation`, never through the website environment.
 The project uses requirements files and a small Makefile command set documented in `README.md`:
 
 - `make setup` — install development dependencies from `requirements-dev.txt`.
-- `make test` — run the complete pytest suite, including the required real-data split.
+- `make test` — run the complete pytest suite, including the required real-data split; agents use
+  it only when the user explicitly requests the complete suite.
 - `make lint` — run Ruff static-analysis checks.
 - `make run` — start the FastAPI application with Uvicorn.
 - `make import-example` — import the documented example dataset into the local catalogue.
@@ -155,9 +166,15 @@ Follow the standard formatter and linter for the chosen language, checked into p
 
 ## Testing Guidelines
 
-Add tests with every behavior change and bug fix. Keep tests deterministic and independent of network services by default. Name tests after observable behavior, and place shared fixtures in the nearest appropriate test support module. Run tests with `make test` (equivalent to `PYTHONPATH=src python -m pytest`). No coverage threshold is currently enforced.
+Add tests with every behavior change and bug fix. Keep tests deterministic and independent of
+network services by default. Name tests after observable behavior, and place shared fixtures in
+the nearest appropriate test support module. During agent work, run only tests directly related
+to the code and behavior modified in the current task, preferring exact pytest node IDs or the
+narrowest relevant test file. Do not proactively run `make test` or the complete pytest suite;
+run it only when the user explicitly requests complete-suite verification. No coverage threshold
+is currently enforced.
 
-Test runs must allow local IPC sockets because the PyTorch suite exercises multi-process
+Complete-suite runs must allow local IPC sockets because the PyTorch suite exercises multi-process
 `DataLoader` workers. In sandboxed environments, request the minimum additional permission needed
 for local process-to-process communication before running `make test`; this does not authorize
 external network access. Do not run the suite in a socket-blocking sandbox, where worker queue
@@ -197,10 +214,10 @@ The complete suite requires these local real-data fixtures:
 
 The real-data test reruns the configured spatial split in a temporary directory and needs roughly 300 MB of temporary disk space. Missing fixtures must fail the suite with a clear message; do not skip the real-data test. Keep synthetic MuData for focused unit and edge-case coverage so those cases remain fast and reproducible.
 
-Run splitter-only tests with:
+For a change spanning the splitter module, run the narrowest affected splitter tests, for example:
 
 ```bash
-PYTHONPATH=src python -m pytest tests/test_splitter.py
+PYTHONPATH=src python -m pytest tests/test_splitter.py::test_compose_assigns_whole_sources_and_encodes_global_ids
 ```
 
 ## Commit & Pull Request Guidelines

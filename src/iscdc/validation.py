@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -47,6 +49,9 @@ RECOMMENDED_VALUE_TYPES = {
     "unknown",
 }
 FEATURE_MASK_KEY = "feature_measured_by_source"
+FEATURE_HARMONIZATION_KEY = "feature_harmonization"
+COORDINATE_HARMONIZATION_KEY = "coordinate_harmonization"
+SOURCE_FEATURE_COLUMN_PREFIX = "source_feature_ids__"
 
 
 @dataclass(frozen=True)
@@ -661,6 +666,371 @@ def _validate_feature_mask(
             break
 
 
+def _mapping_digest(feature_order: Sequence[str], mapping: Mapping[str, str]) -> str:
+    digest = hashlib.sha256()
+    for feature in feature_order:
+        canonical = mapping.get(feature)
+        if canonical is None:
+            continue
+        digest.update(feature.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(canonical.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _parse_source_feature_column(
+    adata, source_id: str, outcome: ValidationOutcome, modality: str
+) -> dict[str, list[str]]:  # noqa: ANN001
+    column = f"{SOURCE_FEATURE_COLUMN_PREFIX}{source_id}"
+    if column not in adata.var:
+        _error(
+            outcome,
+            "missing_harmonized_source_features",
+            f"Harmonized modality '{modality}' lacks provenance for source '{source_id}'.",
+            f"/mod/{modality}/var/{column}",
+        )
+        return {}
+    result: dict[str, list[str]] = {}
+    for canonical, raw_value in zip(map(str, adata.var_names), adata.var[column], strict=True):
+        try:
+            values = json.loads(str(raw_value))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            values = None
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, str) or not value for value in values)
+            or len(values) != len(set(values))
+        ):
+            _error(
+                outcome,
+                "invalid_harmonized_source_features",
+                f"Feature provenance for source '{source_id}' must be a non-empty unique list.",
+                f"/mod/{modality}/var/{column}",
+            )
+            continue
+        result[canonical] = values
+    return result
+
+
+def _aggregate_matrix(
+    matrix: Any,
+    source_feature_count: int,
+    target_count: int,
+    source_positions: list[int],
+    target_positions: list[int],
+) -> Any:
+    if sparse.issparse(matrix):
+        projection = sparse.csr_matrix(
+            (
+                np.ones(len(source_positions), dtype=matrix.dtype),
+                (source_positions, target_positions),
+            ),
+            shape=(source_feature_count, target_count),
+        )
+        return (matrix @ projection).tocsr()
+    values = np.asarray(matrix)
+    result = np.zeros((values.shape[0], target_count), dtype=values.dtype)
+    for source_position, target_position in zip(
+        source_positions, target_positions, strict=True
+    ):
+        result[:, target_position] += values[:, source_position]
+    return result
+
+
+def _matrix_values_equal(left: Any, right: Any) -> bool:
+    if sparse.issparse(left) or sparse.issparse(right):
+        left_sparse = left if sparse.issparse(left) else sparse.csr_matrix(left)
+        right_sparse = right if sparse.issparse(right) else sparse.csr_matrix(right)
+        difference = (left_sparse - right_sparse).tocsr()
+        return difference.nnz == 0
+    return np.array_equal(np.asarray(left), np.asarray(right))
+
+
+def _validate_harmonized_modality(
+    mdata,
+    adata,
+    modality: str,
+    derivation,
+    sources: Mapping[str, Any],
+    top_provenance: Mapping[str, tuple[str, str]],
+    outcome: ValidationOutcome,
+) -> None:  # noqa: ANN001
+    summary = derivation.feature_harmonization
+    assert summary is not None
+    metadata = adata.uns.get(FEATURE_HARMONIZATION_KEY)
+    if not isinstance(metadata, Mapping):
+        _error(
+            outcome,
+            "missing_feature_harmonization_metadata",
+            f"Modality '{modality}' lacks feature harmonization metadata.",
+            f"/mod/{modality}/uns/{FEATURE_HARMONIZATION_KEY}",
+        )
+        return
+    source_ids = summary.source_dataset_ids
+    if (
+        metadata.get("version") != summary.version
+        or metadata.get("scope") != summary.scope
+        or metadata.get("aggregation") != summary.aggregation
+        or metadata.get("namespace") != summary.modalities.get(modality)
+        or list(map(str, _normalize(metadata.get("source_dataset_ids", [])))) != source_ids
+        or metadata.get("source_feature_column_prefix") != SOURCE_FEATURE_COLUMN_PREFIX
+        or not isinstance(metadata.get("sources"), Mapping)
+    ):
+        _error(
+            outcome,
+            "invalid_feature_harmonization_metadata",
+            f"Modality '{modality}' harmonization metadata disagrees with derivation.",
+            f"/mod/{modality}/uns/{FEATURE_HARMONIZATION_KEY}",
+        )
+        return
+    source_metadata = metadata["sources"]
+    output_features = list(map(str, adata.var_names))
+    source_mappings: dict[str, dict[str, str]] = {}
+    ordered_canonical: dict[str, list[str]] = {}
+    provenance_by_source = {
+        source_id: _parse_source_feature_column(
+            adata, source_id, outcome, modality
+        )
+        for source_id in source_ids
+    }
+    for source_id in source_ids:
+        if source_id not in sources or modality not in sources[source_id].mod:
+            _error(
+                outcome,
+                "missing_harmonization_source_modality",
+                f"Source '{source_id}' lacks harmonized modality '{modality}'.",
+                f"/sources/{source_id}/mod/{modality}",
+            )
+            return
+        details = source_metadata.get(source_id)
+        if not isinstance(details, Mapping):
+            _error(
+                outcome,
+                "missing_harmonization_source_metadata",
+                f"Modality '{modality}' lacks mapping metadata for source '{source_id}'.",
+                f"/mod/{modality}/uns/{FEATURE_HARMONIZATION_KEY}/sources/{source_id}",
+            )
+            return
+        source_adata = sources[source_id].mod[modality]
+        feature_order = list(map(str, source_adata.var_names))
+        kind = details.get("kind")
+        if kind == "identity":
+            mapping = dict(zip(feature_order, feature_order, strict=True))
+        elif kind == "var_column":
+            column = details.get("column")
+            if not isinstance(column, str) or column not in source_adata.var:
+                _error(
+                    outcome,
+                    "invalid_harmonization_var_column",
+                    f"Source '{source_id}' lacks the declared feature mapping column.",
+                    f"/sources/{source_id}/mod/{modality}/var",
+                )
+                return
+            values = source_adata.var[column]
+            if not values.notna().all() or _has_blank_ids(values):
+                _error(
+                    outcome,
+                    "invalid_harmonization_var_values",
+                    f"Source '{source_id}' feature mapping column contains invalid values.",
+                    f"/sources/{source_id}/mod/{modality}/var/{column}",
+                )
+                return
+            mapping = dict(
+                zip(feature_order, [str(value).strip() for value in values], strict=True)
+            )
+        elif kind == "mapping_file":
+            grouped = provenance_by_source[source_id]
+            mapping = {
+                raw_feature: canonical
+                for canonical, raw_features in grouped.items()
+                for raw_feature in raw_features
+            }
+        else:
+            _error(
+                outcome,
+                "invalid_harmonization_mapping_kind",
+                f"Source '{source_id}' has an invalid feature mapping kind.",
+                f"/mod/{modality}/uns/{FEATURE_HARMONIZATION_KEY}/sources/{source_id}/kind",
+            )
+            return
+        if any(raw_feature not in set(feature_order) for raw_feature in mapping):
+            _error(
+                outcome,
+                "unknown_harmonized_source_feature",
+                f"Source '{source_id}' mapping references an unknown feature.",
+                f"/mod/{modality}/var",
+            )
+            return
+        if details.get("mapping_sha256") != _mapping_digest(feature_order, mapping):
+            _error(
+                outcome,
+                "feature_harmonization_hash_mismatch",
+                f"Source '{source_id}' feature mapping hash is invalid.",
+                f"/mod/{modality}/uns/{FEATURE_HARMONIZATION_KEY}/sources/{source_id}",
+            )
+        source_mappings[source_id] = mapping
+        ordered_canonical[source_id] = list(
+            dict.fromkeys(mapping[feature] for feature in feature_order if feature in mapping)
+        )
+    common = set(ordered_canonical[source_ids[0]]).intersection(
+        *(set(ordered_canonical[source_id]) for source_id in source_ids[1:])
+    )
+    expected_features = [
+        feature for feature in ordered_canonical[source_ids[0]] if feature in common
+    ]
+    if output_features != expected_features:
+        _error(
+            outcome,
+            "harmonized_feature_intersection_mismatch",
+            f"Modality '{modality}' does not match the ordered all-source intersection.",
+            f"/mod/{modality}/var/index",
+        )
+        return
+    for source_id in source_ids:
+        grouped = provenance_by_source[source_id]
+        expected_grouped: dict[str, list[str]] = {}
+        for raw_feature in map(str, sources[source_id].mod[modality].var_names):
+            canonical = source_mappings[source_id].get(raw_feature)
+            if canonical in common:
+                expected_grouped.setdefault(canonical, []).append(raw_feature)
+        if grouped != expected_grouped:
+            _error(
+                outcome,
+                "harmonized_feature_provenance_mismatch",
+                f"Modality '{modality}' source feature provenance is incorrect.",
+                f"/mod/{modality}/var",
+            )
+            return
+    output_obs = list(map(str, adata.obs_names))
+    for source_id in derivation.source_dataset_ids:
+        output_rows = [
+            index
+            for index, obs_name in enumerate(output_obs)
+            if top_provenance[obs_name][0] == source_id
+        ]
+        source_obs_ids = [top_provenance[output_obs[index]][1] for index in output_rows]
+        source_adata = sources[source_id].mod[modality]
+        source_rows = source_adata.obs_names.get_indexer(source_obs_ids)
+        if np.any(source_rows < 0):
+            continue
+        raw_lookup = {
+            feature: index
+            for index, feature in enumerate(map(str, source_adata.var_names))
+        }
+        source_positions: list[int] = []
+        target_positions: list[int] = []
+        grouped = provenance_by_source[source_id]
+        for target_position, canonical in enumerate(output_features):
+            for raw_feature in grouped.get(canonical, []):
+                source_positions.append(raw_lookup[raw_feature])
+                target_positions.append(target_position)
+        expected = _aggregate_matrix(
+            source_adata.X[source_rows, :],
+            source_adata.n_vars,
+            len(output_features),
+            source_positions,
+            target_positions,
+        )
+        actual = adata.X[output_rows, :]
+        if not _matrix_values_equal(actual, expected):
+            _error(
+                outcome,
+                "harmonized_matrix_mismatch",
+                f"Modality '{modality}' values do not match source aggregation.",
+                f"/mod/{modality}/X",
+            )
+            return
+
+
+def _validate_harmonized_coordinates(
+    mdata,
+    database: DatabaseMetadata,
+    sources: Mapping[str, Any],
+    pairs: Sequence[tuple[str, str]],
+    outcome: ValidationOutcome,
+) -> None:  # noqa: ANN001
+    summary = database.derivation.coordinate_harmonization
+    if summary is None:
+        return
+    metadata = mdata.uns.get(COORDINATE_HARMONIZATION_KEY)
+    if not isinstance(metadata, Mapping) or not isinstance(metadata.get("sources"), Mapping):
+        _error(
+            outcome,
+            "missing_coordinate_harmonization_metadata",
+            "Coordinate harmonization metadata is required.",
+            f"/uns/{COORDINATE_HARMONIZATION_KEY}",
+        )
+        return
+    if (
+        metadata.get("version") != summary.version
+        or metadata.get("spatial_unit") != summary.spatial_unit
+        or metadata.get("coordinate_unit") != summary.coordinate_unit
+        or list(map(str, _normalize(metadata.get("source_dataset_ids", []))))
+        != summary.source_dataset_ids
+        or database.spatial_unit != summary.spatial_unit
+        or database.coordinate_unit != summary.coordinate_unit
+    ):
+        _error(
+            outcome,
+            "invalid_coordinate_harmonization_metadata",
+            "Coordinate harmonization metadata disagrees with derivation.",
+            f"/uns/{COORDINATE_HARMONIZATION_KEY}",
+        )
+        return
+    output_coordinates = np.asarray(mdata.obsm["spatial"])
+    for source_id in database.derivation.source_dataset_ids:
+        details = metadata["sources"].get(source_id)
+        if not isinstance(details, Mapping) or source_id not in sources:
+            _error(
+                outcome,
+                "missing_coordinate_source_metadata",
+                f"Coordinate metadata for source '{source_id}' is missing.",
+                f"/uns/{COORDINATE_HARMONIZATION_KEY}/sources/{source_id}",
+            )
+            continue
+        source = sources[source_id]
+        if details.get("kind") == "obsm":
+            key = details.get("key")
+            if not isinstance(key, str) or key not in source.obsm:
+                expected_all = None
+            else:
+                expected_all = np.asarray(source.obsm[key])
+        elif details.get("kind") == "obs_columns":
+            x, y = details.get("x"), details.get("y")
+            if (
+                not isinstance(x, str)
+                or not isinstance(y, str)
+                or x not in source.obs
+                or y not in source.obs
+            ):
+                expected_all = None
+            else:
+                expected_all = np.column_stack([source.obs[x].to_numpy(), source.obs[y].to_numpy()])
+        else:
+            expected_all = None
+        if expected_all is None:
+            _error(
+                outcome,
+                "invalid_coordinate_source_rule",
+                f"Coordinate rule for source '{source_id}' cannot be applied.",
+                f"/uns/{COORDINATE_HARMONIZATION_KEY}/sources/{source_id}",
+            )
+            continue
+        expected_all = expected_all.astype(np.float32, copy=False)
+        source_lookup = {name: index for index, name in enumerate(map(str, source.obs_names))}
+        output_rows = [index for index, pair in enumerate(pairs) if pair[0] == source_id]
+        source_rows = [source_lookup[pairs[index][1]] for index in output_rows]
+        if not np.array_equal(output_coordinates[output_rows], expected_all[source_rows]):
+            _error(
+                outcome,
+                "harmonized_coordinate_mismatch",
+                f"Coordinates for source '{source_id}' do not match the declared rule.",
+                "/obsm/spatial",
+            )
+
+
 def _validate_derivation(
     mdata,
     database: DatabaseMetadata,
@@ -728,9 +1098,21 @@ def _validate_derivation(
             "/uns/database/derivation/source_dataset_ids",
         )
         return
-    missing_paths = [
-        source_id for source_id in declared_source_ids if source_id not in source_paths
-    ]
+    context_source_ids = list(declared_source_ids)
+    if derivation.feature_harmonization is not None:
+        context_source_ids = list(derivation.feature_harmonization.source_dataset_ids)
+    if derivation.coordinate_harmonization is not None:
+        coordinate_source_ids = derivation.coordinate_harmonization.source_dataset_ids
+        if set(coordinate_source_ids) != set(context_source_ids):
+            _error(
+                outcome,
+                "harmonization_source_mismatch",
+                "Feature and coordinate harmonization must use the same source set.",
+                "/uns/database/derivation",
+            )
+        else:
+            context_source_ids = list(coordinate_source_ids)
+    missing_paths = [source_id for source_id in context_source_ids if source_id not in source_paths]
     if missing_paths:
         _error(
             outcome,
@@ -746,7 +1128,7 @@ def _validate_derivation(
     source_modality_obs: dict[str, dict[str, set[str]]] = {}
     source_modality_features: dict[str, dict[str, list[str]]] = {}
     try:
-        for source_id in declared_source_ids:
+        for source_id in context_source_ids:
             path = Path(source_paths[source_id])
             try:
                 with warnings.catch_warnings():
@@ -793,7 +1175,7 @@ def _validate_derivation(
             source_modality_features[source_id] = {
                 name: list(map(str, adata.var_names)) for name, adata in source.mod.items()
             }
-        if len(sources) != len(declared_source_ids):
+        if len(sources) != len(context_source_ids):
             return
 
         for source_id, obs_id in pairs:
@@ -828,6 +1210,17 @@ def _validate_derivation(
                     "source dataset/sample pair.",
                     "/obs/sample_id",
                 )
+            if len(declared_source_ids) > 1 and any(
+                output_samples != {f"{source_id}::{original_sample}"}
+                for (source_id, original_sample), output_samples in sample_forward.items()
+            ):
+                _error(
+                    outcome,
+                    "noncanonical_composite_sample_id",
+                    "Samples in a multi-source derived file must use "
+                    "'<source_dataset_id>::<original_sample_id>'.",
+                    "/obs/sample_id",
+                )
 
         for modality, adata in mdata.mod.items():
             observed_pairs = {
@@ -845,6 +1238,18 @@ def _validate_derivation(
                     f"Modality '{modality}' does not preserve source observation membership.",
                     f"/mod/{modality}/obs/index",
                 )
+
+            if derivation.feature_harmonization is not None:
+                _validate_harmonized_modality(
+                    mdata,
+                    adata,
+                    modality,
+                    derivation,
+                    sources,
+                    top_provenance,
+                    outcome,
+                )
+                continue
 
             relevant_ids = [
                 source_id
@@ -916,6 +1321,7 @@ def _validate_derivation(
                 mask_required,
                 outcome,
             )
+        _validate_harmonized_coordinates(mdata, database, sources, pairs, outcome)
     finally:
         for source in sources.values():
             source.file.close()
@@ -1006,6 +1412,44 @@ def validate_train_test_pair(train_path: Path, test_path: Path) -> ValidationOut
                 "challenge_type_mismatch",
                 "Train and test datasets must use the same challenge_type.",
                 "/uns/database/derivation/challenge_type",
+            )
+        train_harmonization = train_database.derivation.feature_harmonization
+        test_harmonization = test_database.derivation.feature_harmonization
+        if (train_harmonization is None) != (test_harmonization is None):
+            _error(
+                outcome,
+                "feature_harmonization_mismatch",
+                "Train and test must either both use feature harmonization or neither use it.",
+                "/uns/database/derivation/feature_harmonization",
+            )
+        elif train_harmonization is not None and test_harmonization is not None:
+            if train_harmonization != test_harmonization:
+                _error(
+                    outcome,
+                    "feature_harmonization_mismatch",
+                    "Train and test feature harmonization summaries must match.",
+                    "/uns/database/derivation/feature_harmonization",
+                )
+            if set(train.mod) != set(test.mod) or any(
+                list(map(str, train.mod[name].var_names))
+                != list(map(str, test.mod[name].var_names))
+                for name in set(train.mod).intersection(test.mod)
+            ):
+                _error(
+                    outcome,
+                    "harmonized_feature_order_mismatch",
+                    "Harmonized train and test modality feature orders must match exactly.",
+                    "/mod",
+                )
+        if (
+            train_database.derivation.coordinate_harmonization
+            != test_database.derivation.coordinate_harmonization
+        ):
+            _error(
+                outcome,
+                "coordinate_harmonization_mismatch",
+                "Train and test coordinate harmonization summaries must match.",
+                "/uns/database/derivation/coordinate_harmonization",
             )
         for label, value in (("train", train), ("test", test)):
             if not all(column in value.obs for column in ("source_dataset_id", "source_obs_id")):

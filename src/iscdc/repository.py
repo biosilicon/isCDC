@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Sequence
 
 from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import Dataset, Modality
-from .schemas import ChallengeType
+from .schemas import ChallengeType, ScalarOrList
 
 DERIVED_DATASET_TYPES = ("train", "test")
 CHALLENGE_TYPES = ("same_slice", "cross_slice_same_subject", "cross_subject")
@@ -16,6 +16,15 @@ ChallengeSort = Literal["newest", "difficulty_asc", "difficulty_desc"]
 
 class CatalogueIntegrityError(RuntimeError):
     """Raised when catalogue records cannot form unambiguous challenges."""
+
+
+@dataclass(frozen=True)
+class SampleSource:
+    sample_id: str
+    source_sample_id: str
+    source_database_id: str
+    source_database_title: str
+    source: ScalarOrList
 
 
 @dataclass(frozen=True)
@@ -55,6 +64,83 @@ class Challenge:
     @property
     def datasets(self) -> list[Dataset]:
         return [dataset for dataset in (self.train, self.test) if dataset is not None]
+
+
+def resolve_sample_sources(
+    session: Session, datasets: Sequence[Dataset]
+) -> dict[str, list[SampleSource]]:
+    """Resolve every sample in a multi-source derived file to its full source."""
+    source_ids_by_dataset: dict[str, list[str]] = {}
+    all_source_ids: set[str] = set()
+    for dataset in datasets:
+        derivation = dataset.derivation
+        if dataset.dataset_type not in DERIVED_DATASET_TYPES or not derivation:
+            continue
+        source_ids = list(map(str, derivation.get("source_dataset_ids", [])))
+        if len(source_ids) <= 1:
+            continue
+        source_ids_by_dataset[dataset.dataset_id] = source_ids
+        all_source_ids.update(source_ids)
+
+    if not all_source_ids:
+        return {}
+    source_databases = {
+        source.dataset_id: source
+        for source in session.scalars(
+            select(Dataset).where(Dataset.dataset_id.in_(all_source_ids))
+        ).all()
+    }
+    missing = sorted(all_source_ids - source_databases.keys())
+    if missing:
+        raise CatalogueIntegrityError(
+            "Multi-source files reference missing source databases: " + ", ".join(missing)
+        )
+    non_full = sorted(
+        source_id
+        for source_id, source in source_databases.items()
+        if source.dataset_type != "full"
+    )
+    if non_full:
+        raise CatalogueIntegrityError(
+            "Multi-source files reference non-full source databases: "
+            + ", ".join(non_full)
+        )
+
+    resolved: dict[str, list[SampleSource]] = {}
+    for dataset in datasets:
+        source_ids = source_ids_by_dataset.get(dataset.dataset_id)
+        if source_ids is None:
+            continue
+        rows: list[SampleSource] = []
+        for sample_id in dataset.sample_ids:
+            matches = [
+                (source_id, sample_id.removeprefix(f"{source_id}::"))
+                for source_id in source_ids
+                if sample_id.startswith(f"{source_id}::")
+            ]
+            if len(matches) != 1:
+                raise CatalogueIntegrityError(
+                    f"Sample {sample_id!r} in {dataset.dataset_id!r} cannot be mapped "
+                    "to exactly one source database."
+                )
+            source_id, source_sample_id = matches[0]
+            source_database = source_databases[source_id]
+            if not source_sample_id or source_sample_id not in source_database.sample_ids:
+                raise CatalogueIntegrityError(
+                    f"Sample {sample_id!r} in {dataset.dataset_id!r} does not identify "
+                    f"a sample in source database {source_id!r}."
+                )
+            rows.append(
+                SampleSource(
+                    sample_id=sample_id,
+                    source_sample_id=source_sample_id,
+                    source_database_id=source_id,
+                    source_database_title=source_database.title,
+                    source=source_database.source,
+                )
+            )
+        resolved[dataset.dataset_id] = rows
+    return resolved
 
 
 def _escaped_pattern(value: str) -> str:

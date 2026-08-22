@@ -203,15 +203,27 @@ def import_dataset(
                 )
         derivation = metadata.database.derivation
         if derivation is not None:
+            context_source_ids = list(derivation.source_dataset_ids)
+            if derivation.feature_harmonization is not None:
+                context_source_ids = list(
+                    derivation.feature_harmonization.source_dataset_ids
+                )
+            if derivation.coordinate_harmonization is not None:
+                coordinate_ids = derivation.coordinate_harmonization.source_dataset_ids
+                if set(coordinate_ids) != set(context_source_ids):
+                    raise DatasetImportError(
+                        "Feature and coordinate harmonization must use the same sources."
+                    )
+                context_source_ids = list(coordinate_ids)
             sources = list(
                 session.scalars(
-                    select(Dataset).where(Dataset.dataset_id.in_(derivation.source_dataset_ids))
+                    select(Dataset).where(Dataset.dataset_id.in_(context_source_ids))
                 ).all()
             )
             sources_by_id = {source.dataset_id: source for source in sources}
             missing_sources = [
                 source_id
-                for source_id in derivation.source_dataset_ids
+                for source_id in context_source_ids
                 if source_id not in sources_by_id
             ]
             if missing_sources:
