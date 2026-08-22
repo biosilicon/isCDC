@@ -3,13 +3,15 @@
 The implementation is complete for the current 35 two-dimensional `full` Databases.
 The final audit reported 35 successes, no scientific failures, and no framework
 failures: 3 source-label datasets, 1 SingleR dataset, and 31 full-mode RCTD datasets.
-The implementation record is in [`../plan.md`](../plan.md); methodology,
-failure-analysis, calibration, and scheduling lessons are in
+The website architecture and operating commands are in the root README's
+[Cell type spatial visualization](../../README.md#cell-type-空间可视化) section; methodology,
+failure analysis, calibration, and scheduling lessons are in
 [`细胞类型注释经验总结.md`](细胞类型注释经验总结.md); exact round outcomes are in
-[`../assets/cell_type_annotation/iteration_history.yaml`](../assets/cell_type_annotation/iteration_history.yaml).
+[`../../assets/cell_type_annotation/iteration_history.yaml`](../../assets/cell_type_annotation/iteration_history.yaml).
 
-This directory defines the separate `iscdc-cell-annotation` environment and the R
-adapters used to create visualization sidecars. It is not an application dependency.
+The repository's `annotation/` directory defines the separate `iscdc-cell-annotation`
+environment and the R adapters used to create visualization sidecars. It is not an
+application dependency.
 The environment deliberately contains no PyTorch, CUDA, GPU runtime, scVI, CellTypist,
 or cell2location package. Cell-resolution inference uses SingleR; bin/spot inference
 uses full-mode RCTD (`spacexr`).
@@ -35,6 +37,12 @@ only after observation-order, reference checksum, calibration, and configured QC
 pass. Raw SingleR scores and RCTD weights are diagnostics, never probabilities. Source
 labels omit confidence. `Mixed` and `Uncertain` are prediction statuses, not Cell
 Ontology terms.
+
+On a Database detail page, the visualization's method-details control identifies source
+labels as coming from an existing annotation file with no computational inference. It
+shows reference ID/version, runtime parameters, QC publication thresholds, and QC results
+only for inferred sidecars. This presentation reads the already validated manifest/report
+and does not change the sidecar contract or public Database API.
 
 Offline entry points are available through `python -m iscdc.cell_type_annotation`, and
 the main project CLI wires the same public functions. Run annotation work through the

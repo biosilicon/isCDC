@@ -8,19 +8,19 @@ datasets:
   - dataset_id: 2023_nc_10x_breast_cancer_HBC_rep1
     method: source
     complete: true
-    source_evidence: cell_type来源核验记录.md (2026-08-15), source cell type
+    source_evidence: doc/cell_type来源核验记录.md (2026-08-15), source cell type
     parameters: {}
     qc: {require_calibration: false}
   - dataset_id: starmap_plus_ad_13m_disease_rep1
     method: source
     complete: true
-    source_evidence: cell_type来源核验记录.md (2026-08-15), top_level_cell_type
+    source_evidence: doc/cell_type来源核验记录.md (2026-08-15), top_level_cell_type
     parameters: {}
     qc: {require_calibration: false}
   - dataset_id: starmap_plus_ad_13m_disease_rep2
     method: source
     complete: true
-    source_evidence: cell_type来源核验记录.md (2026-08-15), top_level_cell_type
+    source_evidence: doc/cell_type来源核验记录.md (2026-08-15), top_level_cell_type
     parameters: {}
     qc: {require_calibration: false}
   - dataset_id: xenium_human_rcc_ffpe_rna_protein

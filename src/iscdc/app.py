@@ -131,6 +131,35 @@ def _static_asset_version(path: Path) -> str:
         return ""
 
 
+def _cell_type_method_details(
+    visualization: CellTypeVisualization,
+) -> dict[str, object]:
+    details: dict[str, object] = {
+        "kind": visualization.annotation_kind,
+        "method": visualization.method,
+    }
+    if visualization.annotation_kind == "source":
+        return details
+
+    references = visualization.provenance["references"]
+    parameters = visualization.provenance["parameters"]
+    thresholds = visualization.report["thresholds"]
+    quality_control = visualization.report["quality_control"]
+    details.update(
+        {
+            "references": tuple(
+                {"id": reference["id"], "version": reference["version"]}
+                for reference in references
+            ),
+            "parameters": tuple(sorted(parameters.items())),
+            "thresholds": tuple(sorted(thresholds.items())),
+            "quality_control": tuple(sorted(quality_control.items())),
+            "qc_status": visualization.report["status"],
+        }
+    )
+    return details
+
+
 def _discover_database_thumbnails(static_dir: Path) -> dict[str, str]:
     thumbnail_dir = static_dir / DATABASE_THUMBNAIL_DIRECTORY
     if not thumbnail_dir.is_dir():
@@ -676,6 +705,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "database": database,
                 "download_kinds": DOWNLOAD_FILES,
                 "cell_type_visualization": visualization_config,
+                "cell_type_annotation_method": (
+                    _cell_type_method_details(visualization)
+                    if visualization is not None
+                    else None
+                ),
             },
         )
 

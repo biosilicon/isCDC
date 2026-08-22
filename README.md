@@ -9,12 +9,12 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 `derivation.challenge_type` 标记为同切片、同个体跨切片或跨个体。
 
 面向数据访问者的下载、`.h5mu` 结构、元数据字段和分析注意事项见
-[数据使用说明](数据使用说明.md)。
+[数据使用说明](doc/数据使用说明.md)。
 Schema 1.2 还允许在来源标签完整对齐时保存统一格式的可选
 `mdata.obs["cell_type"]`；当前 catalogue 的逐数据集来源结论见
-[cell type 来源核验记录](cell_type来源核验记录.md)。离线推断与空间可视化的最终架构和
-35 数据集运行经验见 [实施与完成记录](plan.md) 和
-[细胞类型注释经验总结](annotation/细胞类型注释经验总结.md)。
+[cell type 来源核验记录](doc/cell_type来源核验记录.md)。离线推断与空间可视化的最终架构和
+运行方式见下文 [Cell type 空间可视化](#cell-type-空间可视化)，35 数据集的方法学与运行经验见
+[细胞类型注释经验总结](doc/annotation/细胞类型注释经验总结.md)。
 
 ## 目录约定
 
@@ -22,8 +22,8 @@ Schema 1.2 还允许在来源标签完整对齐时保存统一格式的可选
 数据文件。暂存数据在导入前需要补充符合 schema 1.2 的 `metadata.yaml` 等必要内容；
 完成整理后再通过导入命令写入正式的 `data/` 目录。`exp/` 则继续用于真实数据实验、
 手工测试配置和实验输出。批量整理 `temp/` 数据时遵循
-[原始数据处理工作流](原始数据处理规范.md)，最终产物必须符合
-[数据库存储规范 1.2](数据库存储规范_v1.2.md)。
+[原始数据处理工作流](doc/原始数据处理规范.md)，最终产物必须符合
+[数据库存储规范 1.2](doc/数据库存储规范_v1.2.md)。
 
 `.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
@@ -34,8 +34,8 @@ Database 的网页缩略图以 `<dataset_id>.webp` 命名，保存在被忽略�
 `assets/he_wsi_thumbnails/`；正式提供下载的 WSI 则注册到所属
 数据集的 `data/datasets/<dataset_id>/auxiliary/`。已注册 `he_wsi` 的 Database 应直接由该 WSI
 生成缩略图，不再使用另一张预览图代替。并非每个 Database 都有缩略图或 WSI；缺图
-时页面不显示占位图或空图片区域。图片来源与 WSI H&E 核查结果见
-[HE WSI 图像访问链接](HE_WSI图像访问链接.md)。
+时页面不显示占位图或空图片区域。具体图像来源与当前可下载状态以 Database 详情页的辅助
+文件清单、source URL 和 SHA-256 为准。
 
 ## 快速开始
 
@@ -143,11 +143,17 @@ Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h
 二维坐标声明、manifest 与各压缩点位文件；缺失、失败、过期或损坏的项目不会在页面产生
 占位区。替换产物后必须重启应用。
 
+可视化标题旁的 `?` 按钮用于查看当前数据集的注释方法。来源标签 sidecar 只显示具体方法，
+并明确说明标签来自既有注释文件、没有执行计算推断，不显示 reference、运行参数、阈值或推断
+QC。计算推断 sidecar 则从启动时已校验的 manifest/report 展示方法、reference ID 与版本、
+运行参数、QC 发布阈值和实际 QC 结果；未配置阈值显示为 `Not configured`。该说明弹窗不重复
+展示逐点 confidence，confidence 仍只在现有点位 hover 中呈现，公共 Database JSON 保持不变。
+
 2026-08-18 的当前全量结果为 35/35 Database success：3 个使用来源标签，1 个 Xenium
 使用 SingleR，31 个 bin/spot 使用 RCTD `full`。这只是当前 sidecar 快照，不把推断标签提升
 为 canonical dataset metadata。完整 provenance/QC 结果见
 [`iteration_history.yaml`](assets/cell_type_annotation/iteration_history.yaml)，方法学与失败修复经验见
-[`annotation/细胞类型注释经验总结.md`](annotation/细胞类型注释经验总结.md)。
+[`doc/annotation/细胞类型注释经验总结.md`](doc/annotation/细胞类型注释经验总结.md)。
 
 参考构建、SingleR、RCTD、校准、生成和审计必须在隔离环境中运行，不能向网站使用的
 `iscdc` 环境安装 R 或注释依赖：
@@ -313,7 +319,7 @@ confidence、`Mixed` 和 `Uncertain` 不属于本字段，也不会写回 `.h5mu
 存在时必须是无序 pandas categorical，所有 category 都是非空、无首尾空白的字符串，并且
 不得保留未使用 category。保留来源的分类层级、语义与拼写，不强行把不同数据集映射到统一
 ontology；来源明确使用 `Unlabeled` 等类别时可以原样保留。完整规则见
-[数据库存储规范 1.2 的顶层观测章节](数据库存储规范_v1.2.md)。
+[数据库存储规范 1.2 的顶层观测章节](doc/数据库存储规范_v1.2.md)。
 
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
 已有记录；空的旧版目录会自动重建为当前目录结构。
@@ -385,7 +391,7 @@ PYTHONPATH=src python -m iscdc.cli finalize-schema-1-2 data/migrations/schema_1_
 
 角色配置默认位于 `.codex/agents/`，并受 `.codex/config.toml` 的本地并发限制。
 完整的并发数、路径隔离、批准门槛、验收和清理规则见
-[原始数据处理工作流](原始数据处理规范.md)。
+[原始数据处理工作流](doc/原始数据处理规范.md)。
 
 ## metadata.yaml
 
@@ -438,7 +444,7 @@ H3K27me3 数据的 `modalities.histone.technology` 可写为
 `iscdc.splitter` 是独立的 `.h5mu` 划分工具，不自动修改 SQLite，也不生成网站使用的
 `metadata.yaml`。需要发布产物时，为 train/test 分别准备匹配的 metadata YAML，再使用
 现有 `import-dataset` 命令逐个导入。来源文件必须符合根目录
-[`数据库存储规范_v1.2.md`](数据库存储规范_v1.2.md)，并明确包含：
+[`doc/数据库存储规范_v1.2.md`](doc/数据库存储规范_v1.2.md)，并明确包含：
 
 ```yaml
 schema_version: "1.2"
@@ -678,6 +684,7 @@ Challenge JSON 使用顶层 `challenge_type` 返回分类，使用 `status` 表�
 ```text
 src/iscdc/       应用、校验、导入和数据划分代码
 tests/           自动化测试（包括 splitter 合成数据与必需的真实数据测试）
+doc/             项目文档；annotation 专题文档位于 doc/annotation/
 assets/templates 网页模板
 assets/static    页面样式；本地 `<dataset_id>.webp` 缩略图被忽略
 assets/he_wsi_thumbnails  仅用于缩略图采集的本地来源图像（忽略，不纳入版本控制）

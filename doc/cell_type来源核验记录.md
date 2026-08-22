@@ -84,9 +84,12 @@ Challenge difficulty 随后按完整 27 个 Challenge 重算，27 项均成功�
 SingleR 或 RCTD `full` 推断。
 
 推断 sidecar 不改变本表的“未发现来源标签”结论，也不把计算结果写回 `.h5mu`、catalogue
-字段或公共 JSON。页面中的 `Computationally inferred`、confidence、`Mixed` 和 `Uncertain`
-必须与来源 `cell_type` 明确区分。最终方法、QC 和 provenance 见
-[实施与完成记录](plan.md)；科学迭代经验见
+字段或公共 JSON。页面方法说明中的 SingleR/RCTD 推断信息、confidence、`Mixed` 和
+`Uncertain` 必须与来源 `cell_type` 明确区分。可视化的方法说明对上述 3 个来源标签数据集
+直接注明标签来自既有注释文件且未执行计算推断，不显示 reference、运行参数、QC 阈值或
+推断 QC；其余推断数据集才展示经启动校验的 reference ID/版本、参数、QC 发布阈值和结果。
+当前架构与运行方式见
+README 的 [Cell type 空间可视化](../README.md#cell-type-空间可视化)；科学迭代经验见
 [细胞类型注释经验总结](annotation/细胞类型注释经验总结.md)。
 
 ## 入库规则

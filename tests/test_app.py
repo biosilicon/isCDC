@@ -70,22 +70,39 @@ def _app_with_database(settings, write_h5mu, write_metadata):  # noqa: ANN202
     return create_app(settings)
 
 
-def _publish_test_cell_type_visualization(root, source_sha):  # noqa: ANN001, ANN202
+def _publish_test_cell_type_visualization(  # noqa: ANN001, ANN202
+    root, source_sha, *, inferred=False
+):
     dataset_id = "test_rna_protein"
     generation_id = "test-generation-v1"
-    points = encode_points([0.0, 2.0], [1.0, 3.0], [0, 1])
+    confidence = [0.91, 0.72] if inferred else None
+    points = encode_points([0.0, 2.0], [1.0, 3.0], [0, 1], confidence)
     report_document = {
         "report_version": 1,
         "dataset_id": dataset_id,
         "generation_id": generation_id,
         "source_sha256": source_sha,
         "status": "passed",
-        "quality_control": {"aligned": True},
-        "thresholds": {},
+        "quality_control": (
+            {"calibrated": True, "ece": 0.0143, "shared_genes": 402}
+            if inferred
+            else {"aligned": True}
+        ),
+        "thresholds": (
+            {
+                "max_ece": 0.1,
+                "min_marker_agreement": None,
+                "require_calibration": True,
+            }
+            if inferred
+            else {}
+        ),
         "warnings": [],
     }
     report = json.dumps(report_document, sort_keys=True).encode() + b"\n"
     files = {"report.json": report}
+    if inferred:
+        files["inference.h5"] = b"\x89HDF\r\n\x1a\nopaque inference output"
 
     def file_record(path, payload):  # noqa: ANN001, ANN202
         return {
@@ -118,7 +135,10 @@ def _publish_test_cell_type_visualization(root, source_sha):  # noqa: ANN001, AN
             "coordinate_dimensions": 2,
             "sample_ids": ["sample_01"],
         },
-        "annotation": {"kind": "source", "method": "mdata.obs[cell_type]"},
+        "annotation": {
+            "kind": "inferred" if inferred else "source",
+            "method": "SingleR" if inferred else "mdata.obs[cell_type]",
+        },
         "coordinates": {"system": "global", "unit": "micrometer", "y_axis": "down"},
         "categories": [
             {
@@ -149,10 +169,30 @@ def _publish_test_cell_type_visualization(root, source_sha):  # noqa: ANN001, AN
         "report": file_record("report.json", report),
         "provenance": {
             "environment_lock_sha256": "b" * 64,
-            "references": [],
-            "parameters": {},
+            "references": (
+                [
+                    {
+                        "id": "census_test_reference",
+                        "version": "2026-08-22.1",
+                        "sha256": "c" * 64,
+                    }
+                ]
+                if inferred
+                else []
+            ),
+            "parameters": (
+                {"cores": 4, "curation_status": "curated", "exclusive": False}
+                if inferred
+                else {}
+            ),
         },
     }
+    if inferred:
+        for category, ontology_id in zip(
+            manifest["categories"], ("CL:0000084", "CL:0000236"), strict=True
+        ):
+            category["cell_ontology_id"] = ontology_id
+        manifest["inference"] = file_record("inference.h5", files["inference.h5"])
     publish_generation(root, manifest, files)
     return generation_id, points, encoded_points
 
@@ -444,6 +484,8 @@ async def test_cell_type_visualization_is_conditional_internal_and_content_negot
 
     assert detail.status_code == 200
     assert 'id="cell-type-visualization"' in detail.text
+    assert 'data-bs-target="#cell-type-method-modal"' in detail.text
+    assert detail.text.count('id="cell-type-method-modal"') == 1
     assert "cell_type_visualization.js?v=" in detail.text
     assert endpoint in detail.text
     assert "cell-type-visualization" not in listing.text
@@ -451,6 +493,15 @@ async def test_cell_type_visualization_is_conditional_internal_and_content_negot
     assert not any(
         "cell-type-visualization" in path for path in openapi.json()["paths"]
     )
+    method_modal = detail.text.split('id="cell-type-method-modal"', maxsplit=1)[1]
+    assert "mdata.obs[cell_type]" in method_modal
+    assert "Existing annotation file; no computational inference was performed." in method_modal
+    assert "Reference ID" not in method_modal
+    assert "Runtime parameters" not in method_modal
+    assert "QC publication thresholds" not in method_modal
+    assert "QC results" not in method_modal
+    assert "Confidence" not in method_modal
+    assert method_modal.count('data-bs-dismiss="modal"') == 1
     for response, encoding in ((point_file, None), (gzip_file, "gzip"), (brotli_file, "br")):
         assert response.status_code == 200
         # httpx always decodes gzip, while Brotli decoding depends on the optional
@@ -476,6 +527,52 @@ async def test_cell_type_visualization_is_conditional_internal_and_content_negot
             )
         ).all()
     assert endpoint_events == []
+
+
+async def test_inferred_cell_type_method_modal_shows_validated_audit_details(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    visualization_root = tmp_path / "cell-type-visualizations"
+    visualization_settings = replace(
+        settings, cell_type_visualization_root=visualization_root
+    )
+    imported = import_dataset(
+        write_h5mu(), write_metadata(), visualization_settings
+    )
+    _publish_test_cell_type_visualization(
+        visualization_root, imported.sha256, inferred=True
+    )
+    app = create_app(visualization_settings)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        detail = await client.get("/databases/test_rna_protein")
+
+    assert detail.status_code == 200
+    assert detail.text.count('id="cell-type-method-modal"') == 1
+    method_modal = detail.text.split('id="cell-type-method-modal"', maxsplit=1)[1]
+    for expected in (
+        "SingleR",
+        "Reference ID",
+        "census_test_reference",
+        "2026-08-22.1",
+        "Runtime parameters",
+        "cores",
+        "curation_status",
+        "curated",
+        "QC publication thresholds",
+        "max_ece",
+        "min_marker_agreement",
+        "Not configured",
+        "QC results",
+        "Passed",
+        "shared_genes",
+        "402",
+    ):
+        assert expected in method_modal
+    assert "Existing annotation file" not in method_modal
+    assert "Confidence" not in method_modal
 
 
 async def test_latest_cell_type_failure_withdraws_old_generation_after_restart(

@@ -55,7 +55,7 @@ a {
   background: var(--catalogue-wash);
 }
 
-.difficulty-help {
+.method-help {
   width: 1.25rem;
   height: 1.25rem;
   padding: 0;
@@ -69,10 +69,24 @@ a {
   border-radius: 50%;
 }
 
-.difficulty-help:hover,
-.difficulty-help:focus-visible {
+.method-help:hover,
+.method-help:focus-visible {
   color: #fff;
   background: var(--catalogue-blue);
+}
+
+.cell-type-method-table {
+  font-size: 0.875rem;
+}
+
+.cell-type-method-table th {
+  width: 45%;
+  font-weight: 500;
+}
+
+.cell-type-method-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .database-thumbnail img {

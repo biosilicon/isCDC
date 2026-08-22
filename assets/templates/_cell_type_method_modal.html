@@ -1,0 +1,80 @@
+<div class="modal fade" id="cell-type-method-modal" tabindex="-1" aria-labelledby="cell-type-method-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="cell-type-method-title">Cell type annotation method</h2>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Method</dt>
+          <dd class="col-sm-8"><code>{{ cell_type_annotation_method.method }}</code></dd>
+        </dl>
+
+        {% if cell_type_annotation_method.kind == "source" %}
+          <p class="mb-0"><strong>Source:</strong> Existing annotation file; no computational inference was performed.</p>
+        {% else %}
+          <h3 class="h6 mt-3">Reference</h3>
+          {% if cell_type_annotation_method.references %}
+            <div class="table-responsive">
+              <table class="table table-sm cell-type-method-table mb-0">
+                <thead>
+                  <tr><th scope="col">Reference ID</th><th scope="col">Version</th></tr>
+                </thead>
+                <tbody>
+                  {% for reference in cell_type_annotation_method.references %}
+                    <tr><td><code>{{ reference.id }}</code></td><td><code>{{ reference.version }}</code></td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="small text-secondary mb-0">Not available</p>
+          {% endif %}
+
+          <h3 class="h6 mt-4">Runtime parameters</h3>
+          {% if cell_type_annotation_method.parameters %}
+            <div class="table-responsive">
+              <table class="table table-sm cell-type-method-table mb-0">
+                <tbody>
+                  {% for name, value in cell_type_annotation_method.parameters %}
+                    <tr><th scope="row"><code>{{ name }}</code></th><td><code>{{ value|tojson }}</code></td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="small text-secondary mb-0">None</p>
+          {% endif %}
+
+          <h3 class="h6 mt-4">QC publication thresholds</h3>
+          <div class="table-responsive">
+            <table class="table table-sm cell-type-method-table mb-0">
+              <tbody>
+                {% for name, value in cell_type_annotation_method.thresholds %}
+                  <tr>
+                    <th scope="row"><code>{{ name }}</code></th>
+                    <td>{% if value is none %}<span class="text-secondary">Not configured</span>{% else %}<code>{{ value|tojson }}</code>{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 class="h6 mt-4">QC results <span class="badge text-bg-success">{{ cell_type_annotation_method.qc_status|capitalize }}</span></h3>
+          <div class="table-responsive">
+            <table class="table table-sm cell-type-method-table mb-0">
+              <tbody>
+                {% for name, value in cell_type_annotation_method.quality_control %}
+                  <tr><th scope="row"><code>{{ name }}</code></th><td><code>{{ value|tojson }}</code></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

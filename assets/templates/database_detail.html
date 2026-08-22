@@ -27,4 +27,7 @@
   {% set suppress_summary = true %}
   {% include "_data_file_detail.html" %}
 </div>
+{% if cell_type_visualization %}
+  {% include "_cell_type_method_modal.html" %}
+{% endif %}
 {% endblock %}

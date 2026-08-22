@@ -2,13 +2,13 @@
 
 ## Project Structure & Module Organization
 
-Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, documentation, and entry points.
+Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Keep all tracked documentation except the root `AGENTS.md` and `README.md` under `doc/`; annotation-specific documentation belongs under `doc/annotation/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `doc/原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, `AGENTS.md`, `README.md`, and entry points.
 
 The tracked `annotation/` directory contains the isolated R/Conda environment declarations and R
 adapters for offline cell type work. The tracked `frontend/` directory contains the Node 24 source,
 lock file, and tests used to build committed browser bundles; neither toolchain is a website runtime
-dependency. The completed 35-dataset implementation and operational lessons are documented in
-`plan.md` and `annotation/细胞类型注释经验总结.md`; keep those records synchronized when methods,
+dependency. The completed 35-dataset architecture and operational lessons are documented in
+`README.md` and `doc/annotation/细胞类型注释经验总结.md`; keep those records synchronized when methods,
 QC gates, scheduling limits, or sidecar contracts change.
 
 Local Database thumbnails live under the ignored `assets/static/database_thumbnails/` directory
@@ -88,7 +88,12 @@ explicit source category such as `Unlabeled` is valid. Do not add canonical cell
 `metadata.yaml`, catalogue tables, public JSON responses, or filters. The Database detail page may
 render a separately versioned, startup-validated cell type visualization sidecar; that sidecar and
 its internal data endpoint must not present inferred labels as canonical dataset metadata. Spatial
-splits propagate the source column.
+splits propagate the source column. The visualization heading must provide a method-details entry.
+For `annotation.kind: source`, identify the existing annotation file as the source and state that no
+computational inference was performed; do not render inference-only reference, parameter, threshold,
+or QC sections. For `annotation.kind: inferred`, show the validated method, reference ID/version,
+runtime parameters, QC publication thresholds, and QC results from the in-memory manifest/report.
+Keep point confidence in the existing hover interaction rather than the method-details panel.
 Each composed output side includes it only when every full source assigned to that side has a
 valid complete column; categories are merged in source and first-seen order, otherwise the output
 omits the column.
