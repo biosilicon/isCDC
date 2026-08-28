@@ -58,9 +58,8 @@
             {% endif %}
           </dd>
           <dt class="col-sm-4">Keywords</dt><dd class="col-sm-8">{{ dataset.keywords|join(', ') if dataset.keywords else 'None' }}</dd>
-          <dt class="col-sm-4">License</dt><dd class="col-sm-8">{% if dataset.license %}{% if dataset.license.url %}<a href="{{ dataset.license.url }}" rel="noopener">{{ dataset.license.name }}</a>{% else %}{{ dataset.license.name }}{% endif %}{% else %}Not specified{% endif %}</dd>
           <dt class="col-sm-4">Publication</dt><dd class="col-sm-8">{% if dataset.publication %}{{ dataset.publication.citation or dataset.publication.doi or dataset.publication.url }}{% else %}Not specified{% endif %}</dd>
-          <dt class="col-sm-4">Imported</dt><dd class="col-sm-8">{{ dataset.imported_at }}</dd>
+          <dt class="col-sm-4">Imported</dt><dd class="col-sm-8">{{ dataset.imported_at|date_only }}</dd>
           {% for key, value in dataset.additional_metadata.items() %}<dt class="col-sm-4">{{ key|replace('_', ' ')|title }}</dt><dd class="col-sm-8">{{ value }}</dd>{% endfor %}
         </dl>
       </section>

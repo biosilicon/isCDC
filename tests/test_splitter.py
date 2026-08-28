@@ -211,7 +211,6 @@ def _metadata_for_product(path: Path) -> Path:
             "title": f"Validation metadata for {path.stem}",
             "description": "Generated metadata for schema validation tests.",
             "keywords": ["validation"],
-            "license": None,
             "publication": None,
         }
     finally:

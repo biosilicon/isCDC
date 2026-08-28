@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date
 from typing import Any, Literal
 
 import yaml
@@ -166,6 +166,8 @@ class DatabaseMetadata(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_empty_full_derivation(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "license" in value:
+            raise ValueError("dataset license metadata is not supported")
         if isinstance(value, dict) and value.get("dataset_type") == "full":
             if not value.get("derivation"):
                 value = dict(value)
@@ -224,14 +226,6 @@ class ModalityMetadata(BaseModel):
         return value
 
 
-class LicenseMetadata(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1)
-    identifier: str | None = None
-    url: str | None = None
-
-
 class PublicationMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -255,7 +249,6 @@ class MetadataDocument(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(min_length=1)
     keywords: list[str]
-    license: LicenseMetadata | None
     publication: PublicationMetadata | None
 
     @field_validator("sample_ids", "keywords")
@@ -355,7 +348,6 @@ class DataFileResponse(BaseModel):
     sample_ids: list[str]
     sample_sources: list[SampleSourceResponse]
     keywords: list[str]
-    license: dict[str, Any] | None
     publication: dict[str, Any] | None
     additional_metadata: dict[str, Any]
     n_obs: int
@@ -365,7 +357,7 @@ class DataFileResponse(BaseModel):
     file_size: int
     sha256: str
     validation_warning_count: int
-    imported_at: datetime
+    imported_at: date
     downloads: dict[str, str]
     auxiliary_files: list[AuxiliaryFileResponse]
 

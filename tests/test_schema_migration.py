@@ -112,7 +112,6 @@ def test_schema_migration_trims_two_modality_data_and_finalizes_backup(
                 split_id=None,
                 sample_ids=metadata["sample_ids"],
                 keywords=metadata["keywords"],
-                license=None,
                 publication=None,
                 additional_metadata={},
                 n_obs=3,

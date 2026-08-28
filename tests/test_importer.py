@@ -41,7 +41,6 @@ def _write_product_metadata(path, destination):  # noqa: ANN001, ANN202
             "title": f"Derived {product.uns['database']['dataset_type']} dataset",
             "description": "A deterministic derived dataset used for import validation.",
             "keywords": ["derived", "test"],
-            "license": None,
             "publication": None,
         }
     finally:
@@ -66,6 +65,9 @@ def test_import_creates_catalogue_and_provenance_files(settings, write_h5mu, wri
     expected_hash = hashlib.sha256(source.read_bytes()).hexdigest()
     assert result.sha256 == expected_hash
     assert (destination / "checksum.sha256").read_text().startswith(expected_hash)
+    assert "license" not in yaml.safe_load(
+        (destination / "metadata.yaml").read_text(encoding="utf-8")
+    )
     assert json.loads((destination / "validation_report.json").read_text())["valid"]
     manifest = json.loads((destination / "manifest.json").read_text())
     assert manifest["manifest_version"] == "1.1"

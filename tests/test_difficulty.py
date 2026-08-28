@@ -88,7 +88,6 @@ def _add_challenge_side(
             split_id=split_id,
             sample_ids=["shared_sample"],
             keywords=[],
-            license=None,
             publication=None,
             additional_metadata={},
             n_obs=matrix.shape[0],

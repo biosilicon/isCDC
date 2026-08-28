@@ -36,7 +36,6 @@ class Dataset(Base):
     split_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     sample_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    license: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     publication: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     additional_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     n_obs: Mapped[int] = mapped_column(Integer, nullable=False)

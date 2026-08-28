@@ -13,6 +13,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .analytics import AnalyticsSchemaError, create_analytics_service
 from .auxiliary import AuxiliaryFileError, register_auxiliary_file
+from .catalogue_migration import (
+    CatalogueV4Inventory,
+    CatalogueV4MigrationError,
+    CatalogueV4MigrationResult,
+    finalize_catalogue_v4_migration,
+    migrate_catalogue_v4,
+)
 from .config import Settings
 from .database import CatalogueSchemaError
 from .importer import DatasetImportError, import_dataset
@@ -152,6 +159,20 @@ def build_parser() -> argparse.ArgumentParser:
     annotation_audit_parser.add_argument(
         "--jobs", type=int, default=1, help="Maximum concurrent dataset jobs (default: 1)."
     )
+
+    catalogue_v4_parser = subparsers.add_parser(
+        "migrate-catalogue-v4",
+        help="Back up the catalogue and remove dataset License metadata.",
+    )
+    catalogue_v4_parser.add_argument("--dry-run", action="store_true")
+    catalogue_v4_parser.add_argument("--temp-root", type=Path)
+    catalogue_v4_parser.add_argument("--exp-root", type=Path)
+
+    finalize_catalogue_v4_parser = subparsers.add_parser(
+        "finalize-catalogue-v4",
+        help="Verify a catalogue v4 migration and delete its v3 backup.",
+    )
+    finalize_catalogue_v4_parser.add_argument("report", type=Path)
 
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
@@ -449,6 +470,40 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         if isinstance(payload, dict) and payload.get("failure_count", 0):
             return 1
+        return 0
+    if args.command == "migrate-catalogue-v4":
+        settings = Settings.from_environment()
+        options = {"dry_run": args.dry_run}
+        if args.temp_root is not None:
+            options["temp_root"] = args.temp_root
+        if args.exp_root is not None:
+            options["exp_root"] = args.exp_root
+        try:
+            result = migrate_catalogue_v4(settings, **options)
+        except (CatalogueV4MigrationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if isinstance(result, CatalogueV4Inventory):
+            payload = {"dry_run": True, "inventory": result.as_dict()}
+        else:
+            assert isinstance(result, CatalogueV4MigrationResult)
+            payload = {
+                "dry_run": False,
+                "inventory": result.inventory.as_dict(),
+                "report": str(result.report_path),
+                "backup": str(result.backup_path),
+            }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "finalize-catalogue-v4":
+        try:
+            removed = finalize_catalogue_v4_migration(
+                args.report, Settings.from_environment()
+            )
+        except (CatalogueV4MigrationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "migrate-schema-1-2":
         settings = Settings.from_environment()

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, CatalogueMetadata, Dataset
 
-CATALOGUE_SCHEMA_VERSION = "3"
+CATALOGUE_SCHEMA_VERSION = "4"
 
 
 class CatalogueSchemaError(RuntimeError):

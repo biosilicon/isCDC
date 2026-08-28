@@ -132,7 +132,6 @@ def build_dataset_record(
         split_id=database.derivation.split_id if database.derivation else None,
         sample_ids=metadata.sample_ids,
         keywords=metadata.keywords,
-        license=metadata.license.model_dump() if metadata.license else None,
         publication=metadata.publication.model_dump() if metadata.publication else None,
         additional_metadata=metadata.additional_database_values(),
         n_obs=outcome.n_obs,

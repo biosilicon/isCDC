@@ -4,7 +4,7 @@ import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from urllib.parse import quote
 
 import httpx
@@ -56,7 +56,6 @@ def _write_product_metadata(path, destination):  # noqa: ANN001, ANN202
             "title": f"Derived {product.uns['database']['dataset_type']} dataset",
             "description": "A deterministic derived dataset used for web tests.",
             "keywords": ["derived", "test"],
-            "license": None,
             "publication": None,
         }
     finally:
@@ -334,7 +333,6 @@ def _clone_challenge(settings, source_split_id, split_id, suffix):  # noqa: ANN0
                 split_id=split_id,
                 sample_ids=deepcopy(source.sample_ids),
                 keywords=deepcopy(source.keywords),
-                license=deepcopy(source.license),
                 publication=deepcopy(source.publication),
                 additional_metadata=deepcopy(source.additional_metadata),
                 n_obs=source.n_obs,
@@ -380,6 +378,41 @@ async def test_home_and_database_pages_use_new_entry_points(
 
         empty = await client.get("/databases?tissue=brain")
         assert "No matching databases" in empty.text
+
+
+async def test_file_metadata_omits_license_and_exposes_import_date_only(
+    settings, write_h5mu, write_metadata
+):
+    import_dataset(write_h5mu(), write_metadata(), settings)
+    imported_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        database = session.get(Dataset, "test_rna_protein")
+        assert database is not None
+        database.imported_at = imported_at
+        session.commit()
+    engine.dispose()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        detail = await client.get("/databases/test_rna_protein")
+        detail_api = await client.get("/api/databases/test_rna_protein")
+        list_api = await client.get("/api/databases")
+        openapi = await client.get("/openapi.json")
+
+    assert detail.status_code == 200
+    assert "License" not in detail.text
+    assert "2026-01-02" in detail.text
+    assert "03:04:05" not in detail.text
+
+    for payload in (detail_api.json(), list_api.json()["items"][0]):
+        assert "license" not in payload
+        assert payload["imported_at"] == "2026-01-02"
+
+    response_schema = openapi.json()["components"]["schemas"]["DataFileResponse"]
+    assert "license" not in response_schema["properties"]
+    assert response_schema["properties"]["imported_at"]["format"] == "date"
 
 
 async def test_database_pages_show_matching_thumbnail(
@@ -741,6 +774,17 @@ async def test_challenge_groups_pair_and_shows_complete_file_metadata(
         assert "/downloads/web_train/h5mu" in detail.text
         assert "/downloads/web_test/h5mu" in detail.text
 
+        api_detail = await client.get("/api/challenges/web_split_v1")
+        assert api_detail.status_code == 200
+        for side in ("train", "test"):
+            file_payload = api_detail.json()[side]
+            assert "license" not in file_payload
+            assert date.fromisoformat(file_payload["imported_at"]).isoformat() == file_payload[
+                "imported_at"
+            ]
+
+    assert "License" not in detail.text
+
     analytics = app.state.analytics
     assert analytics is not None
     with analytics.session_factory() as session:
@@ -775,7 +819,6 @@ async def test_multisource_challenge_shows_every_sample_source_in_page_and_api(
             split_id=None,
             sample_ids=["sample_02"],
             keywords=deepcopy(first_source.keywords),
-            license=deepcopy(first_source.license),
             publication=deepcopy(first_source.publication),
             additional_metadata=deepcopy(first_source.additional_metadata),
             n_obs=first_source.n_obs,
@@ -1061,7 +1104,6 @@ async def test_duplicate_challenge_side_is_an_integrity_error(
             split_id=original.split_id,
             sample_ids=deepcopy(original.sample_ids),
             keywords=deepcopy(original.keywords),
-            license=deepcopy(original.license),
             publication=deepcopy(original.publication),
             additional_metadata=deepcopy(original.additional_metadata),
             n_obs=original.n_obs,

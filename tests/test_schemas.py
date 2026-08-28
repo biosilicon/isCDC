@@ -7,10 +7,10 @@ import pytest
 from iscdc.schemas import MetadataLoadError, load_metadata
 
 
-def test_metadata_accepts_nullable_license_and_publication(write_metadata):
+def test_metadata_accepts_without_license_and_with_nullable_publication(write_metadata):
     metadata = load_metadata(write_metadata())
 
-    assert metadata.license is None
+    assert not hasattr(metadata, "license")
     assert metadata.publication is None
 
 
@@ -31,11 +31,27 @@ def test_metadata_rejects_unsafe_dataset_id(metadata_values, write_metadata):
         load_metadata(write_metadata(values))
 
 
-def test_metadata_requires_nullable_keys(metadata_values, write_metadata):
+def test_metadata_rejects_top_level_license(metadata_values, write_metadata):
     values = deepcopy(metadata_values)
-    del values["license"]
+    values["license"] = None
 
     with pytest.raises(MetadataLoadError, match="license"):
+        load_metadata(write_metadata(values))
+
+
+def test_metadata_rejects_database_license(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    values["database"]["license"] = "CC BY 4.0"
+
+    with pytest.raises(MetadataLoadError, match="license"):
+        load_metadata(write_metadata(values))
+
+
+def test_metadata_requires_nullable_publication(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    del values["publication"]
+
+    with pytest.raises(MetadataLoadError, match="publication"):
         load_metadata(write_metadata(values))
 
 

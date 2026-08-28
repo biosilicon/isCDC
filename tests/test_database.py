@@ -19,6 +19,7 @@ def test_empty_legacy_catalogue_is_rebuilt(tmp_path):
 
     columns = {column["name"] for column in inspect(engine).get_columns("datasets")}
     assert {"dataset_type", "derivation", "split_id"}.issubset(columns)
+    assert "license" not in columns
     assert "catalogue_metadata" in inspect(engine).get_table_names()
     engine.dispose()
 

@@ -238,6 +238,9 @@ def _set_embedded_schema_version(path: Path) -> None:
         if node is None or node.asstr()[()] != SOURCE_SCHEMA_VERSION:
             raise SchemaMigrationError(f"Cannot migrate embedded schema version: {path}")
         node[()] = TARGET_SCHEMA_VERSION
+        database = handle.get("uns/database")
+        if database is not None and "license" in database:
+            del database["license"]
 
 
 def _trim_two_modality_file(path: Path) -> list[str]:
@@ -261,6 +264,7 @@ def _trim_two_modality_file(path: Path) -> list[str]:
             migrated = mdata[ordered, :].copy()
         migrated.uns["database"]["schema_version"] = TARGET_SCHEMA_VERSION
         migrated.uns["database"]["pairing_type"] = "same_unit"
+        migrated.uns["database"].pop("license", None)
         migrated.write_h5mu(temporary)
     finally:
         mdata.file.close()
@@ -287,6 +291,8 @@ def _migrate_dataset_directory(directory: Path) -> list[str]:
     else:
         _set_embedded_schema_version(h5mu_path)
     database["schema_version"] = TARGET_SCHEMA_VERSION
+    database.pop("license", None)
+    raw.pop("license", None)
     _write_yaml(metadata_path, raw)
     return removed
 
@@ -300,8 +306,10 @@ def _migrate_exp(stage_exp: Path) -> None:
             database = raw["database"]
             if database.get("schema_version") == SOURCE_SCHEMA_VERSION:
                 database["schema_version"] = TARGET_SCHEMA_VERSION
+            database.pop("license", None)
         elif raw.get("schema_version") == SOURCE_SCHEMA_VERSION:
             raw["schema_version"] = TARGET_SCHEMA_VERSION
+        raw.pop("license", None)
         _write_yaml(path, raw)
 
 

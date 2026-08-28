@@ -53,7 +53,6 @@ def metadata_values() -> dict:
         "title": "Test RNA and protein dataset",
         "description": "A deterministic spatial multi-omics test dataset.",
         "keywords": ["kidney", "test"],
-        "license": None,
         "publication": None,
     }
 

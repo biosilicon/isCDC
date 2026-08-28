@@ -3,6 +3,7 @@ import logging
 import math
 import mimetypes
 from collections.abc import AsyncGenerator
+from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
 from time import perf_counter
@@ -243,6 +244,10 @@ def _format_bytes(value: int) -> str:
     return f"{size:.1f} TB"
 
 
+def _date_only(value: date) -> date:
+    return value.date() if isinstance(value, datetime) else value
+
+
 def _as_list(value):  # noqa: ANN001, ANN202
     return value if isinstance(value, list) else [value]
 
@@ -353,7 +358,6 @@ def _data_file_response(
             for item in sample_sources_by_dataset_id.get(dataset.dataset_id, ())
         ],
         keywords=dataset.keywords,
-        license=dataset.license,
         publication=dataset.publication,
         additional_metadata=dataset.additional_metadata,
         n_obs=dataset.n_obs,
@@ -372,7 +376,7 @@ def _data_file_response(
         file_size=dataset.file_size,
         sha256=dataset.sha256,
         validation_warning_count=dataset.validation_warning_count,
-        imported_at=dataset.imported_at,
+        imported_at=_date_only(dataset.imported_at),
         downloads=downloads,
         auxiliary_files=[
             {
@@ -533,6 +537,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_processors=[analytics_template_context],
     )
     templates.env.filters["filesize"] = _format_bytes
+    templates.env.filters["date_only"] = _date_only
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
     templates.env.filters["challenge_type_label"] = CHALLENGE_TYPE_LABELS.__getitem__

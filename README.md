@@ -385,6 +385,21 @@ PYTHONPATH=src python -m iscdc.cli finalize-schema-1-2 data/migrations/schema_1_
 迁移报告永久保留旧/新 checksum、shape、配对类型和被裁剪的 observation ID；
 `analytics.db` 不参与 schema 数据迁移。
 
+Catalogue v3 删除 dataset License 元数据并升级到 v4 时，同样先停止应用并执行显式离线
+迁移。命令会清理正式 metadata，以及存在时的 `temp/`、`exp/` metadata；`.h5mu` 和
+manifest 不含该字段且不会重写：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli migrate-catalogue-v4 --dry-run
+PYTHONPATH=src python -m iscdc.cli migrate-catalogue-v4
+PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v4 \
+  data/migrations/catalogue_v4_<UTC>.json
+```
+
+正式迁移在删除 `datasets.license` 物理列前备份 catalogue 和全部被修改的 metadata；失败
+会自动恢复。只有 active catalogue、metadata 和所有 `.h5mu` checksum 均通过复核后，
+finalize 才会删除 v3 备份。普通应用启动不会自动迁移旧 catalogue。
+
 ### 批量整理原始数据
 
 `temp/` 下彼此独立的数据集使用两种 agent 角色和五个受控阶段处理：
@@ -429,11 +444,11 @@ description: A concise scientific description.
 keywords:
   - spatial transcriptomics
   - spatial proteomics
-license: null
 publication: null
 ```
 
-`license` 和 `publication` 键必须存在，但在信息无法确认时可以为 `null`。
+Dataset metadata 不接受 `license`；数据使用条件应从 `source` 指向的原始发布页面确认。
+`publication` 键必须存在，但在论文信息无法确认时可以为 `null`。
 `coordinate_unit` 可使用 `array_index` 表示平台原生的离散阵列索引，例如 10x
 Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理坐标换算，应保留
 `array_index`，不应将这些值重新标记为 `pixel` 或 `micrometer`。
