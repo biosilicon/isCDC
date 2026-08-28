@@ -10,7 +10,7 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 
 面向数据访问者的下载、`.h5mu` 结构、元数据字段和分析注意事项见
 [数据使用说明](doc/数据使用说明.md)。
-Schema 1.2 还允许在来源标签完整对齐时保存统一格式的可选
+Schema 1.2 还允许在可靠来源标签完整或经核验为部分覆盖时保存统一格式的可选
 `mdata.obs["cell_type"]`；当前 catalogue 的逐数据集来源结论见
 [cell type 来源核验记录](doc/cell_type来源核验记录.md)。离线推断与空间可视化的最终架构和
 运行方式见下文 [Cell type 空间可视化](#cell-type-空间可视化)，35 数据集的方法学与运行经验见
@@ -154,12 +154,20 @@ Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h
 QC。计算推断 sidecar 则从启动时已校验的 manifest/report 展示方法、reference ID 与版本、
 运行参数、QC 发布阈值和实际 QC 结果；未配置阈值显示为 `Not configured`。该说明弹窗不重复
 展示逐点 confidence，confidence 仍只在现有点位 hover 中呈现，公共 Database JSON 保持不变。
+若 sidecar 包含项目保留类别 `Unannotated`，图例仍提供该复选框，但首次加载时默认不勾选，
+对应点位以零半径隐藏；用户可单独勾选或通过 `Select all` 恢复显示。该规则只匹配精确标签
+`Unannotated`，不会隐藏来源自身定义的 `Unlabeled` 等类别。
 
-2026-08-18 的当前全量结果为 35/35 Database success：3 个使用来源标签，1 个 Xenium
-使用 SingleR，31 个 bin/spot 使用 RCTD `full`。这只是当前 sidecar 快照，不把推断标签提升
-为 canonical dataset metadata。完整 provenance/QC 结果见
+2026-08-18 批次的全量结果为 35/35 Database success：3 个使用来源标签，1 个 Xenium
+使用 SingleR，31 个 bin/spot 使用 RCTD `full`。这是当时的 sidecar 快照；后续新增 Database
+可以暂时没有 sidecar，缺失时页面按上述规则不显示占位区。任何推断标签都不会提升为 canonical
+dataset metadata。完整 provenance/QC 结果见
 [`iteration_history.yaml`](assets/cell_type_annotation/iteration_history.yaml)，方法学与失败修复经验见
 [`doc/annotation/细胞类型注释经验总结.md`](doc/annotation/细胞类型注释经验总结.md)。
+
+2026-08-28 新增的 `xenium_human_ccrcc_ffpe_rna_protein` 已另行发布来源型 sidecar：690,322
+个点位、19 个展示类别，其中 331,237 个 `Unannotated` 按上述规则默认隐藏，且没有执行计算
+推断。该增量发布不改写 2026-08-18 的 35/35 历史批次统计。
 
 参考构建、SingleR、RCTD、校准、生成和审计必须在隔离环境中运行，不能向网站使用的
 `iscdc` 环境安装 R 或注释依赖：
@@ -179,7 +187,8 @@ conda run -n iscdc-cell-annotation env PYTHONPATH=src \
   python -m iscdc.cell_type_annotation audit-cell-type-visualizations --all --jobs 20
 ```
 
-来源已有完整标签的 Database 直接保留原始 `mdata.obs["cell_type"]` 拼写；Xenium 推断使用
+来源已有可靠标签的 Database 直接保留 `mdata.obs["cell_type"]` 的来源拼写及经验证的
+`Unannotated` 状态；Xenium 推断使用
 SingleR，bin/spot 使用 RCTD `full` mode。推断生物类型映射到稳定 CL ID，`Mixed` 和
 `Uncertain` 仅作为无 CL ID 的预测状态。完整分数或 weights、校准结果和 QC 报告只保存于
 sidecar generation。科学质量门槛失败会发布完整失败状态并立即撤下旧成功结果。
@@ -315,16 +324,22 @@ catalogue 记录保持不变。该命令不提供在线编辑或删除功能。
 ### 可选 cell type 注释
 
 `cell_type` 只存放在顶层 `mdata.obs["cell_type"]`，不写入 `metadata.yaml`，也不增加
-catalogue 列、网页/API 字段或筛选项。原始公开来源提供与全部顶层 observation 一一对齐的
-离散标签时才应加入；只覆盖部分 observation 时省略整列，不用空值或推断标签补齐。
+catalogue 列、网页/API 字段或筛选项。原始公开来源提供可与全部或经核验子集 observation
+逐行对齐的离散标签时可以加入。部分覆盖时，只对来源中确实没有记录的 observation 使用项目
+保留类别 `Unannotated`；重复、外来、冲突、空白或无法唯一对齐的来源行仍是错误，不能借此
+补齐。不得用聚类或模型推断结果填充 canonical `cell_type`。
 
 Database 页面可以另外显示独立、版本化并经启动校验的 cell type sidecar；其中的推断标签、
 confidence、`Mixed` 和 `Uncertain` 不属于本字段，也不会写回 `.h5mu` 或公共 JSON。该边界见
 [Cell type 空间可视化](#cell-type-空间可视化)。
 
 存在时必须是无序 pandas categorical，所有 category 都是非空、无首尾空白的字符串，并且
-不得保留未使用 category。保留来源的分类层级、语义与拼写，不强行把不同数据集映射到统一
-ontology；来源明确使用 `Unlabeled` 等类别时可以原样保留。完整规则见
+不得保留未使用 category。`Unannotated` 必须是最后一个 category；使用它时必须在
+`mdata.uns["cell_type_provenance"]` 记录 1.0 版来源契约：以直接来源 dataset ID 为键，保存
+原始文件名、绝对 HTTP(S) URL、SHA-256、observation/label 对齐列，以及当前文件内实际的
+annotated/unannotated 数量。完整来源列不需要该对象；不含 `cell_type` 时也不得残留该对象。
+保留来源的分类层级、语义与拼写，不强行把不同数据集映射到统一 ontology；来源明确使用
+`Unlabeled` 等类别时可以原样保留，它不等同于项目补充值 `Unannotated`。完整规则见
 [数据库存储规范 1.2 的顶层观测章节](doc/数据库存储规范_v1.2.md)。
 
 升级前若发现非空的旧版 SQLite 目录，应用会停止并提示备份和重新导入，不会自动删除
@@ -527,8 +542,9 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 `regions` 中出现的样本完整进入训练集。两侧必须都非空，并且每个来源模态在两侧均须
 有观测。空间划分固定使用 `feature_merge_policy: preserve`，保留来源特征顺序、矩阵值、
 坐标、观测 ID、模态成员关系以及 `histone_mark`、`genome_assembly` 等附加数据库元数据。
-若来源包含有效且完整的 `cell_type`，两侧会按各自 observation 子集传播该列并移除未使用
-category；来源没有该列时，产物也不创建该列。
+若来源包含有效 `cell_type`，两侧会按各自 observation 子集传播该列并移除未使用 category；
+若仍使用 `Unannotated`，还会保留来源文件身份并重算两侧 annotated/unannotated 数量。
+来源没有该列时，产物也不创建该列。
 
 ### 按完整全集组合
 
@@ -562,8 +578,9 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 同一个全集不能分配给两侧。每侧只有一个来源时记录为 `subset`，多个来源时记录为
 `composite`。所有来源必须使用相同的空间单位和坐标单位，同名模态必须使用相同的
 `value_type`，最终 train/test 模态集合必须一致且至少包含两个模态。
-每个输出侧仅在分配给该侧的所有来源都包含有效、完整 `cell_type` 时保留该列，并按来源顺序
-及标签首次出现顺序合并 category；任一来源缺少该列时，该输出侧省略整列。
+每个输出侧仅在分配给该侧的所有来源都包含有效 `cell_type` 时保留该列，并按来源顺序及标签
+首次出现顺序合并 category，`Unannotated` 固定置于最后；所有部分来源的 provenance 保持原始
+文件身份并按输出 observation 重算数量。任一来源缺少该列时，该输出侧省略整列。
 
 `spatial` 和 `compose` 配置都必须显式声明 `challenge_type`，可选值为：
 

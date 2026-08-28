@@ -21,7 +21,14 @@ import pandas as pd
 import yaml
 from scipy import sparse
 
-from .validation import validate_h5mu, validate_mudata, validate_train_test_pair
+from .validation import (
+    CELL_TYPE_PROVENANCE_KEY,
+    CELL_TYPE_PROVENANCE_VERSION,
+    UNANNOTATED_CELL_TYPE,
+    validate_h5mu,
+    validate_mudata,
+    validate_train_test_pair,
+)
 
 SCHEMA_VERSION = "1.2"
 CONFIG_POLICIES = {"preserve", "intersection", "union", "reference"}
@@ -909,6 +916,7 @@ def _minimal_mudata(
     coordinates: np.ndarray,
     database: Mapping[str, Any],
     cell_types: Sequence[str] | None = None,
+    cell_type_provenance: Mapping[str, Any] | None = None,
 ) -> md.MuData:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=FutureWarning, module="mudata")
@@ -926,14 +934,63 @@ def _minimal_mudata(
     result.obs["source_obs_id"] = np.asarray(source_obs_ids, dtype=object)[positions].tolist()
     if cell_types is not None:
         labels = np.asarray(cell_types, dtype=object)[positions].tolist()
+        categories = list(dict.fromkeys(labels))
+        if UNANNOTATED_CELL_TYPE in categories:
+            categories.remove(UNANNOTATED_CELL_TYPE)
+            categories.append(UNANNOTATED_CELL_TYPE)
         result.obs["cell_type"] = pd.Categorical(
             labels,
-            categories=list(dict.fromkeys(labels)),
+            categories=categories,
             ordered=False,
         )
+        if cell_type_provenance is not None:
+            result.uns[CELL_TYPE_PROVENANCE_KEY] = deepcopy(dict(cell_type_provenance))
     result.obsm["spatial"] = np.asarray(coordinates)[positions].copy()
     result.uns["database"] = deepcopy(dict(database))
     return result
+
+
+def _derived_cell_type_provenance(
+    sources: Sequence[SourceDataset],
+    row_source_ids: Sequence[str],
+    cell_types: Sequence[str] | None,
+) -> dict[str, Any] | None:
+    if cell_types is None or UNANNOTATED_CELL_TYPE not in cell_types:
+        return None
+    source_rows = np.asarray(row_source_ids, dtype=object)
+    labels = np.asarray(cell_types, dtype=object)
+    source_details: dict[str, Mapping[str, Any]] = {}
+    for source in sources:
+        raw = _normalise(source.mdata.uns.get(CELL_TYPE_PROVENANCE_KEY))
+        if not isinstance(raw, Mapping):
+            continue
+        entries = raw.get("sources")
+        if not isinstance(entries, Mapping):
+            continue
+        entry = entries.get(source.dataset_id)
+        if isinstance(entry, Mapping):
+            source_details[source.dataset_id] = entry
+
+    output_sources: dict[str, dict[str, Any]] = {}
+    for source in sources:
+        mask = source_rows == source.dataset_id
+        unannotated_count = int(np.count_nonzero(mask & (labels == UNANNOTATED_CELL_TYPE)))
+        if unannotated_count == 0:
+            continue
+        details = source_details.get(source.dataset_id)
+        if details is None:
+            raise SplitterError(
+                f"source '{source.dataset_id}' lacks provenance for '{UNANNOTATED_CELL_TYPE}'"
+            )
+        output = deepcopy(dict(details))
+        output["annotated_count"] = int(np.count_nonzero(mask)) - unannotated_count
+        output["unannotated_count"] = unannotated_count
+        output_sources[source.dataset_id] = output
+    return {
+        "version": CELL_TYPE_PROVENANCE_VERSION,
+        "unannotated_label": UNANNOTATED_CELL_TYPE,
+        "sources": output_sources,
+    }
 
 
 def _derivation_database(
@@ -1047,19 +1104,22 @@ def _build_spatial_product(
     for name, value in source.database.items():
         if name not in REQUIRED_DATABASE_FIELDS and name != "derivation":
             database[name] = deepcopy(value)
+    cell_types = (
+        source.mdata.obs.iloc[source_positions]["cell_type"].astype(object).tolist()
+        if "cell_type" in source.mdata.obs.columns
+        else None
+    )
+    source_ids = [source.dataset_id] * len(selected_names)
     return _minimal_mudata(
         modalities,
         selected_names,
         source.mdata.obs.iloc[source_positions]["sample_id"].astype(str).tolist(),
-        [source.dataset_id] * len(selected_names),
+        source_ids,
         selected_names,
         np.asarray(source.mdata.obsm["spatial"])[source_positions],
         database,
-        (
-            source.mdata.obs.iloc[source_positions]["cell_type"].astype(object).tolist()
-            if "cell_type" in source.mdata.obs.columns
-            else None
-        ),
+        cell_types,
+        _derived_cell_type_provenance([source], source_ids, cell_types),
     )
 
 
@@ -1332,6 +1392,7 @@ def _build_composite_product(
         np.vstack(coordinates),
         database,
         cell_types,
+        _derived_cell_type_provenance(sources, source_dataset_ids, cell_types),
     )
     if coordinate_spec is not None:
         result.uns[COORDINATE_HARMONIZATION_KEY] = {

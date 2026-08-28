@@ -25,7 +25,12 @@ from iscdc.splitter import (
     main,
     spatial_split,
 )
-from iscdc.validation import validate_h5mu
+from iscdc.validation import (
+    CELL_TYPE_PROVENANCE_KEY,
+    CELL_TYPE_PROVENANCE_VERSION,
+    UNANNOTATED_CELL_TYPE,
+    validate_h5mu,
+)
 
 
 def _pairing_type(modality_obs: dict[str, list[str]]) -> str:
@@ -58,6 +63,7 @@ def _write_full(
     technologies: dict[str, str] | None = None,
     database_extra: dict | None = None,
     cell_types: list[str] | None = None,
+    cell_type_provenance: dict | None = None,
 ) -> Path:
     obs_names = obs_names or ["cell_1", "cell_2"]
     samples = samples or ["sample_1"] * len(obs_names)
@@ -98,11 +104,17 @@ def _write_full(
         mdata = mdata[obs_names, :].copy()
     mdata.obs["sample_id"] = samples
     if cell_types is not None:
+        categories = list(dict.fromkeys(cell_types))
+        if UNANNOTATED_CELL_TYPE in categories:
+            categories.remove(UNANNOTATED_CELL_TYPE)
+            categories.append(UNANNOTATED_CELL_TYPE)
         mdata.obs["cell_type"] = pd.Categorical(
             cell_types,
-            categories=list(dict.fromkeys(cell_types)),
+            categories=categories,
             ordered=False,
         )
+        if cell_type_provenance is not None:
+            mdata.uns[CELL_TYPE_PROVENANCE_KEY] = cell_type_provenance
     mdata.obsm["spatial"] = np.asarray(coordinates)
     mdata.uns["database"] = {
         "schema_version": schema_version,
@@ -119,6 +131,26 @@ def _write_full(
     path = directory / f"{dataset_id}.h5mu"
     mdata.write_h5mu(path)
     return path
+
+
+def _partial_cell_type_provenance(
+    dataset_id: str, annotated_count: int, unannotated_count: int
+) -> dict:
+    return {
+        "version": CELL_TYPE_PROVENANCE_VERSION,
+        "unannotated_label": UNANNOTATED_CELL_TYPE,
+        "sources": {
+            dataset_id: {
+                "source_file": f"{dataset_id}_labels.csv",
+                "source_url": f"https://example.org/{dataset_id}_labels.csv",
+                "source_sha256": "2" * 64,
+                "observation_id_column": "cell_id",
+                "label_column": "cell_type",
+                "annotated_count": annotated_count,
+                "unannotated_count": unannotated_count,
+            }
+        },
+    }
 
 
 def _write_yaml(path: Path, values: dict) -> Path:
@@ -497,6 +529,87 @@ def test_spatial_propagates_optional_cell_type(tmp_path):
         test.file.close()
 
 
+def test_spatial_propagates_partial_source_cell_type_provenance(tmp_path):
+    source = _write_full(
+        tmp_path,
+        "spatial_partial_labels",
+        obs_names=["c1", "c2", "c3", "c4"],
+        coordinates=np.asarray([[0, 0], [1, 1], [2, 2], [3, 3]], dtype=np.float32),
+        cell_types=["Astro", UNANNOTATED_CELL_TYPE, "Micro", UNANNOTATED_CELL_TYPE],
+        cell_type_provenance=_partial_cell_type_provenance(
+            "spatial_partial_labels", annotated_count=2, unannotated_count=2
+        ),
+    )
+    config = _spatial_config(
+        tmp_path,
+        source,
+        [{"sample_id": "sample_1", "x_min": 1, "x_max": 2, "y_min": 1, "y_max": 2}],
+        output_name="spatial_partial_labels_output",
+    )
+
+    train_path, test_path = spatial_split(config)
+    assert validate_h5mu(
+        train_path, source_paths={"spatial_partial_labels": source}
+    ).valid
+    assert validate_h5mu(
+        test_path, source_paths={"spatial_partial_labels": source}
+    ).valid
+    train = _read(train_path)
+    test = _read(test_path)
+    try:
+        assert list(test.obs["cell_type"].astype(object)) == [UNANNOTATED_CELL_TYPE, "Micro"]
+        assert list(test.obs["cell_type"].cat.categories) == ["Micro", UNANNOTATED_CELL_TYPE]
+        test_source = test.uns[CELL_TYPE_PROVENANCE_KEY]["sources"]["spatial_partial_labels"]
+        assert test_source["annotated_count"] == 1
+        assert test_source["unannotated_count"] == 1
+        assert list(train.obs["cell_type"].astype(object)) == ["Astro", UNANNOTATED_CELL_TYPE]
+        train_source = train.uns[CELL_TYPE_PROVENANCE_KEY]["sources"]["spatial_partial_labels"]
+        assert train_source["annotated_count"] == 1
+        assert train_source["unannotated_count"] == 1
+    finally:
+        train.file.close()
+        test.file.close()
+
+
+def test_validation_rejects_derived_cell_type_label_mismatch(tmp_path):
+    source = _write_full(
+        tmp_path,
+        "derived_label_source",
+        obs_names=["c1", "c2", "c3", "c4"],
+        coordinates=np.asarray([[0, 0], [1, 1], [2, 2], [3, 3]], dtype=np.float32),
+        cell_types=["Astro", UNANNOTATED_CELL_TYPE, "Micro", UNANNOTATED_CELL_TYPE],
+        cell_type_provenance=_partial_cell_type_provenance(
+            "derived_label_source", annotated_count=2, unannotated_count=2
+        ),
+    )
+    config = _spatial_config(
+        tmp_path,
+        source,
+        [{"sample_id": "sample_1", "x_min": 1, "x_max": 2, "y_min": 1, "y_max": 2}],
+        output_name="derived_label_mismatch",
+    )
+
+    _, test_path = spatial_split(config)
+    test = _read(test_path)
+    invalid_path = tmp_path / "derived-label-mismatch.h5mu"
+    try:
+        test.obs["cell_type"] = pd.Categorical(
+            [UNANNOTATED_CELL_TYPE, "Astro"],
+            categories=["Astro", UNANNOTATED_CELL_TYPE],
+        )
+        test.write_h5mu(invalid_path)
+    finally:
+        test.file.close()
+
+    outcome = validate_h5mu(
+        invalid_path,
+        source_paths={"derived_label_source": source},
+    )
+
+    assert not outcome.valid
+    assert "derived_cell_type_mismatch" in {issue.code for issue in outcome.errors}
+
+
 @pytest.mark.parametrize(
     "region",
     [
@@ -714,6 +827,55 @@ def test_compose_keeps_cell_type_only_when_all_sources_are_annotated(tmp_path):
         assert "cell_type" not in partial_train.obs.columns
     finally:
         partial_train.file.close()
+
+
+def test_compose_merges_partial_source_cell_type_provenance(tmp_path):
+    source_a = _write_full(
+        tmp_path,
+        "partial_labels_a",
+        cell_types=["Astro", UNANNOTATED_CELL_TYPE],
+        cell_type_provenance=_partial_cell_type_provenance(
+            "partial_labels_a", annotated_count=1, unannotated_count=1
+        ),
+    )
+    source_b = _write_full(
+        tmp_path,
+        "partial_labels_b",
+        cell_types=["Micro", UNANNOTATED_CELL_TYPE],
+        cell_type_provenance=_partial_cell_type_provenance(
+            "partial_labels_b", annotated_count=1, unannotated_count=1
+        ),
+    )
+    source_c = _write_full(
+        tmp_path,
+        "complete_labels_c",
+        cell_types=["Oligo", "Astro"],
+    )
+    config = _compose_config(
+        tmp_path,
+        "preserve",
+        [source_a, source_b],
+        [source_c],
+        output_name="partial_label_provenance",
+    )
+
+    train_path, _ = compose_split(config)
+    train = _read(train_path)
+    try:
+        assert list(train.obs["cell_type"].cat.categories) == [
+            "Astro",
+            "Micro",
+            UNANNOTATED_CELL_TYPE,
+        ]
+        provenance = train.uns[CELL_TYPE_PROVENANCE_KEY]
+        assert set(provenance["sources"]) == {
+            "partial_labels_a",
+            "partial_labels_b",
+        }
+        assert all(item["annotated_count"] == 1 for item in provenance["sources"].values())
+        assert all(item["unannotated_count"] == 1 for item in provenance["sources"].values())
+    finally:
+        train.file.close()
 
 
 def _feature_sources(tmp_path: Path) -> tuple[Path, Path, Path]:

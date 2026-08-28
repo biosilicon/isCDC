@@ -90,11 +90,16 @@ Reject `unpaired` files and do not make the importer silently discard observatio
 and visibly annotate files with more than two modalities in pages and JSON responses.
 
 Top-level `mdata.obs["cell_type"]` is an optional schema 1.2 annotation. Include it only when a
-public source supplies discrete labels aligned to every top-level observation; partial coverage
-requires omitting the whole column. When present, it must be an unordered pandas categorical with
-non-null, non-blank, whitespace-trimmed string labels and no unused categories. Preserve the
-source's biological semantics and spelling rather than imposing a cross-dataset ontology; an
-explicit source category such as `Unlabeled` is valid. Do not add canonical cell type metadata to
+public source supplies reliable discrete labels aligned to all or a verified subset of top-level
+observations. For verified partial coverage, assign the project-reserved final category
+`Unannotated` only to source-unmatched observations and record the versioned source-file URL,
+SHA-256, alignment columns, and actual annotated/unannotated counts in
+`mdata.uns["cell_type_provenance"]`; never use this fallback to conceal duplicate, foreign,
+ambiguous, blank, or conflicting source rows. When present, `cell_type` must be an unordered pandas
+categorical with non-null, non-blank, whitespace-trimmed string labels and no unused categories.
+Preserve the source's biological semantics and spelling rather than imposing a cross-dataset
+ontology; an explicit source category such as `Unlabeled` is valid and remains distinct from the
+project fallback. Do not add canonical cell type metadata to
 `metadata.yaml`, catalogue tables, public JSON responses, or filters. The Database detail page may
 render a separately versioned, startup-validated cell type visualization sidecar; that sidecar and
 its internal data endpoint must not present inferred labels as canonical dataset metadata. Spatial
@@ -104,9 +109,14 @@ computational inference was performed; do not render inference-only reference, p
 or QC sections. For `annotation.kind: inferred`, show the validated method, reference ID/version,
 runtime parameters, QC publication thresholds, and QC results from the in-memory manifest/report.
 Keep point confidence in the existing hover interaction rather than the method-details panel.
-Each composed output side includes it only when every full source assigned to that side has a
-valid complete column; categories are merged in source and first-seen order, otherwise the output
-omits the column.
+When a sidecar contains the exact project-reserved label `Unannotated`, keep its legend checkbox
+available but unchecked on initial render and assign those points zero display radius until the user
+selects it. Other labels remain selected by default; source labels such as `Unlabeled` are not covered
+by this presentation rule.
+Each composed output side includes it only when every full source assigned to that side has a valid
+column; categories are merged in source and first-seen order with `Unannotated` forced last, and
+partial-source provenance counts are recomputed for the output observations. If any source lacks
+the column, the output omits it.
 
 `import-dataset` rejects existing IDs unless `--replace` is explicit. Replacement must preserve
 the indexed `dataset_type` and, for derived data, the construction type, ordered source IDs,
@@ -187,6 +197,17 @@ templates, or API behavior do not require HTTP/ASGI-layer tests. Validate those 
 the importer result, `validation_report.json`, checksum and manifest consistency, and direct
 catalogue or repository reads instead. Run network-layer tests when application behavior changes,
 not merely to confirm that a data file was imported.
+
+Cell type visualization selection tests must verify both legend state and rendered point filtering:
+the exact `Unannotated` category starts unchecked with zero-radius points, all other categories start
+checked, and browser smoke testing against a published sidecar must confirm the initial checkbox state
+without console errors. Allow the real dataset enough time to decode and render before failing the
+browser test; do not weaken the state assertions to compensate for a large point file.
+
+Partial source `cell_type` tests must cover exact `Unannotated` spelling and terminal category
+order, safe source-file/URL/SHA-256 provenance, actual per-source annotated/unannotated counts,
+rejection of missing/orphan/mismatched provenance, exact derived-label agreement with direct full
+sources, and provenance/count propagation through spatial and composite splits.
 
 Auxiliary-file behavior tests must cover safe manifest parsing, atomic registration rollback,
 duplicate and path rejection, fail-open discovery, detail-page and JSON exposure, HEAD and byte

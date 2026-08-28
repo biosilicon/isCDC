@@ -216,3 +216,28 @@ rounds:
       annotation_r_contracts: {passed: 2, failed: 0}
       ruff: passed
       yaml_parse: passed
+  - round_id: ccrcc-source-visualization
+    status: completed
+    completed_at: "2026-08-28T04:19:43Z"
+    inputs: 1
+    dataset_ids: [xenium_human_ccrcc_ffpe_rna_protein]
+    annotation_execution: {tasks: 1, method: source}
+    outcomes:
+      xenium_human_ccrcc_ffpe_rna_protein:
+        status: success
+        observations: 690322
+        source_annotated: 359085
+        unannotated: 331237
+        categories: 19
+        generation_id: 20260828T041931807303Z-4153b185f5
+    configuration_changes:
+      - Add the new ccRCC Database as a source-label visualization with no computational inference.
+      - Keep Unannotated available in the legend but unchecked and hidden on initial browser render.
+    verification:
+      annotation_audit: {success: 1, failed: 0}
+      frontend_unit_tests: {passed: 3, failed: 0}
+      chromium_smoke: {passed: 1, failed: 0}
+      responsive_visual_checks: [desktop, mobile]
+    lessons:
+      - Verified partial public labels can be visualized without promoting Unannotated to an inferred or canonical biological type.
+      - The 690322-point browser render needs a larger smoke-test timeout than the earlier 15-second threshold.

@@ -1,4 +1,5 @@
 const FALLBACK_COLOR = [108, 117, 125, 230];
+const DEFAULT_HIDDEN_LABELS = new Set(["Unannotated"]);
 
 export function createRequestGate() {
   let sequence = 0;
@@ -40,6 +41,14 @@ export function categoryMap(categories) {
       code: Number(category.code),
       color: normalizeColor(category.color),
     }]),
+  );
+}
+
+export function initialSelectedCategoryCodes(categories) {
+  return new Set(
+    categories
+      .filter((category) => !DEFAULT_HIDDEN_LABELS.has(category.label))
+      .map((category) => Number(category.code)),
   );
 }
 

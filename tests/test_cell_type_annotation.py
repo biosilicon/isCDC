@@ -510,9 +510,11 @@ def test_generation_removes_work_directory(tmp_path, monkeypatch, publication_fa
 
 def test_checked_in_plan_covers_catalogue_and_environment_is_cpu_only():
     plans = load_catalogue_plan()
-    assert len(plans) == 35
+    assert len(plans) == 36
     assert sum(plan.pilot for plan in plans.values()) == 4
     assert {plan.method for plan in plans.values()} == {"source", "singler", "rctd"}
+    assert plans["xenium_human_ccrcc_ffpe_rna_protein"].method == "source"
+    assert not plans["xenium_human_ccrcc_ffpe_rna_protein"].qc.require_calibration
     assert {
         plan.parameters.get("cores") for plan in plans.values() if plan.method == "rctd"
     } == {3, 5, 12}

@@ -8,6 +8,7 @@ import {
   buildLegendEntries,
   coordinateBounds,
   formatHoverText,
+  initialSelectedCategoryCodes,
   resetViewState,
 } from "./visualization_state.js";
 
@@ -58,7 +59,7 @@ class CellTypeVisualization {
     this.attributes = null;
     this.initialViewState = null;
     this.viewState = null;
-    this.selectedCodes = new Set(config.categories.map((category) => Number(category.code)));
+    this.selectedCodes = initialSelectedCategoryCodes(config.categories);
     this.currentSampleKey = config.initialSampleKey || config.samples[0].key;
     this.onContextLost = (event) => {
       event.preventDefault();

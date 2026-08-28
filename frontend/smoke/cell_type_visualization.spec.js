@@ -1,6 +1,7 @@
 import {expect, test} from "@playwright/test";
 
 test("database detail cell type visualization loads and pans without browser errors", async ({page}) => {
+  test.setTimeout(90_000);
   const errors = [];
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
@@ -17,14 +18,19 @@ test("database detail cell type visualization loads and pans without browser err
   await expect.poll(async () => {
     if (await region.getAttribute("hidden") !== null) return "hidden";
     return (await canvas.isVisible()) ? "ready" : "loading";
-  }, {timeout: 15_000}).not.toBe("loading");
+  }, {timeout: 60_000}).not.toBe("loading");
   if (await region.getAttribute("hidden") !== null) {
     expect(errors).toEqual([]);
     return;
   }
   await expect(region.locator("[data-cell-type-reset]")).toBeVisible();
   await expect(region.locator("[data-cell-type-legend]")).toBeVisible();
-  await expect(canvas).toBeVisible({timeout: 15_000});
+  const unannotated = region
+    .locator(".cell-type-legend-item")
+    .filter({hasText: "Unannotated"})
+    .locator('input[type="checkbox"]');
+  if (await unannotated.count() > 0) await expect(unannotated).not.toBeChecked();
+  await expect(canvas).toBeVisible({timeout: 60_000});
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

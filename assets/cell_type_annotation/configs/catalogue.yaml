@@ -23,6 +23,12 @@ datasets:
     source_evidence: doc/cell_type来源核验记录.md (2026-08-15), top_level_cell_type
     parameters: {}
     qc: {require_calibration: false}
+  - dataset_id: xenium_human_ccrcc_ffpe_rna_protein
+    method: source
+    complete: true
+    source_evidence: doc/cell_type来源核验记录.md (2026-08-28), Xenium cell_groups.csv group with source-unmatched observations retained as Unannotated
+    parameters: {}
+    qc: {require_calibration: false}
   - dataset_id: xenium_human_rcc_ffpe_rna_protein
     method: singler
     reference_id: census_human_kidney_rcc_2025_11_08

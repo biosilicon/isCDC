@@ -7,7 +7,13 @@ import pandas as pd
 import pytest
 
 from iscdc.schemas import load_metadata
-from iscdc.validation import validate_h5mu, validate_train_test_pair
+from iscdc.validation import (
+    CELL_TYPE_PROVENANCE_KEY,
+    CELL_TYPE_PROVENANCE_VERSION,
+    UNANNOTATED_CELL_TYPE,
+    validate_h5mu,
+    validate_train_test_pair,
+)
 
 
 def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
@@ -18,13 +24,35 @@ def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
     assert set(outcome.modalities) == {"rna", "protein"}
 
 
-def _write_cell_type_variant(path, destination, values) -> None:  # noqa: ANN001
+def _write_cell_type_variant(path, destination, values, provenance=None) -> None:  # noqa: ANN001
     mdata = md.read_h5mu(path)
     try:
         mdata.obs["cell_type"] = values
+        if provenance is not None:
+            mdata.uns[CELL_TYPE_PROVENANCE_KEY] = provenance
         mdata.write_h5mu(destination)
     finally:
         mdata.file.close()
+
+
+def _partial_cell_type_provenance(
+    *, annotated_count: int = 1, unannotated_count: int = 1
+) -> dict:
+    return {
+        "version": CELL_TYPE_PROVENANCE_VERSION,
+        "unannotated_label": UNANNOTATED_CELL_TYPE,
+        "sources": {
+            "test_rna_protein": {
+                "source_file": "source_cell_groups.csv",
+                "source_url": "https://example.org/source_cell_groups.csv",
+                "source_sha256": "1" * 64,
+                "observation_id_column": "cell_id",
+                "label_column": "group",
+                "annotated_count": annotated_count,
+                "unannotated_count": unannotated_count,
+            }
+        },
+    }
 
 
 def test_optional_cell_type_categorical_passes(tmp_path, write_h5mu, write_metadata):
@@ -38,6 +66,121 @@ def test_optional_cell_type_categorical_passes(tmp_path, write_h5mu, write_metad
     outcome = validate_h5mu(path, load_metadata(write_metadata()))
 
     assert outcome.valid
+
+
+def test_partial_source_cell_type_with_unannotated_provenance_passes(
+    tmp_path, write_h5mu, write_metadata
+):
+    path = tmp_path / "partial-source-cell-type.h5mu"
+    _write_cell_type_variant(
+        write_h5mu(),
+        path,
+        pd.Categorical(
+            ["T cell", UNANNOTATED_CELL_TYPE],
+            categories=["T cell", UNANNOTATED_CELL_TYPE],
+        ),
+        _partial_cell_type_provenance(),
+    )
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert outcome.valid
+
+
+@pytest.mark.parametrize(
+    ("categories", "provenance", "expected_code"),
+    [
+        (
+            ["T cell", UNANNOTATED_CELL_TYPE],
+            None,
+            "missing_cell_type_provenance",
+        ),
+        (
+            [UNANNOTATED_CELL_TYPE, "T cell"],
+            _partial_cell_type_provenance(),
+            "nonterminal_unannotated_cell_type",
+        ),
+        (
+            ["T cell", UNANNOTATED_CELL_TYPE],
+            _partial_cell_type_provenance(annotated_count=2, unannotated_count=1),
+            "cell_type_provenance_count_mismatch",
+        ),
+    ],
+)
+def test_invalid_partial_source_cell_type_is_rejected(
+    tmp_path,
+    categories,
+    provenance,
+    expected_code,
+    write_h5mu,
+    write_metadata,
+):
+    path = tmp_path / f"invalid-{expected_code}.h5mu"
+    _write_cell_type_variant(
+        write_h5mu(),
+        path,
+        pd.Categorical(
+            ["T cell", UNANNOTATED_CELL_TYPE],
+            categories=categories,
+        ),
+        provenance,
+    )
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert expected_code in {issue.code for issue in outcome.errors}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_file", "../source_cell_groups.csv"),
+        ("source_url", "file:///tmp/source_cell_groups.csv"),
+        ("source_sha256", "A" * 64),
+    ],
+)
+def test_unsafe_partial_source_provenance_is_rejected(
+    tmp_path, field, value, write_h5mu, write_metadata
+):
+    provenance = _partial_cell_type_provenance()
+    provenance["sources"]["test_rna_protein"][field] = value
+    path = tmp_path / f"unsafe-{field}.h5mu"
+    _write_cell_type_variant(
+        write_h5mu(),
+        path,
+        pd.Categorical(
+            ["T cell", UNANNOTATED_CELL_TYPE],
+            categories=["T cell", UNANNOTATED_CELL_TYPE],
+        ),
+        provenance,
+    )
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert "invalid_cell_type_provenance" in {
+        issue.code for issue in outcome.errors
+    }
+
+
+def test_orphan_cell_type_provenance_is_rejected(
+    tmp_path, write_h5mu, write_metadata
+):
+    path = tmp_path / "orphan-cell-type-provenance.h5mu"
+    _write_cell_type_variant(
+        write_h5mu(),
+        path,
+        pd.Categorical(["T cell", "B cell"]),
+        _partial_cell_type_provenance(),
+    )
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert "orphan_cell_type_provenance" in {
+        issue.code for issue in outcome.errors
+    }
 
 
 @pytest.mark.parametrize(

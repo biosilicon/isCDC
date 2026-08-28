@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import mudata
 import numpy as np
@@ -52,6 +54,24 @@ FEATURE_MASK_KEY = "feature_measured_by_source"
 FEATURE_HARMONIZATION_KEY = "feature_harmonization"
 COORDINATE_HARMONIZATION_KEY = "coordinate_harmonization"
 SOURCE_FEATURE_COLUMN_PREFIX = "source_feature_ids__"
+CELL_TYPE_PROVENANCE_KEY = "cell_type_provenance"
+CELL_TYPE_PROVENANCE_VERSION = "1.0"
+UNANNOTATED_CELL_TYPE = "Unannotated"
+CELL_TYPE_PROVENANCE_FIELDS = {
+    "version",
+    "unannotated_label",
+    "sources",
+}
+CELL_TYPE_SOURCE_FIELDS = {
+    "source_file",
+    "source_url",
+    "source_sha256",
+    "observation_id_column",
+    "label_column",
+    "annotated_count",
+    "unannotated_count",
+}
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True)
@@ -182,9 +202,211 @@ def _computed_pairing_type(mdata) -> str:  # noqa: ANN001
     return "unpaired"
 
 
-def _validate_cell_type(mdata, outcome: ValidationOutcome) -> None:  # noqa: ANN001
+def _valid_http_url(value: Any) -> bool:
+    if not isinstance(value, str) or value != value.strip():
+        return False
+    parsed = urlsplit(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _valid_source_filename(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value == value.strip()
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\\" not in value
+    )
+
+
+def _validate_cell_type_provenance(
+    mdata,
+    database: DatabaseMetadata | None,
+    values: pd.Series,
+    outcome: ValidationOutcome,
+) -> None:  # noqa: ANN001
+    path = f"/uns/{CELL_TYPE_PROVENANCE_KEY}"
+    raw = _normalize(mdata.uns.get(CELL_TYPE_PROVENANCE_KEY))
+    if not isinstance(raw, Mapping):
+        _error(
+            outcome,
+            "missing_cell_type_provenance",
+            "The reserved 'Unannotated' cell type requires source provenance.",
+            path,
+        )
+        return
+    if set(raw) != CELL_TYPE_PROVENANCE_FIELDS:
+        _error(
+            outcome,
+            "invalid_cell_type_provenance",
+            "Cell-type provenance must contain exactly version, unannotated_label, and sources.",
+            path,
+        )
+    if (
+        raw.get("version") != CELL_TYPE_PROVENANCE_VERSION
+        or raw.get("unannotated_label") != UNANNOTATED_CELL_TYPE
+    ):
+        _error(
+            outcome,
+            "invalid_cell_type_provenance",
+            "Cell-type provenance version or reserved label is invalid.",
+            path,
+        )
+
+    sources = raw.get("sources")
+    if not isinstance(sources, Mapping) or not sources:
+        _error(
+            outcome,
+            "invalid_cell_type_provenance",
+            "Cell-type provenance sources must be a non-empty source_dataset_id mapping.",
+            f"{path}/sources",
+        )
+        return
+
+    labels = values.astype(object).to_numpy()
+    unannotated = labels == UNANNOTATED_CELL_TYPE
+    if database is not None and database.dataset_type == "full":
+        row_sources = np.full(mdata.n_obs, database.dataset_id, dtype=object)
+        allowed_source_ids = {database.dataset_id}
+    elif database is not None and database.derivation is not None:
+        allowed_source_ids = set(database.derivation.source_dataset_ids)
+        if "source_dataset_id" not in mdata.obs:
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Derived cell-type provenance requires obs['source_dataset_id'].",
+                "/obs/source_dataset_id",
+            )
+            return
+        row_sources = mdata.obs["source_dataset_id"].astype(str).to_numpy()
+    else:
+        return
+
+    expected_source_ids = set(map(str, row_sources[unannotated]))
+    observed_source_ids: list[str] = []
+    for source_id, item in sources.items():
+        item_path = f"{path}/sources/{source_id}"
+        if not isinstance(item, Mapping) or set(item) != CELL_TYPE_SOURCE_FIELDS:
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Each cell-type provenance source must contain the complete source contract.",
+                item_path,
+            )
+            continue
+        if (
+            not isinstance(source_id, str)
+            or not source_id
+            or source_id != source_id.strip()
+            or "/" in source_id
+            or "\\" in source_id
+        ):
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance source_dataset_id keys must be safe non-blank strings.",
+                f"{path}/sources",
+            )
+            continue
+        observed_source_ids.append(source_id)
+        if source_id not in allowed_source_ids:
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance references an undeclared source dataset.",
+                item_path,
+            )
+
+        annotated_count = item.get("annotated_count")
+        unannotated_count = item.get("unannotated_count")
+        valid_counts = (
+            isinstance(annotated_count, int)
+            and not isinstance(annotated_count, bool)
+            and annotated_count >= 0
+            and isinstance(unannotated_count, int)
+            and not isinstance(unannotated_count, bool)
+            and unannotated_count > 0
+        )
+        if not valid_counts:
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance counts must be non-negative integers with "
+                "unannotated_count > 0.",
+                item_path,
+            )
+        source_rows = row_sources == source_id
+        actual_unannotated = int(np.count_nonzero(source_rows & unannotated))
+        actual_annotated = int(np.count_nonzero(source_rows & ~unannotated))
+        if valid_counts and (
+            annotated_count != actual_annotated or unannotated_count != actual_unannotated
+        ):
+            _error(
+                outcome,
+                "cell_type_provenance_count_mismatch",
+                "Cell-type provenance counts do not match the stored observation labels.",
+                item_path,
+            )
+
+        required_strings = ("observation_id_column", "label_column")
+        if any(
+            not isinstance(item.get(field), str)
+            or not item[field].strip()
+            or item[field] != item[field].strip()
+            for field in required_strings
+        ):
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance alignment columns must be non-blank trimmed strings.",
+                item_path,
+            )
+        if not _valid_source_filename(item.get("source_file")):
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance source_file must be a safe original filename.",
+                f"{item_path}/source_file",
+            )
+        if not _valid_http_url(item.get("source_url")):
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance source_url must be an absolute HTTP(S) URL.",
+                f"{item_path}/source_url",
+            )
+        if not isinstance(item.get("source_sha256"), str) or not SHA256_PATTERN.fullmatch(
+            item["source_sha256"]
+        ):
+            _error(
+                outcome,
+                "invalid_cell_type_provenance",
+                "Cell-type provenance source_sha256 must be lowercase SHA-256.",
+                f"{item_path}/source_sha256",
+            )
+
+    if set(observed_source_ids) != expected_source_ids:
+        _error(
+            outcome,
+            "cell_type_provenance_source_mismatch",
+            "Cell-type provenance must describe exactly the sources containing Unannotated labels.",
+            f"{path}/sources",
+        )
+
+
+def _validate_cell_type(
+    mdata, database: DatabaseMetadata | None, outcome: ValidationOutcome
+) -> None:  # noqa: ANN001
     """Validate the optional, observation-aligned canonical cell-type annotation."""
     if "cell_type" not in mdata.obs.columns:
+        if CELL_TYPE_PROVENANCE_KEY in mdata.uns:
+            _error(
+                outcome,
+                "orphan_cell_type_provenance",
+                "Cell-type provenance must not exist without obs['cell_type'].",
+                f"/uns/{CELL_TYPE_PROVENANCE_KEY}",
+            )
         return
 
     values = mdata.obs["cell_type"]
@@ -236,6 +458,22 @@ def _validate_cell_type(mdata, outcome: ValidationOutcome) -> None:  # noqa: ANN
             "unused_cell_type_category",
             "Cell-type categorical metadata must not contain unused categories.",
             path,
+        )
+    if UNANNOTATED_CELL_TYPE in used:
+        if not categories or categories[-1] != UNANNOTATED_CELL_TYPE:
+            _error(
+                outcome,
+                "nonterminal_unannotated_cell_type",
+                "The reserved 'Unannotated' category must be the final category.",
+                path,
+            )
+        _validate_cell_type_provenance(mdata, database, values, outcome)
+    elif CELL_TYPE_PROVENANCE_KEY in mdata.uns:
+        _error(
+            outcome,
+            "orphan_cell_type_provenance",
+            "Cell-type provenance is only valid when the reserved 'Unannotated' label is used.",
+            f"/uns/{CELL_TYPE_PROVENANCE_KEY}",
         )
 
 
@@ -337,7 +575,7 @@ def _validate_common(
                 "/metadata/sample_ids",
             )
 
-    _validate_cell_type(mdata, outcome)
+    _validate_cell_type(mdata, database, outcome)
 
     if "spatial" not in mdata.obsm:
         _error(outcome, "missing_spatial", "obsm['spatial'] is required.", "/obsm/spatial")
@@ -1031,6 +1269,95 @@ def _validate_harmonized_coordinates(
             )
 
 
+def _cell_type_source_entries(mdata) -> dict[str, Mapping[str, Any]]:  # noqa: ANN001
+    raw = _normalize(mdata.uns.get(CELL_TYPE_PROVENANCE_KEY))
+    if not isinstance(raw, Mapping) or not isinstance(raw.get("sources"), Mapping):
+        return {}
+    return {
+        str(source_id): item
+        for source_id, item in raw["sources"].items()
+        if isinstance(item, Mapping)
+    }
+
+
+def _validate_derived_cell_type(
+    mdata,
+    sources: Mapping[str, Any],
+    pairs: Sequence[tuple[str, str]],
+    outcome: ValidationOutcome,
+) -> None:  # noqa: ANN001
+    source_has_labels = {
+        source_id: "cell_type" in source.obs.columns for source_id, source in sources.items()
+    }
+    output_has_labels = "cell_type" in mdata.obs.columns
+    all_sources_have_labels = bool(source_has_labels) and all(source_has_labels.values())
+    if all_sources_have_labels and not output_has_labels:
+        _error(
+            outcome,
+            "missing_derived_cell_type",
+            "Derived data must propagate cell_type when every direct full source provides it.",
+            "/obs/cell_type",
+        )
+        return
+    if output_has_labels and not all_sources_have_labels:
+        _error(
+            outcome,
+            "unexpected_derived_cell_type",
+            "Derived data must omit cell_type when any direct full source lacks it.",
+            "/obs/cell_type",
+        )
+        return
+    if not output_has_labels:
+        return
+
+    source_labels = {
+        source_id: dict(
+            zip(
+                map(str, source.obs_names),
+                source.obs["cell_type"].astype(object),
+                strict=True,
+            )
+        )
+        for source_id, source in sources.items()
+    }
+    if any(
+        source_id not in source_labels or obs_id not in source_labels[source_id]
+        for source_id, obs_id in pairs
+    ):
+        return
+    expected = [source_labels[source_id][obs_id] for source_id, obs_id in pairs]
+    actual = mdata.obs["cell_type"].astype(object).tolist()
+    if expected != actual:
+        _error(
+            outcome,
+            "derived_cell_type_mismatch",
+            "Derived cell_type values must exactly match their direct full-source observations.",
+            "/obs/cell_type",
+        )
+
+    if UNANNOTATED_CELL_TYPE not in set(actual):
+        return
+    output_entries = _cell_type_source_entries(mdata)
+    immutable_fields = CELL_TYPE_SOURCE_FIELDS.difference(
+        {"annotated_count", "unannotated_count"}
+    )
+    for source_id, output_entry in output_entries.items():
+        source = sources.get(source_id)
+        source_entry = (
+            _cell_type_source_entries(source).get(source_id) if source is not None else None
+        )
+        if source_entry is None or any(
+            _canonical(output_entry.get(field)) != _canonical(source_entry.get(field))
+            for field in immutable_fields
+        ):
+            _error(
+                outcome,
+                "derived_cell_type_provenance_mismatch",
+                "Derived cell-type provenance must preserve the direct source-file contract.",
+                f"/uns/{CELL_TYPE_PROVENANCE_KEY}/sources/{source_id}",
+            )
+
+
 def _validate_derivation(
     mdata,
     database: DatabaseMetadata,
@@ -1186,6 +1513,8 @@ def _validate_derivation(
                     f"Source observation ({source_id!r}, {obs_id!r}) does not exist.",
                     "/obs/source_obs_id",
                 )
+
+        _validate_derived_cell_type(mdata, sources, pairs, outcome)
 
         top_provenance = dict(zip(map(str, mdata.obs_names), pairs, strict=True))
         top_pair_set = set(pairs)
