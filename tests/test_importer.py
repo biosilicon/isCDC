@@ -267,9 +267,9 @@ def test_composite_import_preserves_multivalue_source_and_technology(
     template_path = write_h5mu()
     source_paths = []
     for dataset_id, technology in (
-        ("composite_a", "Technology A"),
-        ("composite_b", "Technology B"),
-        ("composite_c", "Technology C"),
+        ("composite_a", "Xenium"),
+        ("composite_b", "SPOTS"),
+        ("composite_c", "Spatial-CITE-seq"),
     ):
         source = md.read_h5mu(template_path)
         try:
@@ -321,6 +321,6 @@ def test_composite_import_preserves_multivalue_source_and_technology(
         assert train is not None
         assert train.source == ["SOURCE-composite_a", "SOURCE-composite_b"]
         assert all(
-            modality.technology == ["Technology A", "Technology B"] for modality in train.modalities
+            modality.technology == ["Xenium", "SPOTS"] for modality in train.modalities
         )
     engine.dispose()

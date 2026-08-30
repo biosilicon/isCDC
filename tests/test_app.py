@@ -701,7 +701,7 @@ async def test_three_modality_database_is_annotated(
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
     values["modalities"]["metabolite"] = {
-        "technology": "Test assay",
+        "technology": "Xenium",
         "value_type": "intensity",
     }
     import_dataset(
@@ -730,7 +730,7 @@ async def test_database_detail_rejects_non_full_and_missing_entries(
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         detail = await client.get("/databases/test_rna_protein")
         assert detail.status_code == 200
-        assert "Test assay" in detail.text
+        assert "Xenium" in detail.text
         assert (await client.get("/databases/web_train")).status_code == 404
         assert (await client.get("/databases/unknown")).status_code == 404
 
@@ -1220,7 +1220,7 @@ async def test_new_apis_and_pagination(settings, write_h5mu, write_metadata):
     app = _app_with_database(settings, write_h5mu, write_metadata)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/databases?technology=Test%20assay&limit=1&offset=0")
+        response = await client.get("/api/databases?technology=Xenium&limit=1&offset=0")
         assert response.status_code == 200
         payload = response.json()
         assert payload["total"] == 1
@@ -1236,6 +1236,11 @@ async def test_new_apis_and_pagination(settings, write_h5mu, write_metadata):
         assert (await client.get("/api/databases/test_rna_protein")).status_code == 200
         assert (await client.get("/api/databases/unknown")).status_code == 404
         assert (await client.get("/api/challenges/unknown")).status_code == 404
+        legacy = await client.get(
+            "/api/databases?technology=10x%20Genomics%20Xenium%20In%20Situ"
+        )
+        assert legacy.status_code == 200
+        assert legacy.json()["total"] == 0
 
 
 async def test_downloads_use_new_route_and_safe_fixed_names(
@@ -1272,7 +1277,7 @@ async def test_database_api_and_filters_preserve_multivalue_metadata(
         database.source = ["SOURCE_A", "SOURCE_B"]
         database.organism = ["Homo sapiens", "Mus musculus"]
         database.tissue = ["kidney", "lung"]
-        database.modalities[0].technology = ["Test assay", "Second assay"]
+        database.modalities[0].technology = ["Xenium", "SPOTS"]
         session.commit()
     engine.dispose()
 
@@ -1280,7 +1285,7 @@ async def test_database_api_and_filters_preserve_multivalue_metadata(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(
-            "/api/databases?organism=Mus%20musculus&technology=Second%20assay"
+            "/api/databases?organism=Mus%20musculus&technology=SPOTS"
         )
         assert response.status_code == 200
         payload = response.json()

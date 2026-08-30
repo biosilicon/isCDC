@@ -5,6 +5,7 @@ from copy import deepcopy
 import pytest
 
 from iscdc.schemas import MetadataLoadError, load_metadata
+from iscdc.technology import TECHNOLOGIES
 
 
 def test_metadata_accepts_without_license_and_with_nullable_publication(write_metadata):
@@ -21,6 +22,32 @@ def test_metadata_preserves_additional_database_fields(metadata_values, write_me
     metadata = load_metadata(write_metadata(values))
 
     assert metadata.additional_database_values() == {"disease": "renal cell carcinoma"}
+
+
+@pytest.mark.parametrize("technology", TECHNOLOGIES)
+def test_metadata_accepts_controlled_technology_values(
+    technology, metadata_values, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["modalities"]["rna"]["technology"] = technology
+
+    metadata = load_metadata(write_metadata(values))
+
+    assert metadata.modalities["rna"].technology == technology
+
+
+@pytest.mark.parametrize(
+    "technology",
+    ["10x Genomics Xenium In Situ", "Spatial CUT&Tag-RNA-seq (H3K27me3)", "New assay"],
+)
+def test_metadata_rejects_technology_outside_controlled_vocabulary(
+    technology, metadata_values, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["modalities"]["rna"]["technology"] = technology
+
+    with pytest.raises(MetadataLoadError, match="unsupported technology"):
+        load_metadata(write_metadata(values))
 
 
 def test_metadata_rejects_unsafe_dataset_id(metadata_values, write_metadata):
@@ -83,7 +110,7 @@ def test_three_modality_metadata_allows_partially_shared(metadata_values, write_
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
     values["modalities"]["metabolite"] = {
-        "technology": "Test assay",
+        "technology": "Xenium",
         "value_type": "intensity",
     }
 
@@ -120,7 +147,7 @@ def test_metadata_validates_derived_relationships_and_lists(metadata_values, wri
             },
         }
     )
-    values["modalities"]["rna"]["technology"] = ["Tech A", "Tech B"]
+    values["modalities"]["rna"]["technology"] = ["Xenium", "SPOTS"]
 
     metadata = load_metadata(write_metadata(values))
 
@@ -128,7 +155,7 @@ def test_metadata_validates_derived_relationships_and_lists(metadata_values, wri
     assert metadata.database.source == ["SOURCE_A", "SOURCE_B"]
     assert metadata.database.derivation is not None
     assert metadata.database.derivation.challenge_type == "cross_subject"
-    assert metadata.modalities["rna"].technology == ["Tech A", "Tech B"]
+    assert metadata.modalities["rna"].technology == ["Xenium", "SPOTS"]
 
 
 @pytest.mark.parametrize("challenge_type", [None, "unknown"])

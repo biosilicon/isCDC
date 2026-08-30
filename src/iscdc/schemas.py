@@ -7,6 +7,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from .technology import technology_vocabulary_message, unsupported_technologies
+
 DATASET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 ScalarOrList = str | list[str]
 ChallengeType = Literal["same_slice", "cross_slice_same_subject", "cross_subject"]
@@ -215,7 +217,11 @@ class ModalityMetadata(BaseModel):
     @field_validator("technology")
     @classmethod
     def validate_technology(cls, value: ScalarOrList) -> ScalarOrList:
-        return _clean_scalar_or_list(value)
+        cleaned = _clean_scalar_or_list(value)
+        unsupported = unsupported_technologies(cleaned)
+        if unsupported:
+            raise ValueError(technology_vocabulary_message(unsupported))
+        return cleaned
 
     @field_validator("value_type")
     @classmethod

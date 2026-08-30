@@ -124,7 +124,7 @@ def test_schema_migration_trims_two_modality_data_and_finalizes_backup(
                 modalities=[
                     Modality(
                         name=name,
-                        technology="Test assay",
+                        technology="Xenium",
                         value_type=values["value_type"],
                         n_obs=2,
                         n_vars=2 if name == "rna" else 1,

@@ -12,10 +12,10 @@ sample_ids:
   - human_rcc_ffpe_01
 modalities:
   rna:
-    technology: 10x Genomics Xenium
+    technology: Xenium
     value_type: counts
   protein:
-    technology: 10x Genomics Xenium
+    technology: Xenium
     value_type: intensity
 title: Xenium Gene and Protein Expression in FFPE Human Renal Cell Carcinoma
 description: >-

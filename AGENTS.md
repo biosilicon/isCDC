@@ -89,6 +89,12 @@ Reject `unpaired` files and do not make the importer silently discard observatio
 `modality_count` from the modality relationship rather than adding a persisted catalogue field,
 and visibly annotate files with more than two modalities in pages and JSON responses.
 
+Modality `technology` is a controlled platform/method-level vocabulary defined in
+`src/iscdc/technology.py`. Keep its spelling and punctuation exact, and do not add vendor prefixes,
+modalities, reagent versions, histone marks, or processing details. Register a new technology in
+the shared vocabulary before importing it. Histone modalities use `Spatial CUT&Tag-RNA-seq` and
+store the specific mark only in `mdata.uns["database"]["histone_mark"]`.
+
 Top-level `mdata.obs["cell_type"]` is an optional schema 1.2 annotation. Include it only when a
 public source supplies reliable discrete labels aligned to all or a verified subset of top-level
 observations. For verified partial coverage, assign the project-reserved final category

@@ -72,7 +72,7 @@ def _write_full(
     features = features or {"rna": ["g1", "g2"], "protein": ["p1"]}
     modality_obs = modality_obs or {name: list(obs_names) for name in features}
     value_types = value_types or {"rna": "counts", "protein": "intensity", "atac": "counts"}
-    technologies = technologies or {name: "test assay" for name in features}
+    technologies = technologies or {name: "Xenium" for name in features}
 
     global_positions = {name: index for index, name in enumerate(obs_names)}
     modalities: dict[str, ad.AnnData] = {}
@@ -92,7 +92,7 @@ def _write_full(
             var=pd.DataFrame(index=pd.Index(modality_features, dtype=str)),
         )
         adata.uns["assay"] = {
-            "technology": technologies.get(modality, "test assay"),
+            "technology": technologies.get(modality, "Xenium"),
             "value_type": value_types.get(modality, "counts"),
         }
         modalities[modality] = adata

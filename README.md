@@ -470,10 +470,14 @@ Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理
 多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
 字符串列表；目录 API 会原样保留字符串或列表形式。
 
+`technology` 使用平台/方法级受控词表：`Immunofluorescence`、`MISAR-seq`、`SPOTS`、
+`STARmap PLUS`、`Spatial ATAC-RNA-seq`、`Spatial CUT&Tag-RNA-seq`、
+`Spatial-CITE-seq`、`Stereo-CITE-seq`、`Visium CytAssist` 和 `Xenium`。不要在该字段中
+加入厂商前缀、模态、试剂版本、组蛋白标记或处理参数；新增技术须先扩展项目词表。
+
 组蛋白修饰数据在 schema 1.2 中统一使用 `histone` 模态名。例如
-H3K27me3 数据的 `modalities.histone.technology` 可写为
-`Spatial CUT&Tag-RNA-seq (H3K27me3)`，具体标记同时保存在
-`database.histone_mark`。`h3k27me3` 等具体标记不直接作为模态名。
+H3K27me3 数据的 `modalities.histone.technology` 写为 `Spatial CUT&Tag-RNA-seq`，具体标记
+只保存在 `database.histone_mark`。`h3k27me3` 等具体标记不直接作为模态名。
 
 ## 划分训练集和测试集
 

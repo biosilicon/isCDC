@@ -24,6 +24,22 @@ def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
     assert set(outcome.modalities) == {"rna", "protein"}
 
 
+def test_h5mu_rejects_technology_outside_controlled_vocabulary(tmp_path, write_h5mu):
+    source_path = write_h5mu()
+    mdata = md.read_h5mu(source_path)
+    try:
+        mdata.mod["rna"].uns["assay"]["technology"] = "10x Genomics Xenium In Situ"
+        invalid_path = tmp_path / "unsupported-technology.h5mu"
+        mdata.write_h5mu(invalid_path)
+    finally:
+        mdata.file.close()
+
+    outcome = validate_h5mu(invalid_path)
+
+    assert not outcome.valid
+    assert "unsupported_technology" in {issue.code for issue in outcome.errors}
+
+
 def _write_cell_type_variant(path, destination, values, provenance=None) -> None:  # noqa: ANN001
     mdata = md.read_h5mu(path)
     try:
@@ -249,7 +265,7 @@ def test_three_modality_partially_shared_dataset_passes(
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
     values["modalities"]["metabolite"] = {
-        "technology": "Test assay",
+        "technology": "Xenium",
         "value_type": "intensity",
     }
 
@@ -280,7 +296,7 @@ def test_pairing_mismatch_is_rejected(metadata_values, write_h5mu, write_metadat
     values = deepcopy(metadata_values)
     values["database"]["pairing_type"] = "partially_shared"
     values["modalities"]["metabolite"] = {
-        "technology": "Test assay",
+        "technology": "Xenium",
         "value_type": "intensity",
     }
 

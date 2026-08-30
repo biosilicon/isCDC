@@ -47,8 +47,8 @@ def metadata_values() -> dict:
         },
         "sample_ids": ["sample_01"],
         "modalities": {
-            "rna": {"technology": "Test assay", "value_type": "counts"},
-            "protein": {"technology": "Test assay", "value_type": "intensity"},
+            "rna": {"technology": "Xenium", "value_type": "counts"},
+            "protein": {"technology": "Xenium", "value_type": "intensity"},
         },
         "title": "Test RNA and protein dataset",
         "description": "A deterministic spatial multi-omics test dataset.",
@@ -113,9 +113,9 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
         protein.obs_names = protein_obs
         protein.var_names = ["CD3"]
         if include_assay:
-            rna.uns["assay"] = {"technology": "Test assay", "value_type": "counts"}
+            rna.uns["assay"] = {"technology": "Xenium", "value_type": "counts"}
             protein.uns["assay"] = {
-                "technology": "Test assay",
+                "technology": "Xenium",
                 "value_type": "intensity",
             }
 
@@ -138,7 +138,7 @@ def write_h5mu(tmp_path: Path, metadata_values: dict):
             metabolite.var_names = ["metabolite_1"]
             if include_assay:
                 metabolite.uns["assay"] = {
-                    "technology": "Test assay",
+                    "technology": "Xenium",
                     "value_type": "intensity",
                 }
             modalities["metabolite"] = metabolite

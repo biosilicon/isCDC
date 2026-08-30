@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from scipy import sparse
 
 from .schemas import DatabaseMetadata, MetadataDocument, ScalarOrList
+from .technology import technology_vocabulary_message, unsupported_technologies
 
 REQUIRED_DATABASE_FIELDS = {
     "schema_version",
@@ -735,6 +736,13 @@ def _validate_common(
                     outcome,
                     "missing_assay_field",
                     "Assay field 'technology' must be a non-empty string or unique string list.",
+                    f"{path_prefix}/uns/assay/technology",
+                )
+            elif unsupported := unsupported_technologies(technology):
+                _error(
+                    outcome,
+                    "unsupported_technology",
+                    technology_vocabulary_message(unsupported),
                     f"{path_prefix}/uns/assay/technology",
                 )
             if not value_type:
