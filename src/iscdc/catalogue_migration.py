@@ -16,7 +16,6 @@ import yaml
 from pydantic import ValidationError
 
 from .config import PROJECT_ROOT, Settings
-from .database import CATALOGUE_SCHEMA_VERSION
 from .schemas import MetadataDocument
 
 SOURCE_CATALOGUE_VERSION = "3"
@@ -25,6 +24,15 @@ TARGET_CATALOGUE_VERSION = "4"
 
 class CatalogueV4MigrationError(RuntimeError):
     """Raised when the catalogue v4 migration cannot complete safely."""
+
+
+def _validate_license_free_v4_metadata(value: dict[str, Any]) -> None:
+    """Validate v4 metadata without making the later v5 entry tag part of v4."""
+    candidate = dict(value)
+    database = dict(candidate.get("database", {}))
+    database.setdefault("entry_id", database.get("dataset_id"))
+    candidate["database"] = database
+    MetadataDocument.model_validate(candidate)
 
 
 @dataclass(frozen=True)
@@ -331,7 +339,7 @@ def inspect_catalogue_v3(
         license_values.extend(removed)
         if target.formal:
             try:
-                MetadataDocument.model_validate(cleaned)
+                _validate_license_free_v4_metadata(cleaned)
             except ValidationError as exc:
                 raise CatalogueV4MigrationError(
                     f"Metadata will not satisfy the License-free schema: {target.path}: {exc}"
@@ -410,7 +418,7 @@ def _verify_active_catalogue(
             raise CatalogueV4MigrationError(f"Migrated metadata still contains License: {path}")
         if record["formal"]:
             try:
-                MetadataDocument.model_validate(value)
+                _validate_license_free_v4_metadata(value)
             except ValidationError as exc:
                 raise CatalogueV4MigrationError(
                     f"Migrated metadata is invalid: {path}: {exc}"
@@ -442,10 +450,6 @@ def migrate_catalogue_v4(
     if dry_run:
         return inventory
 
-    if CATALOGUE_SCHEMA_VERSION != TARGET_CATALOGUE_VERSION:
-        raise CatalogueV4MigrationError(
-            f"Code expects catalogue version {CATALOGUE_SCHEMA_VERSION}, not version 4."
-        )
     started_at = datetime.now(UTC)
     stamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     data_parent = settings.database_path.parent
@@ -507,7 +511,7 @@ def migrate_catalogue_v4(
             cleaned, removed = _without_license(value)
             if target.formal:
                 try:
-                    MetadataDocument.model_validate(cleaned)
+                    _validate_license_free_v4_metadata(cleaned)
                 except ValidationError as exc:
                     raise CatalogueV4MigrationError(
                         f"Metadata will not satisfy the License-free schema: {target.path}: {exc}"

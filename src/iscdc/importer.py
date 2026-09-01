@@ -50,15 +50,17 @@ def _copy_and_hash(source: Path, destination: Path) -> tuple[int, str]:
 def _replacement_identity(value: Dataset | MetadataDocument) -> dict[str, Any]:
     if isinstance(value, Dataset):
         dataset_type = value.dataset_type
+        entry_id = value.entry_id
         derivation = value.derivation
     else:
         dataset_type = value.database.dataset_type
+        entry_id = value.database.entry_id
         derivation = (
             value.database.derivation.model_dump(mode="python")
             if value.database.derivation
             else None
         )
-    identity: dict[str, Any] = {"dataset_type": dataset_type}
+    identity: dict[str, Any] = {"dataset_type": dataset_type, "entry_id": entry_id}
     if derivation is not None:
         identity.update(
             {
@@ -118,6 +120,7 @@ def build_dataset_record(
     database = metadata.database
     dataset = Dataset(
         dataset_id=database.dataset_id,
+        entry_id=database.entry_id,
         schema_version=database.schema_version,
         dataset_type=database.dataset_type,
         title=metadata.title,
@@ -197,7 +200,7 @@ def import_dataset(
             requested_identity = _replacement_identity(metadata)
             if expected_identity != requested_identity:
                 raise DatasetImportError(
-                    "Replacement must preserve dataset type and derivation identity; "
+                    "Replacement must preserve entry, dataset type, and derivation identity; "
                     f"indexed={expected_identity!r}, requested={requested_identity!r}."
                 )
         derivation = metadata.database.derivation

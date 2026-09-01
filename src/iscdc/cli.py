@@ -22,6 +22,13 @@ from .catalogue_migration import (
 )
 from .config import Settings
 from .database import CatalogueSchemaError
+from .entry_migration import (
+    EntryIdMigrationError,
+    EntryIdMigrationInventory,
+    EntryIdMigrationResult,
+    finalize_entry_id_migration,
+    migrate_entry_ids,
+)
 from .importer import DatasetImportError, import_dataset
 from .schema_migration import (
     MigrationInventory,
@@ -173,6 +180,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verify a catalogue v4 migration and delete its v3 backup.",
     )
     finalize_catalogue_v4_parser.add_argument("report", type=Path)
+
+    catalogue_v5_parser = subparsers.add_parser(
+        "migrate-catalogue-v5",
+        help="Back up catalogue v4 and add required entry IDs to every data file.",
+    )
+    catalogue_v5_parser.add_argument("--dry-run", action="store_true")
+
+    finalize_catalogue_v5_parser = subparsers.add_parser(
+        "finalize-catalogue-v5",
+        help="Verify an entry-ID migration and delete its catalogue v4 backup.",
+    )
+    finalize_catalogue_v5_parser.add_argument("report", type=Path)
 
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
@@ -501,6 +520,32 @@ def main(argv: list[str] | None = None) -> int:
                 args.report, Settings.from_environment()
             )
         except (CatalogueV4MigrationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "migrate-catalogue-v5":
+        try:
+            result = migrate_entry_ids(Settings.from_environment(), dry_run=args.dry_run)
+        except (EntryIdMigrationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if isinstance(result, EntryIdMigrationInventory):
+            payload = {"dry_run": True, "inventory": result.as_dict()}
+        else:
+            assert isinstance(result, EntryIdMigrationResult)
+            payload = {
+                "dry_run": False,
+                "inventory": result.inventory.as_dict(),
+                "report": str(result.report_path),
+                "backup": str(result.backup_path),
+            }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "finalize-catalogue-v5":
+        try:
+            removed = finalize_entry_id_migration(args.report, Settings.from_environment())
+        except (EntryIdMigrationError, OSError, SQLAlchemyError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))

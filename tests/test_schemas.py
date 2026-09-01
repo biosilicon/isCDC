@@ -58,6 +58,21 @@ def test_metadata_rejects_unsafe_dataset_id(metadata_values, write_metadata):
         load_metadata(write_metadata(values))
 
 
+def test_metadata_requires_safe_trimmed_entry_id(metadata_values, write_metadata):
+    values = deepcopy(metadata_values)
+    del values["database"]["entry_id"]
+
+    with pytest.raises(MetadataLoadError, match="entry_id"):
+        load_metadata(write_metadata(values))
+
+    values["database"]["entry_id"] = " ../escape "
+    with pytest.raises(MetadataLoadError, match="entry_id"):
+        load_metadata(write_metadata(values))
+
+    values["database"]["entry_id"] = " C007 "
+    assert load_metadata(write_metadata(values)).database.entry_id == "C007"
+
+
 def test_metadata_rejects_top_level_license(metadata_values, write_metadata):
     values = deepcopy(metadata_values)
     values["license"] = None

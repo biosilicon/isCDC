@@ -29,6 +29,7 @@
         {% set sample_sources = (sample_sources_by_dataset_id|default({})).get(dataset.dataset_id, ()) %}
         <dl class="row metadata-list mt-3">
           <dt class="col-sm-4">Dataset ID</dt><dd class="col-sm-8"><code>{{ dataset.dataset_id }}</code></dd>
+          <dt class="col-sm-4">Entry ID</dt><dd class="col-sm-8"><code>{{ dataset.entry_id }}</code></dd>
           <dt class="col-sm-4">Dataset type</dt><dd class="col-sm-8">{{ dataset.dataset_type }}</dd>
           <dt class="col-sm-4">Species</dt><dd class="col-sm-8">{{ dataset.organism|metadata_values }}</dd>
           <dt class="col-sm-4">Tissue</dt><dd class="col-sm-8">{{ dataset.tissue|metadata_values }}</dd>

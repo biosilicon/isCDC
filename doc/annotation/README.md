@@ -1,8 +1,10 @@
 # Offline cell-type annotation
 
-The implementation is complete for the current 35 two-dimensional `full` Databases.
+The implementation records the dated 2026-08-18 baseline of 35 two-dimensional `full` Databases.
 The final audit reported 35 successes, no scientific failures, and no framework
 failures: 3 source-label datasets, 1 SingleR dataset, and 31 full-mode RCTD datasets.
+Databases imported after that baseline are not implicitly covered by this audit and require their
+own configured annotation review before sidecar publication.
 The website architecture and operating commands are in the root README's
 [Cell type spatial visualization](../../README.md#cell-type-空间可视化) section; methodology,
 failure analysis, calibration, and scheduling lessons are in

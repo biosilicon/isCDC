@@ -1,6 +1,7 @@
 database:
   schema_version: "1.2"
   dataset_id: xenium_human_rcc_ffpe_rna_protein
+  entry_id: xenium_human_rcc_ffpe_rna_protein
   dataset_type: full
   source: https://www.10xgenomics.com/cn/datasets/xenium-protein-ffpe-human-renal-carcinoma
   organism: Homo sapiens

@@ -11,9 +11,10 @@ isCDC 是一个面向跨组学翻译、轻量级且公开只读的空间多组�
 面向数据访问者的下载、`.h5mu` 结构、元数据字段和分析注意事项见
 [数据使用说明](doc/数据使用说明.md)。
 Schema 1.2 还允许在可靠来源标签完整或经核验为部分覆盖时保存统一格式的可选
-`mdata.obs["cell_type"]`；当前 catalogue 的逐数据集来源结论见
-[cell type 来源核验记录](doc/cell_type来源核验记录.md)。离线推断与空间可视化的最终架构和
-运行方式见下文 [Cell type 空间可视化](#cell-type-空间可视化)，35 数据集的方法学与运行经验见
+`mdata.obs["cell_type"]`；来源标签的准入、部分覆盖和 provenance 要求见
+[数据库存储规范 1.2](doc/数据库存储规范_v1.2.md)。离线推断与空间可视化的最终架构和
+运行方式见下文 [Cell type 空间可视化](#cell-type-空间可视化)，2026-08-18 基线中 35 个数据集的
+方法学与运行经验见
 [细胞类型注释经验总结](doc/annotation/细胞类型注释经验总结.md)。
 
 ## 目录约定
@@ -308,7 +309,7 @@ auxiliary/              # 可选；仅在注册辅助文件后创建
 ```
 
 重复的 `dataset_id` 默认会被拒绝。管理员可显式使用 `import-dataset --replace` 原子替换
-同一数据集；替换必须保持 `dataset_type`，衍生数据还须保持
+同一数据集；替换必须保持 `entry_id` 和 `dataset_type`，衍生数据还须保持
 `derivation.construction_type`、按顺序排列的 `source_dataset_ids`、`split_id` 和
 `challenge_type` 不变，并会校验和保留已注册的辅助文件。校验或事务失败时原目录与
 catalogue 记录保持不变。该命令不提供在线编辑或删除功能。
@@ -415,6 +416,22 @@ PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v4 \
 会自动恢复。只有 active catalogue、metadata 和所有 `.h5mu` checksum 均通过复核后，
 finalize 才会删除 v3 备份。普通应用启动不会自动迁移旧 catalogue。
 
+Catalogue v4 升级到 v5 时，必须显式为每个正式数据文件增加必填 `entry_id`，并将其写入
+H5MU、metadata、manifest 及专用的非空 catalogue 索引列。先停止应用并执行 dry-run：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli migrate-catalogue-v5 --dry-run
+PYTHONPATH=src python -m iscdc.cli migrate-catalogue-v5
+PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v5 \
+  data/migrations/catalogue_v5_<UTC>.json
+```
+
+迁移对旧 `full` 使用其 `dataset_id` 作为兼容 `entry_id`，对旧 train/test 优先使用
+`split_id`；新 intake 数据则必须使用 `source_manifest.row_id`。正式迁移会先校验 catalogue
+记录和四类核心制品，在隔离目录生成副本并保留 v4 回滚备份；激活或验证失败时自动恢复。
+只有 active v5 catalogue 及全部正式文件通过报告校验后才可 finalize。普通应用启动拒绝 v4，
+不会自动补列或改写数据文件。
+
 ### 批量整理原始数据
 
 `temp/` 下彼此独立的数据集使用两种 agent 角色和五个受控阶段处理：
@@ -438,6 +455,7 @@ YAML 中出现且值一致；YAML 可以包含文件内部没有的附加数据�
 database:
   schema_version: "1.2"
   dataset_id: example_rna_protein
+  entry_id: example_rna_protein
   dataset_type: full
   source: GSE000000
   organism: Homo sapiens
@@ -464,15 +482,23 @@ publication: null
 
 Dataset metadata 不接受 `license`；数据使用条件应从 `source` 指向的原始发布页面确认。
 `publication` 键必须存在，但在论文信息无法确认时可以为 `null`。
+`entry_id` 是数据文件所属入库条目的标量 ID；intake 处理的 full 文件使用
+`source_manifest.row_id`（例如 `C007` 或 `S001`），并与唯一标识具体文件的
+`dataset_id` 及表示外部发布来源的 `source` 区分。
+`entry_id` 和其他文件内必填 database 字段必须同时存在于 H5MU 与 YAML 且值一致，不能只作为
+YAML 的附加字段保存。
 `coordinate_unit` 可使用 `array_index` 表示平台原生的离散阵列索引，例如 10x
 Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理坐标换算，应保留
 `array_index`，不应将这些值重新标记为 `pixel` 或 `micrometer`。
 多全集衍生数据的 `source`、`organism`、`tissue` 以及模态 `technology` 可以使用去重后的
 字符串列表；目录 API 会原样保留字符串或列表形式。
 
-`technology` 使用平台/方法级受控词表：`Immunofluorescence`、`MISAR-seq`、`SPOTS`、
-`STARmap PLUS`、`Spatial ATAC-RNA-seq`、`Spatial CUT&Tag-RNA-seq`、
-`Spatial-CITE-seq`、`Stereo-CITE-seq`、`Visium CytAssist` 和 `Xenium`。不要在该字段中
+`technology` 使用平台/方法级受控词表：`CODEX`、`CosMx SMI`、`DBiT-seq`、`DBiTplus`、
+`DESI-MSI`、`GeoMx DSP`、`Immunofluorescence`、`MISAR-seq`、`RIBOmap`、`SPOTS`、
+`STARmap`、`STARmap PLUS`、`Spatial metatranscriptomics`、`Spatial ATAC-RNA-seq`、
+`Spatial CUT&Tag-RNA-seq`、`Spatial VDJ`、`Spatial-CITE-seq`、`Spatial-DMT`、
+`Stereo-CITE-seq`、`Visium CytAssist`、`Visium`、`Xenium`、`circVDJ-seq` 和
+`microSTRS`。不要在该字段中
 加入厂商前缀、模态、试剂版本、组蛋白标记或处理参数；新增技术须先扩展项目词表。
 
 组蛋白修饰数据在 schema 1.2 中统一使用 `histone` 模态名。例如
@@ -546,6 +572,7 @@ PYTHONPATH=src python -m iscdc.splitter spatial spatial.yaml
 `regions` 中出现的样本完整进入训练集。两侧必须都非空，并且每个来源模态在两侧均须
 有观测。空间划分固定使用 `feature_merge_policy: preserve`，保留来源特征顺序、矩阵值、
 坐标、观测 ID、模态成员关系以及 `histone_mark`、`genome_assembly` 等附加数据库元数据。
+两侧的 `entry_id` 原样继承来源 full 的值。
 若来源包含有效 `cell_type`，两侧会按各自 observation 子集传播该列并移除未使用 category；
 若仍使用 `Unannotated`，还会保留来源文件身份并重算两侧 annotated/unannotated 数量。
 来源没有该列时，产物也不创建该列。
@@ -582,6 +609,8 @@ PYTHONPATH=src python -m iscdc.splitter compose compose.yaml
 同一个全集不能分配给两侧。每侧只有一个来源时记录为 `subset`，多个来源时记录为
 `composite`。所有来源必须使用相同的空间单位和坐标单位，同名模态必须使用相同的
 `value_type`，最终 train/test 模态集合必须一致且至少包含两个模态。
+若所有 Challenge 来源的 `entry_id` 相同，两侧沿用该值；若来源跨条目，
+train/test 均使用本次输出的 `split_id` 作为派生 `entry_id`。
 每个输出侧仅在分配给该侧的所有来源都包含有效 `cell_type` 时保留该列，并按来源顺序及标签
 首次出现顺序合并 category，`Unannotated` 固定置于最后；所有部分来源的 provenance 保持原始
 文件身份并按输出 observation 重算数量。任一来源缺少该列时，该输出侧省略整列。

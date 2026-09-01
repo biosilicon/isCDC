@@ -14,3 +14,4 @@ frontend/node_modules/
 frontend/test-results/
 frontend/playwright-report/
 assets/static/*.js.map
+new_data/

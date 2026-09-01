@@ -42,6 +42,7 @@ SOURCE_FEATURE_COLUMN_PREFIX = "source_feature_ids__"
 REQUIRED_DATABASE_FIELDS = {
     "schema_version",
     "dataset_id",
+    "entry_id",
     "dataset_type",
     "source",
     "organism",
@@ -560,7 +561,13 @@ def _validate_common_structure(mdata: md.MuData, context: str) -> dict[str, Any]
         )
     if database["schema_version"] != SCHEMA_VERSION:
         raise SplitterError(f"{context}: database schema_version must be '{SCHEMA_VERSION}'")
-    for field_name in ("dataset_id", "dataset_type", "spatial_unit", "coordinate_unit"):
+    for field_name in (
+        "dataset_id",
+        "entry_id",
+        "dataset_type",
+        "spatial_unit",
+        "coordinate_unit",
+    ):
         _required_string(database[field_name], f"{context}: database.{field_name}")
     for field_name in ("source", "organism", "tissue"):
         _metadata_values(database[field_name], f"{context}: database.{field_name}")
@@ -996,6 +1003,7 @@ def _derived_cell_type_provenance(
 def _derivation_database(
     *,
     dataset_id: str,
+    entry_id: str,
     dataset_type: str,
     sources: Sequence[SourceDataset],
     split_id: str,
@@ -1028,6 +1036,7 @@ def _derivation_database(
     return {
         "schema_version": SCHEMA_VERSION,
         "dataset_id": dataset_id,
+        "entry_id": entry_id,
         "dataset_type": dataset_type,
         "source": _deduplicated_metadata(sources, "source"),
         "organism": _deduplicated_metadata(sources, "organism"),
@@ -1088,6 +1097,9 @@ def _build_spatial_product(
     source_positions = pd.Index(source.obs_names).get_indexer(selected_names)
     database = _derivation_database(
         dataset_id=dataset_id,
+        entry_id=_required_string(
+            source.database["entry_id"], f"{source.path}: database.entry_id"
+        ),
         dataset_type=dataset_type,
         sources=[source],
         split_id=split_id,
@@ -1230,6 +1242,13 @@ def _build_composite_product(
 ) -> md.MuData:
     global_sources = list(all_sources or sources)
     global_source_ids = [source.dataset_id for source in global_sources]
+    global_entry_ids = [
+        _required_string(source.database["entry_id"], f"{source.path}: database.entry_id")
+        for source in global_sources
+    ]
+    output_entry_id = (
+        global_entry_ids[0] if len(set(global_entry_ids)) == 1 else split_id
+    )
     modalities: dict[str, ad.AnnData] = {}
     has_missing_features = False
     for modality, features in target_features.items():
@@ -1334,6 +1353,7 @@ def _build_composite_product(
     construction_type = "subset" if len(sources) == 1 else "composite"
     database = _derivation_database(
         dataset_id=dataset_id,
+        entry_id=output_entry_id,
         dataset_type=dataset_type,
         sources=sources,
         split_id=split_id,

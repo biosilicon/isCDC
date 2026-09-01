@@ -22,6 +22,7 @@ from .technology import technology_vocabulary_message, unsupported_technologies
 REQUIRED_DATABASE_FIELDS = {
     "schema_version",
     "dataset_id",
+    "entry_id",
     "dataset_type",
     "source",
     "organism",
@@ -38,6 +39,11 @@ STANDARD_MODALITIES = {
     "methylation",
     "metabolite",
     "lipid",
+    "translatome",
+    "vdj",
+    "bacterial_taxa",
+    "fungal_taxa",
+    "microbiome",
 }
 RECOMMENDED_SPATIAL_UNITS = {"cell", "nucleus", "spot", "bin", "region"}
 RECOMMENDED_COORDINATE_UNITS = {"micrometer", "millimeter", "pixel", "array_index"}

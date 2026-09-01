@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from .technology import technology_vocabulary_message, unsupported_technologies
 
-DATASET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+DATASET_ID_PATTERN = SAFE_IDENTIFIER_PATTERN
 ScalarOrList = str | list[str]
 ChallengeType = Literal["same_slice", "cross_slice_same_subject", "cross_subject"]
 PairingType = Literal["same_unit", "partially_shared"]
@@ -156,6 +157,7 @@ class DatabaseMetadata(BaseModel):
 
     schema_version: Literal["1.2"]
     dataset_id: str = Field(min_length=1, max_length=128)
+    entry_id: str = Field(min_length=1, max_length=128)
     dataset_type: Literal["full", "train", "test"]
     source: ScalarOrList
     organism: ScalarOrList
@@ -176,10 +178,11 @@ class DatabaseMetadata(BaseModel):
                 value["derivation"] = None
         return value
 
-    @field_validator("dataset_id")
+    @field_validator("dataset_id", "entry_id")
     @classmethod
-    def validate_dataset_id(cls, value: str) -> str:
-        if not DATASET_ID_PATTERN.fullmatch(value):
+    def validate_safe_identifier(cls, value: str) -> str:
+        value = value.strip()
+        if not SAFE_IDENTIFIER_PATTERN.fullmatch(value):
             raise ValueError(
                 "must start with an alphanumeric character and contain only letters, numbers, "
                 "dots, underscores, or hyphens"
@@ -340,6 +343,7 @@ class SampleSourceResponse(BaseModel):
 
 class DataFileResponse(BaseModel):
     dataset_id: str
+    entry_id: str
     schema_version: str
     dataset_type: Literal["full", "train", "test"]
     title: str

@@ -55,6 +55,7 @@ def _write_dataset(
     mdata.uns["database"] = {
         "schema_version": "1.2",
         "dataset_id": "training_data",
+        "entry_id": "training_data",
         "dataset_type": "full",
         "source": "TEST",
         "organism": "Homo sapiens",
@@ -98,6 +99,7 @@ def _write_feature_mask_dataset(tmp_path: Path) -> Path:
     mdata.uns["database"] = {
         "schema_version": "1.2",
         "dataset_id": "masked_train",
+        "entry_id": "masked_train",
         "dataset_type": "train",
         "source": ["A", "B"],
         "organism": "Homo sapiens",

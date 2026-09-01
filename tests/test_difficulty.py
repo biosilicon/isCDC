@@ -52,6 +52,7 @@ def _add_challenge_side(
     mdata.uns["database"] = {
         "schema_version": "1.2",
         "dataset_id": dataset_id,
+        "entry_id": split_id,
         "dataset_type": dataset_type,
         "pairing_type": "same_unit",
         "derivation": {
@@ -69,6 +70,7 @@ def _add_challenge_side(
     with create_session_factory(engine)() as session:
         record = Dataset(
             dataset_id=dataset_id,
+            entry_id=split_id,
             schema_version="1.2",
             dataset_type=dataset_type,
             title=dataset_id,

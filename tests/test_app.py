@@ -319,6 +319,7 @@ def _clone_challenge(settings, source_split_id, split_id, suffix):  # noqa: ANN0
             derivation["split_id"] = split_id
             clone = Dataset(
                 dataset_id=f"{source.dataset_id}_{suffix}",
+                entry_id=split_id,
                 schema_version=source.schema_version,
                 dataset_type=source.dataset_type,
                 title=f"{source.title} {suffix}",
@@ -403,11 +404,14 @@ async def test_file_metadata_omits_license_and_exposes_import_date_only(
 
     assert detail.status_code == 200
     assert "License" not in detail.text
+    assert "Entry ID" in detail.text
+    assert "TEST001" in detail.text
     assert "2026-01-02" in detail.text
     assert "03:04:05" not in detail.text
 
     for payload in (detail_api.json(), list_api.json()["items"][0]):
         assert "license" not in payload
+        assert payload["entry_id"] == "TEST001"
         assert payload["imported_at"] == "2026-01-02"
 
     response_schema = openapi.json()["components"]["schemas"]["DataFileResponse"]
@@ -805,6 +809,7 @@ async def test_multisource_challenge_shows_every_sample_source_in_page_and_api(
         first_source.title = "First source database"
         second_source = Dataset(
             dataset_id="second_source_database",
+            entry_id="second_source_database",
             schema_version=first_source.schema_version,
             dataset_type="full",
             title="Second source database",
@@ -1090,6 +1095,7 @@ async def test_duplicate_challenge_side_is_an_integrity_error(
         assert original is not None
         duplicate = Dataset(
             dataset_id="web_train_duplicate",
+            entry_id=original.entry_id,
             schema_version=original.schema_version,
             dataset_type=original.dataset_type,
             title=original.title,
@@ -1225,6 +1231,7 @@ async def test_new_apis_and_pagination(settings, write_h5mu, write_metadata):
         payload = response.json()
         assert payload["total"] == 1
         assert payload["items"][0]["dataset_id"] == "test_rna_protein"
+        assert payload["items"][0]["entry_id"] == "TEST001"
         assert payload["items"][0]["sample_sources"] == []
         assert set(payload["items"][0]["downloads"]) == {
             "h5mu",

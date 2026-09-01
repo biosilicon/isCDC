@@ -3,16 +3,30 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 TECHNOLOGIES: tuple[str, ...] = (
+    "CODEX",
+    "CosMx SMI",
+    "DBiT-seq",
+    "DBiTplus",
+    "DESI-MSI",
+    "GeoMx DSP",
     "Immunofluorescence",
     "MISAR-seq",
+    "RIBOmap",
     "SPOTS",
+    "STARmap",
     "STARmap PLUS",
+    "Spatial metatranscriptomics",
     "Spatial ATAC-RNA-seq",
     "Spatial CUT&Tag-RNA-seq",
+    "Spatial VDJ",
     "Spatial-CITE-seq",
+    "Spatial-DMT",
     "Stereo-CITE-seq",
     "Visium CytAssist",
+    "Visium",
     "Xenium",
+    "circVDJ-seq",
+    "microSTRS",
 )
 TECHNOLOGY_SET = frozenset(TECHNOLOGIES)
 

@@ -22,6 +22,7 @@ class Dataset(Base):
     __tablename__ = "datasets"
 
     dataset_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    entry_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
     dataset_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)

@@ -7,7 +7,8 @@ Production code lives under `src/iscdc/`, automated tests under `tests/`, and te
 The tracked `annotation/` directory contains the isolated R/Conda environment declarations and R
 adapters for offline cell type work. The tracked `frontend/` directory contains the Node 24 source,
 lock file, and tests used to build committed browser bundles; neither toolchain is a website runtime
-dependency. The completed 35-dataset architecture and operational lessons are documented in
+dependency. The dated 2026-08-18 35-dataset annotation architecture and operational lessons are
+documented in
 `README.md` and `doc/annotation/细胞类型注释经验总结.md`; keep those records synchronized when methods,
 QC gates, scheduling limits, or sidecar contracts change.
 
@@ -89,6 +90,15 @@ Reject `unpaired` files and do not make the importer silently discard observatio
 `modality_count` from the modality relationship rather than adding a persisted catalogue field,
 and visibly annotate files with more than two modalities in pages and JSON responses.
 
+Every formal data file must declare a scalar `entry_id` in embedded H5MU metadata and
+`metadata.yaml`; the values must agree and are also persisted in manifest metadata, the dedicated
+non-null indexed catalogue column, detail pages, and data-file JSON responses. For intake data,
+`entry_id` is exactly `source_manifest.row_id`, and sibling files created from one intake row share
+it. It is distinct from the per-file `dataset_id`, external `source`, and derived
+`source_dataset_ids`. Spatial subsets inherit the source entry; compose outputs preserve a shared
+source entry or use `split_id` when they cross entries. Existing catalogue v4 data must be migrated
+explicitly with `migrate-catalogue-v5`; application startup must not infer or auto-write entry IDs.
+
 Modality `technology` is a controlled platform/method-level vocabulary defined in
 `src/iscdc/technology.py`. Keep its spelling and punctuation exact, and do not add vendor prefixes,
 modalities, reagent versions, histone marks, or processing details. Register a new technology in
@@ -125,7 +135,8 @@ partial-source provenance counts are recomputed for the output observations. If 
 the column, the output omits it.
 
 `import-dataset` rejects existing IDs unless `--replace` is explicit. Replacement must preserve
-the indexed `dataset_type` and, for derived data, the construction type, ordered source IDs,
+the indexed `entry_id` and `dataset_type` and, for derived data, the construction type, ordered
+source IDs,
 `split_id`, and `challenge_type`. It must stage and validate the new data first, checksum and
 preserve registered auxiliary files, and restore the original database record and directory if
 the transaction or filesystem switch fails. Serialize catalogue writes. Rebuild dependent
@@ -203,6 +214,11 @@ templates, or API behavior do not require HTTP/ASGI-layer tests. Validate those 
 the importer result, `validation_report.json`, checksum and manifest consistency, and direct
 catalogue or repository reads instead. Run network-layer tests when application behavior changes,
 not merely to confirm that a data file was imported.
+
+Entry-ID behavior tests must cover missing or unsafe values, H5MU/YAML mismatch, the dedicated
+catalogue index and API/detail exposure, replacement identity rejection, spatial/compose
+propagation, and explicit v4-to-v5 migration with rollback. Pure imports must additionally verify
+that H5MU, metadata, manifest, and the catalogue row contain the same approved `entry_id`.
 
 Cell type visualization selection tests must verify both legend state and rendered point filtering:
 the exact `Unannotated` category starts unchecked with zero-radius points, all other categories start

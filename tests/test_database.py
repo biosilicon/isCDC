@@ -18,9 +18,13 @@ def test_empty_legacy_catalogue_is_rebuilt(tmp_path):
     initialize_database(engine)
 
     columns = {column["name"] for column in inspect(engine).get_columns("datasets")}
-    assert {"dataset_type", "derivation", "split_id"}.issubset(columns)
+    assert {"dataset_type", "derivation", "split_id", "entry_id"}.issubset(columns)
     assert "license" not in columns
     assert "catalogue_metadata" in inspect(engine).get_table_names()
+    assert any(
+        index["column_names"] == ["entry_id"]
+        for index in inspect(engine).get_indexes("datasets")
+    )
     engine.dispose()
 
 
@@ -47,5 +51,21 @@ def test_catalogue_version_two_requires_schema_migration(tmp_path):
         )
 
     with pytest.raises(CatalogueSchemaError, match="Unsupported catalogue schema version"):
+        initialize_database(engine)
+    engine.dispose()
+
+
+def test_catalogue_version_four_requires_explicit_entry_migration(tmp_path):
+    engine = create_database_engine(tmp_path / "catalogue-v4.db")
+    initialize_database(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE catalogue_metadata SET value = '4' "
+                "WHERE key = 'schema_version'"
+            )
+        )
+
+    with pytest.raises(CatalogueSchemaError, match="migrate-entry-ids"):
         initialize_database(engine)
     engine.dispose()

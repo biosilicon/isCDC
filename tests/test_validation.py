@@ -24,6 +24,36 @@ def test_valid_same_unit_dataset_passes(write_h5mu, write_metadata):
     assert set(outcome.modalities) == {"rna", "protein"}
 
 
+def test_h5mu_requires_entry_id(tmp_path, write_h5mu, write_metadata):
+    mdata = md.read_h5mu(write_h5mu())
+    try:
+        del mdata.uns["database"]["entry_id"]
+        path = tmp_path / "missing-entry-id.h5mu"
+        mdata.write_h5mu(path)
+    finally:
+        mdata.file.close()
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert "missing_database_field" in {issue.code for issue in outcome.errors}
+
+
+def test_h5mu_entry_id_must_match_yaml(tmp_path, write_h5mu, write_metadata):
+    mdata = md.read_h5mu(write_h5mu())
+    try:
+        mdata.uns["database"]["entry_id"] = "OTHER_ENTRY"
+        path = tmp_path / "mismatched-entry-id.h5mu"
+        mdata.write_h5mu(path)
+    finally:
+        mdata.file.close()
+
+    outcome = validate_h5mu(path, load_metadata(write_metadata()))
+
+    assert not outcome.valid
+    assert "database_metadata_mismatch" in {issue.code for issue in outcome.errors}
+
+
 def test_h5mu_rejects_technology_outside_controlled_vocabulary(tmp_path, write_h5mu):
     source_path = write_h5mu()
     mdata = md.read_h5mu(source_path)
@@ -241,6 +271,25 @@ def test_histone_is_a_standard_modality(metadata_values, write_h5mu, write_metad
 
     assert outcome.valid
     assert set(outcome.modalities) == {"rna", "histone"}
+    assert "nonstandard_modality_name" not in {issue.code for issue in outcome.warnings}
+
+
+@pytest.mark.parametrize(
+    "modality",
+    ["translatome", "vdj", "bacterial_taxa", "fungal_taxa", "microbiome"],
+)
+def test_new_batch_modality_names_are_standard(
+    modality, metadata_values, write_h5mu, write_metadata
+):
+    values = deepcopy(metadata_values)
+    values["modalities"][modality] = values["modalities"].pop("protein")
+
+    outcome = validate_h5mu(
+        write_h5mu(second_modality_name=modality),
+        load_metadata(write_metadata(values)),
+    )
+
+    assert outcome.valid
     assert "nonstandard_modality_name" not in {issue.code for issue in outcome.warnings}
 
 

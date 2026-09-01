@@ -71,6 +71,7 @@ def test_import_creates_catalogue_and_provenance_files(settings, write_h5mu, wri
     assert json.loads((destination / "validation_report.json").read_text())["valid"]
     manifest = json.loads((destination / "manifest.json").read_text())
     assert manifest["manifest_version"] == "1.1"
+    assert manifest["database"]["entry_id"] == "TEST001"
     assert manifest["auxiliary_files"] == []
 
     engine = create_database_engine(settings.database_path)
@@ -78,6 +79,7 @@ def test_import_creates_catalogue_and_provenance_files(settings, write_h5mu, wri
         assert session.scalar(select(func.count()).select_from(Dataset)) == 1
         dataset = session.get(Dataset, "test_rna_protein")
         assert dataset is not None
+        assert dataset.entry_id == "TEST001"
         assert {modality.name for modality in dataset.modalities} == {"rna", "protein"}
     engine.dispose()
 
@@ -89,6 +91,23 @@ def test_duplicate_dataset_is_rejected(settings, write_h5mu, write_metadata):
 
     with pytest.raises(DatasetImportError, match="already indexed"):
         import_dataset(source, metadata, settings)
+
+
+def test_replace_rejects_entry_identity_change(
+    metadata_values, settings, write_h5mu, write_metadata
+):
+    source = write_h5mu()
+    import_dataset(source, write_metadata(), settings)
+    replacement_values = deepcopy(metadata_values)
+    replacement_values["database"]["entry_id"] = "ANOTHER_ENTRY"
+
+    with pytest.raises(DatasetImportError, match="derivation identity"):
+        import_dataset(
+            source,
+            write_metadata(replacement_values, "replacement-entry.yaml"),
+            settings,
+            replace=True,
+        )
 
 
 def test_replace_atomically_updates_dataset_and_preserves_auxiliary_files(

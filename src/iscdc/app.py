@@ -335,6 +335,7 @@ def _data_file_response(
     }
     return DataFileResponse(
         dataset_id=dataset.dataset_id,
+        entry_id=dataset.entry_id,
         schema_version=dataset.schema_version,
         dataset_type=dataset.dataset_type,
         title=dataset.title,

@@ -37,6 +37,7 @@ def metadata_values() -> dict:
         "database": {
             "schema_version": "1.2",
             "dataset_id": "test_rna_protein",
+            "entry_id": "TEST001",
             "dataset_type": "full",
             "source": "TEST001",
             "organism": "Homo sapiens",

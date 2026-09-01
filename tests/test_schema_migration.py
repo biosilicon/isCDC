@@ -98,6 +98,7 @@ def test_schema_migration_trims_two_modality_data_and_finalizes_backup(
         session.add(
             Dataset(
                 dataset_id=dataset_id,
+                entry_id=dataset_id,
                 schema_version="1.1",
                 dataset_type="full",
                 title=metadata["title"],

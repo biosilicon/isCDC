@@ -239,6 +239,19 @@ def _set_embedded_schema_version(path: Path) -> None:
             raise SchemaMigrationError(f"Cannot migrate embedded schema version: {path}")
         node[()] = TARGET_SCHEMA_VERSION
         database = handle.get("uns/database")
+        dataset_id = handle.get("uns/database/dataset_id")
+        if database is not None:
+            if dataset_id is None:
+                raise SchemaMigrationError(f"Cannot infer entry_id for {path}")
+            if "entry_id" in database:
+                del database["entry_id"]
+            entry_node = database.create_dataset(
+                "entry_id",
+                data=dataset_id.asstr()[()],
+                dtype=h5py.string_dtype(encoding="utf-8"),
+            )
+            entry_node.attrs["encoding-type"] = "string"
+            entry_node.attrs["encoding-version"] = "0.2.0"
         if database is not None and "license" in database:
             del database["license"]
 
@@ -263,6 +276,7 @@ def _trim_two_modality_file(path: Path) -> list[str]:
             warnings.filterwarnings("ignore", category=FutureWarning, module="mudata")
             migrated = mdata[ordered, :].copy()
         migrated.uns["database"]["schema_version"] = TARGET_SCHEMA_VERSION
+        migrated.uns["database"]["entry_id"] = migrated.uns["database"]["dataset_id"]
         migrated.uns["database"]["pairing_type"] = "same_unit"
         migrated.uns["database"].pop("license", None)
         migrated.write_h5mu(temporary)
@@ -291,6 +305,7 @@ def _migrate_dataset_directory(directory: Path) -> list[str]:
     else:
         _set_embedded_schema_version(h5mu_path)
     database["schema_version"] = TARGET_SCHEMA_VERSION
+    database["entry_id"] = database["dataset_id"]
     database.pop("license", None)
     raw.pop("license", None)
     _write_yaml(metadata_path, raw)

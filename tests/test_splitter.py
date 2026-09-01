@@ -57,6 +57,7 @@ def _write_full(
     modality_obs: dict[str, list[str]] | None = None,
     matrices: dict[str, np.ndarray] | None = None,
     schema_version: str = "1.2",
+    entry_id: str | None = None,
     spatial_unit: str = "cell",
     coordinate_unit: str = "micrometer",
     value_types: dict[str, str] | None = None,
@@ -119,6 +120,7 @@ def _write_full(
     mdata.uns["database"] = {
         "schema_version": schema_version,
         "dataset_id": dataset_id,
+        "entry_id": entry_id or dataset_id,
         "dataset_type": "full",
         "source": f"SOURCE-{dataset_id}",
         "organism": "Homo sapiens",
@@ -430,9 +432,16 @@ def test_coordinate_ranges_rejects_invalid_coordinates(tmp_path, coordinates, me
 def test_range_rejects_non_v12_and_unknown_sample(tmp_path):
     legacy = _write_full(tmp_path, "legacy", schema_version="1.0")
     current = _write_full(tmp_path, "current")
+    missing_entry = _write_full(
+        tmp_path,
+        "missing_entry",
+        database_extra={"entry_id": None},
+    )
 
     with pytest.raises(SplitterError, match="schema_version must be '1.2'"):
         coordinate_ranges(legacy)
+    with pytest.raises(SplitterError, match="database.entry_id must be a non-empty string"):
+        coordinate_ranges(missing_entry)
     with pytest.raises(SplitterError, match="does not exist"):
         coordinate_ranges(current, "missing")
 
@@ -487,6 +496,7 @@ def test_spatial_uses_closed_region_union_and_preserves_source_data(tmp_path):
         assert set(test.obs.columns) == {"sample_id", "source_dataset_id", "source_obs_id"}
         database = test.uns["database"]
         assert database["schema_version"] == "1.2"
+        assert database["entry_id"] == "spatial_full"
         assert database["dataset_type"] == "test"
         assert database["derivation"]["construction_type"] == "subset"
         assert database["derivation"]["challenge_type"] == "same_slice"
@@ -712,6 +722,8 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
         assert test.uns["database"]["derivation"]["construction_type"] == "subset"
         assert train.uns["database"]["derivation"]["challenge_type"] == "cross_subject"
         assert test.uns["database"]["derivation"]["challenge_type"] == "cross_subject"
+        assert train.uns["database"]["entry_id"] == "compose_preserve_split"
+        assert test.uns["database"]["entry_id"] == "compose_preserve_split"
         train_pairs = set(
             zip(
                 train.obs["source_dataset_id"].astype(str),
@@ -728,6 +740,28 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
         )
         assert train_pairs.isdisjoint(test_pairs)
         assert len(train_pairs | test_pairs) == 6
+    finally:
+        train.file.close()
+        test.file.close()
+
+
+def test_compose_preserves_shared_entry_id_on_both_sides(tmp_path):
+    source_a = _write_full(tmp_path, "shared_entry_a", entry_id="S900")
+    source_b = _write_full(tmp_path, "shared_entry_b", entry_id="S900")
+    config = _compose_config(
+        tmp_path,
+        "preserve",
+        [source_a],
+        [source_b],
+        output_name="shared_entry_output",
+    )
+
+    train_path, test_path = compose_split(config)
+    train = _read(train_path)
+    test = _read(test_path)
+    try:
+        assert train.uns["database"]["entry_id"] == "S900"
+        assert test.uns["database"]["entry_id"] == "S900"
     finally:
         train.file.close()
         test.file.close()
