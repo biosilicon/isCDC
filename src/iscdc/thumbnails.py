@@ -197,7 +197,25 @@ def _apply_orientation(image: Image.Image, orientation: int) -> Image.Image:
     return image.transpose(transpose) if transpose is not None else image
 
 
+def _read_pillow_tiff_level(path: Path, level_index: int) -> Image.Image:
+    maximum_pixels = Image.MAX_IMAGE_PIXELS
+    try:
+        Image.MAX_IMAGE_PIXELS = None
+        with Image.open(path) as source:
+            source.seek(level_index)
+            source.load()
+            return source.copy()
+    except (EOFError, OSError, SyntaxError, ValueError) as exc:
+        raise ThumbnailGenerationError(
+            f"Unable to decode TIFF WSI level {level_index} with Pillow: {path}: {exc}"
+        ) from exc
+    finally:
+        Image.MAX_IMAGE_PIXELS = maximum_pixels
+
+
 def _read_wsi_thumbnail(path: Path) -> tuple[tuple[int, int], Image.Image]:
+    array = None
+    pillow_level_index: int | None = None
     try:
         with TiffFile(path) as tif:
             if not tif.series:
@@ -205,19 +223,31 @@ def _read_wsi_thumbnail(path: Path) -> tuple[tuple[int, int], Image.Image]:
             series = tif.series[0]
             source_dimensions = _level_dimensions(series)
             level = _select_thumbnail_level(series)
+            levels = list(series.levels)
+            level_index = next(
+                index for index, candidate in enumerate(levels) if candidate is level
+            )
             page = level.pages[0]
             orientation_tag = page.tags.get(274)
             orientation = int(orientation_tag.value) if orientation_tag is not None else 1
             icc_tag = page.tags.get(34675)
             icc_profile = icc_tag.value if icc_tag is not None else None
-            array = level.asarray()
+            try:
+                array = level.asarray()
+            except KeyError:
+                pillow_level_index = level_index
     except (TiffFileError, MemoryError, OSError, ValueError) as exc:
         raise ThumbnailGenerationError(f"Unable to decode TIFF WSI {path}: {exc}") from exc
 
-    try:
-        image = Image.fromarray(array)
-    except (TypeError, ValueError) as exc:
-        raise ThumbnailGenerationError(f"Unsupported TIFF pixel data in {path}: {exc}") from exc
+    if pillow_level_index is not None:
+        image = _read_pillow_tiff_level(path, pillow_level_index)
+    else:
+        try:
+            image = Image.fromarray(array)
+        except (TypeError, ValueError) as exc:
+            raise ThumbnailGenerationError(
+                f"Unsupported TIFF pixel data in {path}: {exc}"
+            ) from exc
     oriented = _apply_orientation(image, orientation)
     if oriented is not image:
         image.close()

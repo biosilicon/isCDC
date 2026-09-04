@@ -10,6 +10,7 @@ from PIL import Image
 from tifffile import TiffWriter, imwrite
 
 import iscdc.cli as cli_module
+import iscdc.thumbnails as thumbnails_module
 from iscdc.auxiliary import register_auxiliary_file
 from iscdc.cli import build_parser, main
 from iscdc.database import create_database_engine, create_session_factory
@@ -103,6 +104,57 @@ def test_generate_wsi_thumbnail_uses_smallest_sufficient_pyramid_level(
         assert green > 180
         assert red < 60
         assert blue < 60
+
+
+def test_generate_wsi_thumbnail_falls_back_to_pillow_when_tiff_codec_is_missing(
+    tmp_path, settings, write_h5mu, write_metadata, monkeypatch
+):
+    local_settings, source = _prepare_database_with_wsi(
+        tmp_path, settings, write_h5mu, write_metadata
+    )
+    original_open = Image.open
+    selected_levels: list[int] = []
+
+    class PillowLevel:
+        def __init__(self):
+            self.image = Image.new("RGB", (800, 600), (20, 220, 20))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.image.close()
+
+        def seek(self, level_index):
+            selected_levels.append(level_index)
+
+        def load(self):
+            return None
+
+        def copy(self):
+            return self.image.copy()
+
+    def open_image(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        if Path(path).name == source.name:
+            return PillowLevel()
+        return original_open(path, *args, **kwargs)
+
+    def missing_codec(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise KeyError("JPEG decoding requires imagecodecs")
+
+    monkeypatch.setattr(Image, "open", open_image)
+    monkeypatch.setattr(thumbnails_module.TiffPageSeries, "asarray", missing_codec)
+
+    result = generate_wsi_thumbnail("test_rna_protein", local_settings)
+
+    assert selected_levels == [1]
+    assert result.source_dimensions == (1600, 1200)
+    assert result.thumbnail_dimensions == (640, 480)
+    with original_open(result.destination) as thumbnail:
+        thumbnail.load()
+        assert thumbnail.format == "WEBP"
+        assert thumbnail.mode == "RGB"
+        assert thumbnail.size == (640, 480)
 
 
 def test_generate_wsi_thumbnail_requires_force_and_preserves_old_file_on_failure(

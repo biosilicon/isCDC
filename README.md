@@ -377,7 +377,8 @@ PYTHONPATH=src python -m iscdc.cli generate-wsi-thumbnails --all --force
 ```
 
 命令只处理 `full` Database。有金字塔的 TIFF 会读取最小且最长边不低于 640 px 的层；
-没有金字塔时读取完整图像。最终保持整张切片和原始纵横比，使用 Lanczos 缩小到
+没有金字塔时读取完整图像。若 `tifffile` 缺少该层所需的压缩 codec，命令会用
+Pillow/libtiff 解码同一金字塔层；两种解码器均失败时不生成输出。最终保持整张切片和原始纵横比，使用 Lanczos 缩小到
 最长边 640 px，不做组织区域裁剪，并以 RGB WebP `quality=85`、`method=6` 编码。默认拒绝
 覆盖；`--force` 会在校验新 WebP 后原子替换旧图。`--all` 跳过没有 `he_wsi` 的 Database，
 并以 JSON 汇总成功、跳过和失败结果。
