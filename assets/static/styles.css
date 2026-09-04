@@ -216,6 +216,91 @@ main > .container.py-5 {
   flex-wrap: wrap;
 }
 
+.database-view-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(10rem, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: #e9eef6;
+  border: 1px solid var(--catalogue-border);
+  border-radius: 0.75rem;
+}
+
+.database-view-option {
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  padding: 0.55rem 0.8rem;
+  color: var(--catalogue-muted);
+  line-height: 1.25;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+}
+
+.database-view-option span:last-child {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.database-view-option.active {
+  color: var(--catalogue-ink);
+  background: #fff;
+  border-color: var(--catalogue-border);
+  box-shadow: 0 1px 3px rgb(23 34 56 / 8%);
+}
+
+.entry-card-stats {
+  flex: 0 0 auto;
+}
+
+.entry-thumbnail-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  max-width: 42rem;
+}
+
+.entry-thumbnail-strip .database-thumbnail {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.entry-thumbnail-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.entry-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 64rem;
+}
+
+.entry-summary-grid > div {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  background: var(--catalogue-wash);
+  border: 1px solid var(--catalogue-border);
+  border-radius: var(--catalogue-radius-sm);
+}
+
+.entry-summary-grid span {
+  color: var(--catalogue-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entry-summary-grid strong {
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
 .dataset-card h2,
 .dataset-card h2 a,
 .dataset-card h2 code,
@@ -700,6 +785,20 @@ footer {
 
   .dataset-card .card-body {
     padding: 1.15rem !important;
+  }
+
+  .database-view-switch {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .database-view-option {
+    min-width: 0;
+  }
+
+  .entry-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .dataset-card > .card-body > .d-flex {

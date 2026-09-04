@@ -1,4 +1,7 @@
 <form class="filter-panel rounded-3 p-3 mb-4" method="get">
+  {% for name, value in (persistent_params|default({})).items() %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
   <div class="row g-3">
     <div class="col-lg-4">
       <label class="form-label" for="q">Keyword</label>
@@ -35,7 +38,7 @@
     {% endif %}
     <div class="col-12 d-flex gap-2">
       <button class="btn btn-primary" type="submit">Apply filters</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for(clear_endpoint) }}">Clear</a>
+      <a class="btn btn-outline-secondary" href="{{ clear_url|default(url_for(clear_endpoint)) }}">Clear</a>
     </div>
   </div>
 </form>

@@ -2,7 +2,7 @@
 {% block title %}{{ database.title }} · isCDC{% endblock %}
 {% block content %}
 <div class="container py-5">
-  <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ database.dataset_id }}</span></nav>
+  <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/</span> <a href="{{ url_for('database_entry_detail', entry_id=database.entry_id) }}">{{ database.entry_id }}</a> <span class="text-secondary">/ {{ database.dataset_id }}</span></nav>
   {% set dataset = database %}
   {% set challenge_file = false %}
   <header class="database-detail-header">

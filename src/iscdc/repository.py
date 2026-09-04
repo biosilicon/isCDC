@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal, Mapping, Sequence
 
 from sqlalchemy import String, cast, exists, func, or_, select
@@ -64,6 +65,74 @@ class Challenge:
     @property
     def datasets(self) -> list[Dataset]:
         return [dataset for dataset in (self.train, self.test) if dataset is not None]
+
+
+def _distinct_metadata_values(datasets: Sequence[Dataset], attribute: str) -> list[str]:
+    values: list[str] = []
+    for dataset in datasets:
+        value = getattr(dataset, attribute)
+        for item in value if isinstance(value, list) else [value]:
+            if item not in values:
+                values.append(item)
+    return values
+
+
+@dataclass(frozen=True)
+class DatabaseEntry:
+    entry_id: str
+    datasets: list[Dataset]
+
+    @property
+    def slide_count(self) -> int:
+        return len(self.datasets)
+
+    @property
+    def sources(self) -> list[str]:
+        return _distinct_metadata_values(self.datasets, "source")
+
+    @property
+    def organisms(self) -> list[str]:
+        return _distinct_metadata_values(self.datasets, "organism")
+
+    @property
+    def tissues(self) -> list[str]:
+        return _distinct_metadata_values(self.datasets, "tissue")
+
+    @property
+    def spatial_units(self) -> list[str]:
+        return _distinct_metadata_values(self.datasets, "spatial_unit")
+
+    @property
+    def modalities(self) -> list[str]:
+        values: list[str] = []
+        for dataset in self.datasets:
+            for modality in dataset.modalities:
+                if modality.name not in values:
+                    values.append(modality.name)
+        return values
+
+    @property
+    def technologies(self) -> list[str]:
+        values: list[str] = []
+        for dataset in self.datasets:
+            for modality in dataset.modalities:
+                technology = modality.technology
+                for item in technology if isinstance(technology, list) else [technology]:
+                    if item not in values:
+                        values.append(item)
+        return values
+
+    @property
+    def total_observations(self) -> int:
+        return sum(dataset.n_obs for dataset in self.datasets)
+
+    @property
+    def total_file_size(self) -> int:
+        return sum(dataset.file_size for dataset in self.datasets)
+
+    @property
+    def imported_at(self) -> datetime:
+        return max(dataset.imported_at for dataset in self.datasets)
 
 
 def resolve_sample_sources(
@@ -159,6 +228,7 @@ def _conditions(filters: CatalogueFilters, *, include_split_id: bool = False):  
         pattern = _escaped_pattern(filters.query.strip())
         query_fields = [
             Dataset.dataset_id.ilike(pattern, escape="\\"),
+            Dataset.entry_id.ilike(pattern, escape="\\"),
             Dataset.title.ilike(pattern, escape="\\"),
             Dataset.description.ilike(pattern, escape="\\"),
             Dataset.source.ilike(pattern, escape="\\"),
@@ -197,6 +267,15 @@ def count_databases(session: Session) -> int:
     return int(value or 0)
 
 
+def count_database_entries(session: Session) -> int:
+    value = session.scalar(
+        select(func.count(func.distinct(Dataset.entry_id))).where(
+            Dataset.dataset_type == "full"
+        )
+    )
+    return int(value or 0)
+
+
 def count_challenges(session: Session) -> int:
     value = session.scalar(
         select(func.count(func.distinct(Dataset.split_id))).where(
@@ -231,6 +310,58 @@ def get_database(session: Session, dataset_id: str) -> Dataset | None:
             Dataset.dataset_type == "full",
         )
     )
+
+
+def list_database_entries(
+    session: Session, filters: CatalogueFilters, offset: int, limit: int
+) -> tuple[list[DatabaseEntry], int]:
+    matching_entries = (
+        select(
+            Dataset.entry_id.label("entry_id"),
+            func.max(Dataset.imported_at).label("latest_import"),
+        )
+        .where(Dataset.dataset_type == "full", *_conditions(filters))
+        .group_by(Dataset.entry_id)
+    )
+    total = session.scalar(
+        select(func.count()).select_from(matching_entries.subquery())
+    ) or 0
+    selected_rows = session.execute(
+        matching_entries
+        .order_by(func.max(Dataset.imported_at).desc(), Dataset.entry_id)
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    entry_ids = [row.entry_id for row in selected_rows]
+    if not entry_ids:
+        return [], int(total)
+
+    grouped: dict[str, list[Dataset]] = {entry_id: [] for entry_id in entry_ids}
+    datasets = session.scalars(
+        select(Dataset)
+        .where(
+            Dataset.dataset_type == "full",
+            Dataset.entry_id.in_(entry_ids),
+        )
+        .order_by(Dataset.imported_at.desc(), Dataset.dataset_id)
+    ).all()
+    for dataset in datasets:
+        grouped[dataset.entry_id].append(dataset)
+    return [DatabaseEntry(entry_id, grouped[entry_id]) for entry_id in entry_ids], int(total)
+
+
+def get_database_entry(session: Session, entry_id: str) -> DatabaseEntry | None:
+    datasets = list(
+        session.scalars(
+            select(Dataset)
+            .where(
+                Dataset.dataset_type == "full",
+                Dataset.entry_id == entry_id,
+            )
+            .order_by(Dataset.imported_at.desc(), Dataset.dataset_id)
+        ).all()
+    )
+    return DatabaseEntry(entry_id, datasets) if datasets else None
 
 
 def _validate_challenge_integrity(session: Session) -> None:

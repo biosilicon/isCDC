@@ -432,6 +432,11 @@ PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v5 \
 只有 active v5 catalogue 及全部正式文件通过报告校验后才可 finalize。普通应用启动拒绝 v4，
 不会自动补列或改写数据文件。
 
+已有 v5 catalogue 若需按来源证据修正历史 `entry_id`，使用显式 mapping 执行
+`reconcile-entry-ids MAPPING.yaml`；命令同步修改 full、可继承同一 Entry 的 Challenge 两侧及
+cell type sidecar，并保留独立回滚备份。`--skip-difficulty-snapshot` 会保持 difficulty snapshot
+原样不动，`--skip-validation` 仅用于已人工批准的快速迁移。
+
 ### 批量整理原始数据
 
 `temp/` 下彼此独立的数据集使用两种 agent 角色和五个受控阶段处理：
@@ -749,13 +754,15 @@ domain classifier 无法区分 biological 与 technical shift；normalization、
 
 ## 网页和 API
 
-- `/databases`：浏览和筛选 `full` Database 文件；有图条目显示紧凑缩略图。
+- `/databases`：默认按 `entry_id` 聚合浏览，也可用 `view=datasets` 逐 slide 浏览。
+- `/databases/entries/{entry_id}`：同页查看一个 Entry 包含的所有 Database slides。
 - `/databases/{dataset_id}`：Database 元数据、模态规模、缩略图（如有）、校验信息和下载。
 - `/challenges`：以 `split_id` 为单位浏览和筛选 Challenge，并可按 difficulty 从低到高或
   从高到低排序。
 - `/challenges/{split_id}`：同页查看 Challenge 对应的 train/test 文件和 difficulty 核心指标；
   尚未配对时会明确标记缺失侧。
 - `/api/databases`、`/api/databases/{dataset_id}`：Database JSON 列表和详情。
+- `/api/database-entries`、`/api/database-entries/{entry_id}`：Entry 聚合列表和详情。
 - `/api/challenges`、`/api/challenges/{split_id}`：按 Challenge 聚合的 JSON 列表和详情。
 - `/downloads/{dataset_id}/{kind}`：下载 h5mu、metadata、manifest、validation 或 checksum。
 - `/downloads/{dataset_id}/auxiliary/{auxiliary_id}`：下载所属数据文件的辅助文件，支持 HTTP

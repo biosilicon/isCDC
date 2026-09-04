@@ -7,7 +7,7 @@ from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -46,13 +46,17 @@ from .repository import (
     CatalogueIntegrityError,
     Challenge,
     ChallengeSort,
+    DatabaseEntry,
     SampleSource,
     count_challenges,
+    count_database_entries,
     count_databases,
     get_challenge,
     get_database,
+    get_database_entry,
     get_facets,
     list_challenges,
+    list_database_entries,
     list_databases,
     resolve_sample_sources,
 )
@@ -61,6 +65,8 @@ from .schemas import (
     ChallengeListResponse,
     ChallengeResponse,
     ChallengeType,
+    DatabaseEntryListResponse,
+    DatabaseEntryResponse,
     DatabaseListResponse,
     DataFileResponse,
     SampleSourceResponse,
@@ -401,6 +407,30 @@ def _data_file_response(
     )
 
 
+def _database_entry_response(
+    entry: DatabaseEntry,
+    request: Request,
+    auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]],
+) -> DatabaseEntryResponse:
+    return DatabaseEntryResponse(
+        entry_id=entry.entry_id,
+        slide_count=entry.slide_count,
+        sources=entry.sources,
+        organisms=entry.organisms,
+        tissues=entry.tissues,
+        modalities=entry.modalities,
+        technologies=entry.technologies,
+        spatial_units=entry.spatial_units,
+        total_observations=entry.total_observations,
+        total_file_size=entry.total_file_size,
+        imported_at=_date_only(entry.imported_at),
+        datasets=[
+            _data_file_response(dataset, request, auxiliary_files_by_dataset, {})
+            for dataset in entry.datasets
+        ],
+    )
+
+
 def _challenge_response(
     challenge: Challenge,
     request: Request,
@@ -626,7 +656,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @application.get("/", response_class=HTMLResponse, name="home")
     async def home(request: Request, session: SessionDependency):
-        database_count = count_databases(session)
+        database_count = count_database_entries(session)
+        database_slide_count = count_databases(session)
         challenge_count = count_challenges(session)
         prepare_analytics_event(request, "page_view", "home", {"page": "home"})
         return templates.TemplateResponse(
@@ -634,6 +665,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             name="index.html",
             context={
                 "database_count": database_count,
+                "database_slide_count": database_slide_count,
                 "challenge_count": challenge_count,
             },
         )
@@ -648,30 +680,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         modality: str | None = None,
         technology: str | None = None,
         spatial_unit: str | None = None,
+        view: Literal["entries", "datasets"] = "entries",
         page: Annotated[int, Query(ge=1)] = 1,
     ):
         filters = _filters(q, organism, tissue, modality, technology, spatial_unit)
         selected = _selected_filters(q, organism, tissue, modality, technology, spatial_unit)
         per_page = 20
-        databases, total = list_databases(session, filters, (page - 1) * per_page, per_page)
+        if view == "entries":
+            entries, total = list_database_entries(
+                session, filters, (page - 1) * per_page, per_page
+            )
+            databases = []
+        else:
+            databases, total = list_databases(
+                session, filters, (page - 1) * per_page, per_page
+            )
+            entries = []
         facets = get_facets(session, ("full",))
         event_type = "catalogue_search" if selected else "page_view"
         prepare_analytics_event(
             request,
             event_type,
             "database_list",
-            {"catalogue": "databases", "filters": selected, "page": page},
+            {
+                "catalogue": "databases",
+                "view": view,
+                "filters": selected,
+                "page": page,
+            },
         )
         return templates.TemplateResponse(
             request=request,
             name="databases.html",
             context={
                 "databases": databases,
+                "entries": entries,
                 "total": total,
+                "view": view,
                 "facets": facets,
                 "selected": selected,
-                **_pagination_context(request, selected, page, total, per_page),
+                "persistent_params": {"view": view},
+                "clear_url": f"{request.url.path}?{urlencode({'view': view})}",
+                "entry_view_url": f"{request.url.path}?{urlencode(selected)}",
+                "dataset_view_url": (
+                    f"{request.url.path}?{urlencode({**selected, 'view': 'datasets'})}"
+                ),
+                **_pagination_context(
+                    request, {**selected, "view": view}, page, total, per_page
+                ),
             },
+        )
+
+    @application.get(
+        "/databases/entries/{entry_id}",
+        response_class=HTMLResponse,
+        name="database_entry_detail",
+    )
+    async def database_entry_detail(
+        request: Request, entry_id: str, session: SessionDependency
+    ):
+        entry = get_database_entry(session, entry_id)
+        if entry is None:
+            return templates.TemplateResponse(
+                request=request,
+                name="404.html",
+                context={"resource": entry_id},
+                status_code=404,
+            )
+        prepare_analytics_event(
+            request,
+            "database_detail_view",
+            "database_entry_detail",
+            {"entry_id": entry.entry_id, "slide_count": entry.slide_count},
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="database_entry_detail.html",
+            context={"entry": entry},
         )
 
     @application.get(
@@ -997,6 +1082,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             limit=limit,
             offset=offset,
         )
+
+    @application.get(
+        "/api/database-entries",
+        response_model=DatabaseEntryListResponse,
+        name="api_database_entry_list",
+    )
+    async def api_database_entry_list(
+        request: Request,
+        session: SessionDependency,
+        q: str | None = None,
+        organism: str | None = None,
+        tissue: str | None = None,
+        modality: str | None = None,
+        technology: str | None = None,
+        spatial_unit: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> DatabaseEntryListResponse:
+        entries, total = list_database_entries(
+            session,
+            _filters(q, organism, tissue, modality, technology, spatial_unit),
+            offset,
+            limit,
+        )
+        return DatabaseEntryListResponse(
+            items=[
+                _database_entry_response(entry, request, auxiliary_files_by_dataset)
+                for entry in entries
+            ],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    @application.get(
+        "/api/database-entries/{entry_id}",
+        response_model=DatabaseEntryResponse,
+        name="api_database_entry_detail",
+    )
+    async def api_database_entry_detail(
+        request: Request, entry_id: str, session: SessionDependency
+    ) -> DatabaseEntryResponse:
+        entry = get_database_entry(session, entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Database entry not found")
+        return _database_entry_response(entry, request, auxiliary_files_by_dataset)
 
     @application.get(
         "/api/databases/{dataset_id}",

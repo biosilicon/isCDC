@@ -21,9 +21,10 @@
       <article class="card entry-card h-100">
         <div class="card-body p-4 p-lg-5">
           <p class="text-uppercase small fw-semibold text-primary mb-2">Source data</p>
-          <div class="display-4 fw-bold mb-3">{{ database_count }}</div>
+          <div class="display-4 fw-bold">{{ database_count }}</div>
+          <div class="small text-secondary mb-3">{{ database_slide_count }} slides</div>
           <h2 class="h3">Databases</h2>
-          <p class="text-secondary">Explore validated full spatial multi-omics data files and their provenance.</p>
+          <p class="text-secondary">Explore source entries and the validated spatial multi-omics slides they contain.</p>
           <a class="btn btn-primary stretched-link" href="{{ url_for('database_list') }}">Browse databases</a>
         </div>
       </article>

@@ -379,6 +379,28 @@ class DatabaseListResponse(BaseModel):
     offset: int
 
 
+class DatabaseEntryResponse(BaseModel):
+    entry_id: str
+    slide_count: int
+    sources: list[str]
+    organisms: list[str]
+    tissues: list[str]
+    modalities: list[str]
+    technologies: list[str]
+    spatial_units: list[str]
+    total_observations: int
+    total_file_size: int
+    imported_at: date
+    datasets: list[DataFileResponse]
+
+
+class DatabaseEntryListResponse(BaseModel):
+    items: list[DatabaseEntryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class ChallengeDifficultyResponse(BaseModel):
     mean_auroc: float
     domain_shift_score: float

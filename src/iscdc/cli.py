@@ -29,6 +29,13 @@ from .entry_migration import (
     finalize_entry_id_migration,
     migrate_entry_ids,
 )
+from .entry_reconciliation import (
+    EntryIdReconciliationError,
+    EntryIdReconciliationInventory,
+    EntryIdReconciliationResult,
+    finalize_entry_id_reconciliation,
+    reconcile_entry_ids,
+)
 from .importer import DatasetImportError, import_dataset
 from .schema_migration import (
     MigrationInventory,
@@ -192,6 +199,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verify an entry-ID migration and delete its catalogue v4 backup.",
     )
     finalize_catalogue_v5_parser.add_argument("report", type=Path)
+
+    reconciliation_parser = subparsers.add_parser(
+        "reconcile-entry-ids",
+        help="Apply an evidence-backed entry-ID mapping and propagate derived identities.",
+    )
+    reconciliation_parser.add_argument("mapping", type=Path)
+    reconciliation_parser.add_argument("--dry-run", action="store_true")
+    reconciliation_parser.add_argument(
+        "--skip-difficulty-snapshot",
+        action="store_true",
+        help="Leave challenge_difficulty.json untouched during reconciliation.",
+    )
+    reconciliation_parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip reconciliation preflight and post-activation validation.",
+    )
+
+    finalize_reconciliation_parser = subparsers.add_parser(
+        "finalize-entry-id-reconciliation",
+        help="Verify an entry-ID reconciliation and delete its rollback backup.",
+    )
+    finalize_reconciliation_parser.add_argument("report", type=Path)
 
     migration_parser = subparsers.add_parser(
         "migrate-schema-1-2",
@@ -546,6 +576,40 @@ def main(argv: list[str] | None = None) -> int:
         try:
             removed = finalize_entry_id_migration(args.report, Settings.from_environment())
         except (EntryIdMigrationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "reconcile-entry-ids":
+        try:
+            result = reconcile_entry_ids(
+                Settings.from_environment(),
+                args.mapping,
+                dry_run=args.dry_run,
+                skip_difficulty_snapshot=args.skip_difficulty_snapshot,
+                skip_validation=args.skip_validation,
+            )
+        except (EntryIdReconciliationError, OSError, SQLAlchemyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if isinstance(result, EntryIdReconciliationInventory):
+            payload = {"dry_run": True, "inventory": result.as_dict()}
+        else:
+            assert isinstance(result, EntryIdReconciliationResult)
+            payload = {
+                "dry_run": False,
+                "inventory": result.inventory.as_dict(),
+                "report": str(result.report_path),
+                "backup": str(result.backup_path),
+            }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "finalize-entry-id-reconciliation":
+        try:
+            removed = finalize_entry_id_reconciliation(
+                args.report, Settings.from_environment()
+            )
+        except (EntryIdReconciliationError, OSError, SQLAlchemyError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         print(json.dumps({"deleted_backup": str(removed)}, ensure_ascii=False, indent=2))

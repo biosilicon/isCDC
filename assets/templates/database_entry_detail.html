@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Entry {{ entry.entry_id }} · isCDC{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ entry.entry_id }}</span></nav>
+  <header class="database-detail-header mb-5">
+    <p class="text-uppercase small fw-semibold text-primary mb-2">Database entry</p>
+    <h1 class="display-6 fw-bold">{{ entry.entry_id }}</h1>
+    <p class="lead text-secondary mb-4">{{ entry.slide_count }} validated slide{% if entry.slide_count != 1 %}s{% endif %} from the same source entry.</p>
+    <div class="entry-summary-grid">
+      <div><span>Source</span><strong>{{ entry.sources|join(', ') }}</strong></div>
+      <div><span>Species</span><strong>{{ entry.organisms|join(', ') }}</strong></div>
+      <div><span>Tissue</span><strong>{{ entry.tissues|join(', ') }}</strong></div>
+      <div><span>Modalities</span><strong>{{ entry.modalities|join(', ') }}</strong></div>
+      <div><span>Observations</span><strong>{{ "{:,}".format(entry.total_observations) }}</strong></div>
+      <div><span>Total size</span><strong>{{ entry.total_file_size|filesize }}</strong></div>
+    </div>
+  </header>
+
+  <div class="d-flex align-items-end justify-content-between gap-3 mb-3">
+    <div>
+      <p class="text-uppercase small fw-semibold text-primary mb-1">Slides</p>
+      <h2 class="h3 mb-0">Datasets in this entry</h2>
+    </div>
+    <span class="small text-secondary">{{ entry.slide_count }} total</span>
+  </div>
+  <div class="vstack gap-3">
+    {% for database in entry.datasets %}
+      {% set thumbnail_path = (database_thumbnail_paths|default({})).get(database.dataset_id) %}
+      <article class="card dataset-card">
+        <div class="card-body p-4">
+          <div class="row g-3">
+            <div class="col-lg-9">
+              <div class="d-flex gap-2 flex-wrap mb-2">
+                {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
+                <span class="badge text-bg-light">{{ database.spatial_unit }}</span>
+              </div>
+              <h3 class="h4"><a class="text-decoration-none" href="{{ url_for('database_detail', dataset_id=database.dataset_id) }}">{{ database.title }}</a></h3>
+              <p class="text-secondary mb-2">{{ database.description }}</p>
+              <p class="small mb-0">{{ database.dataset_id }}</p>
+            </div>
+            <div class="col-lg-3 text-lg-end">
+              <div class="fw-semibold">{{ "{:,}".format(database.n_obs) }} observations</div>
+              <div class="small text-secondary">{{ database.file_size|filesize }}</div>
+            </div>
+          </div>
+          {% if thumbnail_path %}
+            <figure class="database-thumbnail database-thumbnail-list mt-3 mb-0">
+              <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+            </figure>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

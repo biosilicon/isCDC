@@ -5,7 +5,17 @@
   <div class="mb-4">
     <p class="text-uppercase small fw-semibold text-primary mb-1">Source data</p>
     <h1 class="h2">Databases</h1>
-    <p class="text-secondary">{{ total }} matching database{% if total != 1 %}s{% endif %}</p>
+    <p class="text-secondary mb-3">{{ total }} matching {% if view == 'entries' %}entr{% if total == 1 %}y{% else %}ies{% endif %}{% else %}dataset{% if total != 1 %}s{% endif %}{% endif %}</p>
+    <nav class="database-view-switch" aria-label="Database browsing mode">
+      <a class="database-view-option{% if view == 'entries' %} active{% endif %}" href="{{ entry_view_url }}"{% if view == 'entries' %} aria-current="page"{% endif %}>
+        <span class="fw-semibold">By entry</span>
+        <span>Group slides from the same source entry</span>
+      </a>
+      <a class="database-view-option{% if view == 'datasets' %} active{% endif %}" href="{{ dataset_view_url }}"{% if view == 'datasets' %} aria-current="page"{% endif %}>
+        <span class="fw-semibold">By dataset</span>
+        <span>Browse every slide separately</span>
+      </a>
+    </nav>
   </div>
 
   {% set clear_endpoint = 'database_list' %}
@@ -13,6 +23,47 @@
   {% include "_filters.html" %}
 
   <div class="vstack gap-3">
+    {% if view == 'entries' %}
+      {% for entry in entries %}
+        <article class="card dataset-card database-entry-card">
+          <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-start gap-4 flex-wrap">
+              <div>
+                <div class="d-flex gap-2 flex-wrap mb-2">
+                  {% for modality in entry.modalities %}<span class="badge text-bg-light">{{ modality }}</span>{% endfor %}
+                  {% for spatial_unit in entry.spatial_units %}<span class="badge text-bg-light">{{ spatial_unit }}</span>{% endfor %}
+                </div>
+                <p class="text-uppercase small fw-semibold text-primary mb-1">Database entry</p>
+                <h2 class="h4 mb-2"><a class="text-decoration-none" href="{{ url_for('database_entry_detail', entry_id=entry.entry_id) }}">{{ entry.entry_id }}</a></h2>
+                <p class="text-secondary mb-2">{{ entry.sources|join(', ') }}</p>
+                <p class="small mb-0"><span class="fw-semibold">{{ entry.organisms|join(', ') }}</span> · {{ entry.tissues|join(', ') }}</p>
+                <p class="small text-secondary mt-2 mb-0">{% for database in entry.datasets %}{{ database.title }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+              </div>
+              <div class="entry-card-stats text-lg-end">
+                <div class="fw-semibold">{{ entry.slide_count }} slide{% if entry.slide_count != 1 %}s{% endif %}</div>
+                <div class="small text-secondary">{{ "{:,}".format(entry.total_observations) }} observations</div>
+                <div class="small text-secondary">{{ entry.total_file_size|filesize }}</div>
+              </div>
+            </div>
+            {% set thumbnail_members = entry.datasets|selectattr('dataset_id', 'in', database_thumbnail_paths)|list %}
+            {% if thumbnail_members %}
+              <div class="entry-thumbnail-strip mt-3" aria-label="Entry slide thumbnails">
+                {% for database in thumbnail_members[:3] %}
+                  <figure class="database-thumbnail mb-0">
+                    <img src="{{ url_for('static', path=database_thumbnail_paths[database.dataset_id]) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+                  </figure>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <div class="empty-state rounded-3 p-5 text-center">
+          <h2 class="h5">No matching entries</h2>
+          <p class="text-secondary mb-0">Try removing one or more filters.</p>
+        </div>
+      {% endfor %}
+    {% else %}
     {% for database in databases %}
       {% set thumbnail_path = (database_thumbnail_paths|default({})).get(database.dataset_id) %}
       <article class="card dataset-card">
@@ -47,6 +98,7 @@
         <p class="text-secondary mb-0">Try removing one or more filters.</p>
       </div>
     {% endfor %}
+    {% endif %}
   </div>
 
   {% include "_pagination.html" %}

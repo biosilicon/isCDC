@@ -375,10 +375,88 @@ async def test_home_and_database_pages_use_new_entry_points(
         )
         assert response.status_code == 200
         assert "Test RNA and protein dataset" in response.text
-        assert "1 matching database" in response.text
+        assert "1 matching entry" in response.text
+        assert "By entry" in response.text
+        assert "By dataset" in response.text
 
         empty = await client.get("/databases?tissue=brain")
-        assert "No matching databases" in empty.text
+        assert "No matching entries" in empty.text
+
+        datasets = await client.get("/databases?view=datasets&tissue=brain")
+        assert "No matching databases" in datasets.text
+
+
+async def test_database_entry_pages_and_api_group_all_slides_after_member_filter(
+    settings, write_h5mu, write_metadata
+):
+    import_dataset(write_h5mu(), write_metadata(), settings)
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        source = session.get(Dataset, "test_rna_protein")
+        assert source is not None
+        clone = Dataset(
+            dataset_id="test_rna_protein_second_slide",
+            entry_id=source.entry_id,
+            schema_version=source.schema_version,
+            dataset_type="full",
+            title="Second slide in the same entry",
+            description="A second grouped slide.",
+            source=deepcopy(source.source),
+            organism=deepcopy(source.organism),
+            tissue="heart",
+            spatial_unit=source.spatial_unit,
+            coordinate_unit=source.coordinate_unit,
+            pairing_type=source.pairing_type,
+            derivation=None,
+            split_id=None,
+            sample_ids=["sample_02"],
+            keywords=deepcopy(source.keywords),
+            publication=deepcopy(source.publication),
+            additional_metadata=deepcopy(source.additional_metadata),
+            n_obs=7,
+            coordinate_dimensions=source.coordinate_dimensions,
+            file_size=17,
+            sha256="f" * 64,
+            storage_dir="test_rna_protein_second_slide",
+            validation_warning_count=0,
+            imported_at=source.imported_at,
+            modalities=[
+                Modality(
+                    name=modality.name,
+                    technology=deepcopy(modality.technology),
+                    value_type=modality.value_type,
+                    n_obs=7,
+                    n_vars=modality.n_vars,
+                )
+                for modality in source.modalities
+            ],
+        )
+        session.add(clone)
+        session.commit()
+    engine.dispose()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        home = await client.get("/")
+        listing = await client.get("/databases?tissue=heart")
+        detail = await client.get("/databases/entries/TEST001")
+        api_list = await client.get("/api/database-entries?tissue=heart")
+        api_detail = await client.get("/api/database-entries/TEST001")
+        dataset_listing = await client.get("/databases?view=datasets")
+
+    assert "1" in home.text
+    assert "2 slides" in home.text
+    assert "2 slides" in listing.text
+    assert "Test RNA and protein dataset" in listing.text
+    assert "Second slide in the same entry" in listing.text
+    assert detail.status_code == 200
+    assert "Datasets in this entry" in detail.text
+    assert api_list.json()["total"] == 1
+    assert api_list.json()["items"][0]["slide_count"] == 2
+    assert len(api_list.json()["items"][0]["datasets"]) == 2
+    assert api_detail.json()["total_observations"] == 9
+    assert "2 matching datasets" in dataset_listing.text
 
 
 async def test_file_metadata_omits_license_and_exposes_import_date_only(
