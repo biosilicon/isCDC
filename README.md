@@ -435,8 +435,11 @@ PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v5 \
 
 已有 v5 catalogue 若需按来源证据修正历史 `entry_id`，使用显式 mapping 执行
 `reconcile-entry-ids MAPPING.yaml`；命令同步修改 full、可继承同一 Entry 的 Challenge 两侧及
-cell type sidecar，并保留独立回滚备份。`--skip-difficulty-snapshot` 会保持 difficulty snapshot
-原样不动，`--skip-validation` 仅用于已人工批准的快速迁移。
+cell type sidecar，并保留独立回滚备份。默认会核对旧 SHA-256，并同步已有 difficulty snapshot
+中受影响 train/test 的新 SHA-256，保留原有评估指标；这一步不重新计算 AUROC。
+`--skip-difficulty-snapshot` 会保持快照原样不动：若 train/test H5MU 已被重写，旧快照将因
+校验和不一致而失效，需完成全目录难度重算并重启应用后恢复展示。
+`--skip-validation` 仅用于已人工批准的快速迁移。
 
 ### 批量整理原始数据
 
@@ -745,6 +748,12 @@ representation 或 classifier 泄漏 held-out 数据。train/test feature 仅取
 报告缺失、损坏、过期或单个 Challenge 评估失败时，目录和 API 仍可用，对应 difficulty 显示为
 `Unavailable` 或 `null`。
 
+即使表达矩阵未变，`entry_id` 迁移或修正等 H5MU 重写也会改变文件 SHA-256；不能只按
+Challenge 数量是否变化判断快照是否仍有效。除 `reconcile-entry-ids` 自带的校验和同步外，
+文件变更后与目录不一致的快照应重新评估，不应手工改写 SHA-256 来绕过启动校验。
+重算前保留旧快照，并核对正式 train/test 文件的实际 SHA-256；发布后确认报告覆盖完整目录、
+成功/失败数量与逐项状态一致，再重启并检查详情页、JSON 指标和升降序分页。
+
 Challenge 目录卡片和详情页只发布 mean AUROC、shift score 与 global percentile；标题旁的
 `?` 会打开方法和解释限制说明。更完整的标准差、重复评估、采样和诊断信息只保留在离线报告
 中，不作为网页核心指标。
@@ -752,6 +761,11 @@ Challenge 目录卡片和详情页只发布 mean AUROC、shift score 与 global 
 sample、source dataset 及可用的 donor/slice 等层级只用于诊断潜在混杂，不参与 AUROC 修正。
 domain classifier 无法区分 biological 与 technical shift；normalization、平台、batch 或样本边界
 均可能造成高 separability，解释排名时必须结合 `challenge_type`、metadata hierarchy 和 warning。
+
+2026-09-05 本地部署已完成全部 29 个 Challenge 的重算和发布：29 成功、0 失败，58 个输入
+文件校验和通过，29 项 AUROC 与旧结果一致。服务重启后，页面、API、排序与分页均通过核验，
+entry-ID 修正后旧快照不可用的问题已解决。此日期记录不代表新 checkout 自带运行数据；
+参数、诊断、制品哈希和验收证据见 [Challenge 难度快照运行记录](doc/Challenge难度快照运行记录.md)。
 
 ## 网页和 API
 

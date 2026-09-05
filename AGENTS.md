@@ -43,6 +43,14 @@ or individually failed results must fail open as unavailable without breaking th
 Difficulty ordering must be applied after filtering and before pagination, with unavailable items
 last in either direction. Re-evaluate after any Challenge import, replacement, or removal, and
 restart the application after replacing the snapshot.
+Metadata-only H5MU rewrites, including entry-ID migrations and reconciliation, also change file
+checksums. `reconcile-entry-ids` normally rebinds affected snapshot checksums after checking the
+old values, without recomputing metrics; if that step is skipped and train/test files change,
+re-evaluate the complete Challenge catalogue before restoring difficulty publication. Do not
+manually edit snapshot checksums to bypass validation. Preserve the previous snapshot, verify
+actual input-file checksums, and check published metrics and sorting/pagination after restart.
+Dated deployment results belong in `doc/Challenge难度快照运行记录.md`; keep runtime snapshots and
+detailed local audits in ignored data/staging directories.
 
 Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
 `analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
