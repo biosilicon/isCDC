@@ -13,6 +13,7 @@ TECHNOLOGIES: tuple[str, ...] = (
     "MISAR-seq",
     "RIBOmap",
     "SPOTS",
+    "SPACE-seq",
     "STARmap",
     "STARmap PLUS",
     "Spatial metatranscriptomics",
@@ -21,12 +22,18 @@ TECHNOLOGIES: tuple[str, ...] = (
     "Spatial VDJ",
     "Spatial-CITE-seq",
     "Spatial-DMT",
+    "Spatial-Mux-seq",
+    "Spatial Multimodal Analysis",
+    "Stereo-seq",
     "Stereo-CITE-seq",
+    "Stereo-XCR-seq",
+    "SmT",
     "Visium CytAssist",
     "Visium",
     "Xenium",
     "circVDJ-seq",
     "microSTRS",
+    "scSpaMet",
 )
 TECHNOLOGY_SET = frozenset(TECHNOLOGIES)
 

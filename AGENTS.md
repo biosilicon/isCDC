@@ -41,13 +41,24 @@ pages and JSON responses. The website must validate the complete Challenge set, 
 modality, train/test IDs and checksums, and metric consistency at startup. Missing, invalid, stale,
 or individually failed results must fail open as unavailable without breaking the catalogue.
 Difficulty ordering must be applied after filtering and before pagination, with unavailable items
-last in either direction. Re-evaluate after any Challenge import, replacement, or removal, and
-restart the application after replacing the snapshot.
+last in either direction. Refresh the snapshot after a Challenge import, replacement, or removal,
+and restart the application after replacing it. Refreshing must reuse verified per-Challenge
+results by default and regenerate cohort rankings; do not refit unchanged classifiers. If the
+Challenge set and files are unchanged, no refresh is needed (including full-only catalogue edits).
 Metadata-only H5MU rewrites, including entry-ID migrations and reconciliation, also change file
 checksums. `reconcile-entry-ids` normally rebinds affected snapshot checksums after checking the
-old values, without recomputing metrics; if that step is skipped and train/test files change,
-re-evaluate the complete Challenge catalogue before restoring difficulty publication. Do not
-manually edit snapshot checksums to bypass validation. Preserve the previous snapshot, verify
+old values, without recomputing metrics. Otherwise, `evaluate-challenge-difficulty --force`
+verifies actual file checksums against the catalogue and reuses results when the evaluation-input
+fingerprints match, rebinding file identities without fitting. Fingerprints cover the input
+matrix, ordered observation/feature IDs, effective measurement mask, value type, technology and
+hierarchy diagnostics; unrelated metadata and other modalities do not invalidate results.
+Correcting `challenge_type` alone updates the category rankings without refitting classifiers.
+Only new, changed, failed or unverifiable results need evaluation. Parameter, method or software
+changes invalidate reuse. Legacy snapshots without fingerprints can be bootstrapped without
+fitting only when their recorded file checksums still match the verified files. `--force` permits
+overwrite; `--recompute` explicitly requests refitting all classifiers. Never infer unchanged
+inputs merely from unchanged file IDs, dimensions or similar AUROC. Do not manually edit snapshot
+checksums to bypass validation. Preserve the previous snapshot, verify
 actual input-file checksums, and check published metrics and sorting/pagination after restart.
 Dated deployment results belong in `doc/Challenge难度快照运行记录.md`; keep runtime snapshots and
 detailed local audits in ignored data/staging directories.
@@ -60,6 +71,18 @@ must use DELETE journal mode; do not switch them to WAL. Treat retained IP addre
 values, and referrers as sensitive operational data: keep raw events for 30 days by default, expose
 them only through the local CLI, and never add them to public pages or APIs. Health checks, static
 assets, JSON APIs, and failed requests must not create visitor sessions or behavior events.
+
+All preprocessing must be explicitly recorded in a reproducible form. Follow the reproducibility
+contract in `doc/原始数据处理规范.md`: preserve exact input/member/reference identities and hashes,
+the executed code (including uncommitted changes), a reconstructable pinned environment, resolved
+parameters and defaults, ordered commands, and machine-readable observation/feature mappings,
+filters, coordinate transforms and value semantics. Freeze manual decisions as versioned artifacts.
+Retain per-step validation and a clean-directory replay report that checks ordered axes, matrices,
+coordinates and metadata; a narrative or output checksum alone is insufficient. Distinguish upstream
+author processing from project processing and explicitly record unavailable upstream steps. Missing
+reproducibility evidence blocks acceptance/import of the affected output; never claim an unrun
+replay succeeded. Keep dataset-specific reproducibility bundles with the ignored staging/audit
+artifacts and preserve them after import.
 
 Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
 
@@ -97,6 +120,20 @@ may retain observations present in only one modality, but at least one modality 
 Reject `unpaired` files and do not make the importer silently discard observations. Derive
 `modality_count` from the modality relationship rather than adding a persisted catalogue field,
 and visibly annotate files with more than two modalities in pages and JSON responses.
+
+The collection scope is limited to cell (including nucleus), spot, and bin observations. Exclude
+region-level paired products, including GeoMx AOI/segments, morphology-selected pooled LCM
+regions, and spot-by-cell-type aggregates. Judge the actual shared observation represented by a
+matrix row, not a study's finest imaging resolution, sample/FOV names, or downstream region
+annotations. Author-registered data with verified spot/bin observations remain eligible. Historical
+Challenge coordinate-harmonization labels must be checked against their direct source observations
+before excluding them. Mixed spot/bin Challenges may use the truthful shared `spot/bin` label,
+with native units retained in per-source coordinate provenance and explained per file. This is a
+composite label, not a new observation level or a claim of equal physical resolution. Record scope
+decisions in the intake manifest and staged source manifest;
+excluded entries must not return to download, conversion, or import queues. Preserve original
+sources and withdrawal audits. The schema remains backward-readable; schema validity alone does
+not establish collection eligibility. See `doc/空间观测层级收录审计_2026-09-05.md`.
 
 Every formal data file must declare a scalar `entry_id` in embedded H5MU metadata and
 `metadata.yaml`; the values must agree and are also persisted in manifest metadata, the dedicated
@@ -149,7 +186,7 @@ source IDs,
 preserve registered auxiliary files, and restore the original database record and directory if
 the transaction or filesystem switch fails. Serialize catalogue writes. Rebuild dependent
 Challenges after changing a full source when their propagated annotations need updating, then
-re-evaluate the catalogue-wide difficulty snapshot.
+refresh the catalogue-wide difficulty snapshot, reusing verified unchanged evaluation inputs.
 
 ## Build, Test, and Development Commands
 
@@ -169,14 +206,17 @@ The project uses requirements files and a small Makefile command set documented 
 - `make import-example` — import the documented example dataset into the local catalogue.
 
 Install the optional domain-classifier dependency set through `requirements-difficulty.txt` (it is
-already included by `requirements-dev.txt`) and evaluate the complete Challenge catalogue with:
+already included by `requirements-dev.txt`) and refresh the complete Challenge ranking with:
 
 ```bash
-PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty [--force]
+PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty [--force] [--recompute]
 ```
 
 The default published destination is `challenge_difficulty.json` beside `catalog.db`. A non-default
 `--output` is an experiment snapshot and is not read by the website.
+Existing output is reused after verification; `--force` only authorizes atomic replacement.
+Use `--recompute` only when a full classifier rerun is intended. Preserve the old output before
+replacement and record `reused_count` and `evaluated_count` separately from successful results.
 
 Invoke the standalone schema 1.2 splitter with:
 
@@ -257,6 +297,11 @@ fail-open missing/corrupt/stale reports, nullable API results, list/detail prese
 accessible method modal per page, ascending and descending ordering before pagination, and
 unavailable items sorting last. Domain-classifier tests must retain same-distribution, clear-shift,
 label-swap, reproducibility, seed stability, and class-imbalance sanity checks.
+Incremental refresh tests must prove unchanged files and unrelated metadata edits do not fit
+classifiers, effective-input changes invalidate only affected results, legacy bootstrap requires
+verified file identity, and additions/removals regenerate cohort percentiles without stale warnings.
+Cover actual checksum mismatches, failed/corrupt cache rows, configuration/method/software changes,
+and the distinction between `--force` overwrite and explicit `--recompute`.
 
 The complete suite requires these local real-data fixtures:
 

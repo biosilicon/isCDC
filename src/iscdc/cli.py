@@ -146,6 +146,10 @@ def build_parser() -> argparse.ArgumentParser:
     difficulty_parser.add_argument(
         "--force", action="store_true", help="Atomically replace an existing report."
     )
+    difficulty_parser.add_argument(
+        "--recompute", action="store_true",
+        help="Refit all classifiers instead of reusing verified results (overwrite needs --force).",
+    )
 
     reference_parser = subparsers.add_parser(
         "build-cell-type-reference",
@@ -451,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
                 output,
                 config=DifficultyConfig(input_modality=args.input_modality, seed=args.seed),
                 force=args.force,
+                recompute=args.recompute,
             )
         except (DifficultyEvaluationError, OSError, SQLAlchemyError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
@@ -462,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
                     "challenge_count": report["challenge_count"],
                     "success_count": report["success_count"],
                     "failure_count": report["failure_count"],
+                    "reused_count": report["reused_count"],
+                    "evaluated_count": report["evaluated_count"],
                 },
                 ensure_ascii=False,
                 indent=2,

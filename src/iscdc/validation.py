@@ -41,8 +41,12 @@ STANDARD_MODALITIES = {
     "lipid",
     "translatome",
     "vdj",
+    "tcr",
+    "bcr",
     "bacterial_taxa",
     "fungal_taxa",
+    "bacterial_rna",
+    "fungal_rna",
     "microbiome",
 }
 RECOMMENDED_SPATIAL_UNITS = {"cell", "nucleus", "spot", "bin", "region"}

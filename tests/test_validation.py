@@ -70,6 +70,43 @@ def test_h5mu_rejects_technology_outside_controlled_vocabulary(tmp_path, write_h
     assert "unsupported_technology" in {issue.code for issue in outcome.errors}
 
 
+def test_h5mu_accepts_spatial_mux_platform(tmp_path, write_h5mu):
+    mdata = md.read_h5mu(write_h5mu())
+    try:
+        for modality in mdata.mod.values():
+            modality.uns["assay"]["technology"] = "Spatial-Mux-seq"
+        path = tmp_path / "spatial-mux.h5mu"
+        mdata.write_h5mu(path)
+    finally:
+        mdata.file.close()
+
+    assert validate_h5mu(path).valid
+
+
+@pytest.mark.parametrize("technology", ["Stereo-seq", "Stereo-XCR-seq", "SmT"])
+def test_h5mu_accepts_new_intake_technologies(tmp_path, write_h5mu, technology):
+    mdata = md.read_h5mu(write_h5mu())
+    try:
+        for modality in mdata.mod.values():
+            modality.uns["assay"]["technology"] = technology
+        path = tmp_path / f"{technology.lower().replace(' ', '-')}.h5mu"
+        mdata.write_h5mu(path)
+    finally:
+        mdata.file.close()
+
+    assert validate_h5mu(path).valid
+
+
+@pytest.mark.parametrize("modality", ["tcr", "bcr", "bacterial_rna", "fungal_rna"])
+def test_h5mu_recognizes_new_intake_modalities(tmp_path, write_h5mu, modality):
+    path = write_h5mu(second_modality_name=modality, name=f"{modality}.h5mu")
+
+    outcome = validate_h5mu(path)
+
+    assert outcome.valid
+    assert "nonstandard_modality_name" not in {warning.code for warning in outcome.warnings}
+
+
 def _write_cell_type_variant(path, destination, values, provenance=None) -> None:  # noqa: ANN001
     mdata = md.read_h5mu(path)
     try:

@@ -26,6 +26,17 @@ Schema 1.2 还允许在可靠来源标签完整或经核验为部分覆盖时保
 [原始数据处理工作流](doc/原始数据处理规范.md)，最终产物必须符合
 [数据库存储规范 1.2](doc/数据库存储规范_v1.2.md)。
 
+2026-09-05 对 16 个待处理条目的补源、来源身份修正和剩余缺口见
+[16 条目补源与来源身份修复记录](doc/16条目补源与来源身份修复记录_2026-09-05.md)。
+来源恢复与正式转换、入库分别验收；该运行记录不代表新 checkout 已包含暂存数据。
+后续已完成 8 个条目、34 个 full 的转换和本地发布，S049 按用户决定排除；详见
+[补源条目入库运行记录](doc/补源条目入库运行记录_2026-09-05.md)。
+同日已完成空间观测层级审计，撤下 S020/S022 的 31 份区域级 Database；当前本地为
+187 个 Database、29 项 Challenge。收录仅限 cell（含 nucleus）、spot、bin 级共同观测，
+排除与待核实清单见[空间观测层级收录审计](doc/空间观测层级收录审计_2026-09-05.md)。
+五条待核实记录的后续处置、两项Challenge标签更正及难度重算见
+[后续复核与标签更正](doc/待核实观测层级复核与Challenge标签更正_2026-09-05.md)；当前正式目录不含region标签。
+
 `.codex/` 用于存放本地 Codex 的 `dataset_planner` 和 `dataset_worker` 配置。该目录
 不纳入版本控制，因此新工作区需在运行批量处理流程前准备相应的本地配置。
 
@@ -438,7 +449,8 @@ PYTHONPATH=src python -m iscdc.cli finalize-catalogue-v5 \
 cell type sidecar，并保留独立回滚备份。默认会核对旧 SHA-256，并同步已有 difficulty snapshot
 中受影响 train/test 的新 SHA-256，保留原有评估指标；这一步不重新计算 AUROC。
 `--skip-difficulty-snapshot` 会保持快照原样不动：若 train/test H5MU 已被重写，旧快照将因
-校验和不一致而失效，需完成全目录难度重算并重启应用后恢复展示。
+校验和不一致而失效，需运行 `evaluate-challenge-difficulty --force` 刷新并重启应用。
+已有输入指纹且评估输入未变时复用指标；旧快照既无指纹又无法核实原文件身份时才需重算受影响项。
 `--skip-validation` 仅用于已人工批准的快速迁移。
 
 ### 批量整理原始数据
@@ -450,6 +462,12 @@ cell type sidecar，并保留独立回滚备份。默认会核对旧 SHA-256，�
 3. 只有获得明确批准后，`dataset_worker` 才在各数据集的隔离目录中转换和验证。
 4. 主 agent 独立复核文件内容、元数据和验证报告。
 5. 验收通过的数据集由主 agent 串行入库；导入后复核通过前不得删除原始数据。
+
+所有预处理必须明确记录为可复现形式：每条目保存固定输入及参考哈希、实际执行代码、
+锁定环境、有效参数、完整命令、人工决策表和逐步审计，并在新隔离目录实际重放，
+核对有序观测/特征、矩阵、坐标与元数据。记录缺失或重放失败的产物不得入库；
+材料入库后继续保留。具体契约及作者上游处理的复现边界见
+[强制可复现记录](doc/原始数据处理规范.md#所有预处理的可复现记录强制)。
 
 角色配置默认位于 `.codex/agents/`，并受 `.codex/config.toml` 的本地并发限制。
 完整的并发数、路径隔离、批准门槛、验收和清理规则见
@@ -507,7 +525,7 @@ Visium 的 `[array_col, array_row]`。如果没有执行明确的像素或物理
 `STARmap`、`STARmap PLUS`、`Spatial metatranscriptomics`、`Spatial ATAC-RNA-seq`、
 `Spatial CUT&Tag-RNA-seq`、`Spatial VDJ`、`Spatial-CITE-seq`、`Spatial-DMT`、
 `Stereo-CITE-seq`、`Visium CytAssist`、`Visium`、`Xenium`、`circVDJ-seq` 和
-`microSTRS`。不要在该字段中
+`microSTRS`，以及 `SPACE-seq`、`Spatial Multimodal Analysis`、`scSpaMet`。不要在该字段中
 加入厂商前缀、模态、试剂版本、组蛋白标记或处理参数；新增技术须先扩展项目词表。
 
 组蛋白修饰数据在 schema 1.2 中统一使用 `histone` 模态名。例如
@@ -675,7 +693,7 @@ feature_harmonization:
         full_b: {kind: mapping_file, path: full_b_protein.yaml}
 coordinate_harmonization:
   version: "1.0"
-  spatial_unit: region
+  spatial_unit: spot/bin
   coordinate_unit: array_index
   sources:
     full_a: {kind: obs_columns, x: array_col, y: array_row}
@@ -688,6 +706,10 @@ feature ID 到 canonical ID 的非空映射，路径相对 compose 配置解析�
 两个顶层 `obs` 列读取。输出在 derivation 中记录全局摘要，在各 modality 的 `var`/`uns` 和
 顶层 `uns["coordinate_harmonization"]` 中嵌入逐来源映射、hash 与坐标 provenance；导入器会
 对正式 full 文件重算交集并核对矩阵和坐标。没有这些配置的旧 compose 行为保持不变。
+示例的 `spot/bin` 表示 Challenge 来源同时使用捕获 spot 与 bin；逐来源实际单位保留在
+坐标 provenance 中，各文件说明应明确自身包含的单位。它不表示区域聚合或统一物理分辨率。
+两侧的 harmonization 摘要必须一致。`spatial_unit` 支持非空字符串，当前验证器会为这一复合
+标签给出 `nonstandard_spatial_unit` 提示；这不是配对或来源验证失败。
 
 组合产物的顶层观测 ID 和样本 ID 分别编码为
 `<source_dataset_id>::<source_obs_id>` 和
@@ -729,6 +751,23 @@ PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty --force
 可写入不供网站读取的独立实验快照。网站只读取 `catalog.db` 同目录下固定名称
 `challenge_difficulty.json`；不同输入模态生成的结果不得混入同一个排名。
 
+默认执行增量刷新：核验正式文件的实际 SHA-256，复用文件身份或评估输入指纹一致的成功项，
+仅评估新增、输入变化、上次失败或无法验证的 Challenge，再对当前完整集合更新排名与百分位。
+删除 Challenge 只需移除结果并更新相对排名；仅更正 `challenge_type` 时更新分类排名，不重新训练。
+Challenge 集合和文件完全未变时，无需运行此命令。
+`--force` 仅允许覆盖输出；只有显式加 `--recompute` 才要求重新训练全部分类器：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty --force --recompute
+```
+
+输入指纹覆盖选定模态的矩阵值、观测和特征 ID 顺序、有效测量掩码、value type、technology
+及层级诊断信息。`entry_id`、`spatial_unit`、描述、坐标、细胞类型注释及其他模态不参与当前
+评估，因此这些修改可更新文件校验和并复用 AUROC。指纹独立版本化，作为报告 1.0 的可选
+离线字段，不写入 catalogue 或 H5MU，也不向网页/API 发布。参数、方法或报告记录的软件版本
+变化会使缓存失效。没有指纹的旧快照仅在原 SHA-256 与实际文件一致时免训练补建指纹；不能
+仅凭维度不变推断输入相同。独立 `--output` 只复用自身已有报告。
+
 默认以 seed 42 对每侧最多抽取 5,000 个 observation，进行 5 次重采样和每次 5-fold
 held-out evaluation。raw counts 先按 observation 归一化至总量 10,000 并 `log1p`；已经声明为
 `normalized` 的输入不再二次归一化。每个 fold 只使用其 classifier training 部分选择最多
@@ -740,7 +779,8 @@ representation 或 classifier 泄漏 held-out 数据。train/test feature 仅取
 也可用 `--output`、`--seed` 和 `--input-modality` 生成独立快照，但不同输入模态的结果不应混在
 同一个榜单比较。JSON 保留每折和每次重复 AUROC、mean/std AUROC、派生 shift score、global
 及同 `challenge_type` percentile、实际样本/feature 数、文件校验和、随机种子与采样 ID hash、
-稳定性统计和 warning。单个 Challenge 失败时仍会出现在报告中，但 rank/percentile 为 `null`，
+稳定性统计和 warning。CLI 和报告分别列出 `reused_count`（复用成功项）与 `evaluated_count`
+（实际尝试评估项）；文件校验阶段失败不计入评估次数。单个 Challenge 失败时仍会出现在报告中，但 rank/percentile 为 `null`，
 且 CLI 返回非零状态。
 
 网站在应用启动时读取并校验该快照，确认报告版本、Challenge 集合、类型、train/test 数据集 ID
@@ -750,8 +790,8 @@ representation 或 classifier 泄漏 held-out 数据。train/test feature 仅取
 
 即使表达矩阵未变，`entry_id` 迁移或修正等 H5MU 重写也会改变文件 SHA-256；不能只按
 Challenge 数量是否变化判断快照是否仍有效。除 `reconcile-entry-ids` 自带的校验和同步外，
-文件变更后与目录不一致的快照应重新评估，不应手工改写 SHA-256 来绕过启动校验。
-重算前保留旧快照，并核对正式 train/test 文件的实际 SHA-256；发布后确认报告覆盖完整目录、
+文件变更后与目录不一致的快照应通过上述增量命令刷新，不应手工改写 SHA-256 来绕过启动校验。
+刷新前保留旧快照，并核对正式 train/test 文件的实际 SHA-256；发布后确认报告覆盖完整目录、
 成功/失败数量与逐项状态一致，再重启并检查详情页、JSON 指标和升降序分页。
 
 Challenge 目录卡片和详情页只发布 mean AUROC、shift score 与 global percentile；标题旁的
@@ -764,7 +804,10 @@ domain classifier 无法区分 biological 与 technical shift；normalization、
 
 2026-09-05 本地部署已完成全部 29 个 Challenge 的重算和发布：29 成功、0 失败，58 个输入
 文件校验和通过，29 项 AUROC 与旧结果一致。服务重启后，页面、API、排序与分页均通过核验，
-entry-ID 修正后旧快照不可用的问题已解决。此日期记录不代表新 checkout 自带运行数据；
+entry-ID 修正后旧快照不可用的问题已解决。同日后续已将流程修正为增量刷新，并为当前全部
+29 项免训练补建输入指纹：复用 29 项、实际评估 0 项，原有指标完全保留，线上核验通过。
+此前仅因元数据改写触发的全量重算属于旧流程；后续应遵循上述增量规则。
+此日期记录不代表新 checkout 自带运行数据；
 参数、诊断、制品哈希和验收证据见 [Challenge 难度快照运行记录](doc/Challenge难度快照运行记录.md)。
 
 ## 网页和 API

@@ -25,6 +25,13 @@ from scipy import sparse, stats
 
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
+from .difficulty_cache import (
+    file_sha256,
+    input_fingerprint,
+    reusable_rows,
+    reuse_result,
+    valid_fingerprint,
+)
 from .models import Dataset
 from .repository import CatalogueFilters, CatalogueIntegrityError, Challenge, list_challenges
 
@@ -573,6 +580,12 @@ def _percentiles(values: Sequence[float]) -> list[float]:
 
 def _apply_rankings(results: list[dict[str, Any]], config: DifficultyConfig) -> dict[str, Any]:
     successful = [item for item in results if item["status"] == "success"]
+    for item in successful:
+        item["repeat_percentile_std"] = None
+        item["warnings"] = [
+            warning for warning in item["warnings"]
+            if warning["code"] not in {"small_category_pool", "unstable_repeat_percentile"}
+        ]
     aurocs = [item["mean_auroc"] for item in successful]
     percentiles = _percentiles(aurocs)
     for item, percentile in zip(successful, percentiles, strict=True):
@@ -650,10 +663,46 @@ def _failure_result(
     }
 
 
-def evaluate_catalogue(
-    settings: Settings, config: DifficultyConfig | None = None
+def _verify_input_files(challenge: Challenge, settings: Settings) -> None:
+    if challenge.train is None or challenge.test is None:
+        raise ChallengeEvaluationError(f"challenge is incomplete: {challenge.status}")
+    for dataset in (challenge.train, challenge.test):
+        path = settings.data_root / dataset.storage_dir / "dataset.h5mu"
+        if file_sha256(path) != dataset.sha256:
+            raise ChallengeEvaluationError(
+                f"actual file checksum differs from catalogue: {dataset.dataset_id}"
+            )
+
+
+def _input_fingerprints(
+    challenge: Challenge, settings: Settings, config: DifficultyConfig,
+    previous: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Evaluate all Challenges and return a serializable report without writing it."""
+    fingerprints = {}
+    for name in ("train", "test"):
+        dataset = getattr(challenge, name)
+        old = previous.get(name) if previous else None
+        if (
+            isinstance(old, dict)
+            and old.get("dataset_id") == dataset.dataset_id
+            and old.get("sha256") == dataset.sha256
+            and valid_fingerprint(old.get("input_fingerprint"))
+        ):
+            fingerprints[name] = old["input_fingerprint"]
+            continue
+        side = _read_side(dataset, settings, config.input_modality)
+        try:
+            fingerprints[name] = input_fingerprint(side)
+        finally:
+            side.close()
+    return fingerprints
+
+
+def evaluate_catalogue(
+    settings: Settings, config: DifficultyConfig | None = None,
+    *, previous_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Refresh the complete ranking, evaluating only inputs without verified results."""
     config = config or DifficultyConfig()
     try:
         import sklearn
@@ -663,6 +712,16 @@ def evaluate_catalogue(
             "requirements-difficulty.txt"
         ) from exc
 
+    software = {
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "scikit_learn": sklearn.__version__,
+    }
+    cached = reusable_rows(
+        previous_report, parameters=asdict(config), software=software,
+        method_version=METHOD_VERSION,
+    )
+    reused_count = evaluated_count = 0
     engine = create_database_engine(settings.database_path)
     try:
         initialize_database(engine)
@@ -676,7 +735,20 @@ def evaluate_catalogue(
             results: list[dict[str, Any]] = []
             for challenge in challenges:
                 try:
-                    results.append(_evaluate_challenge(challenge, settings, config))
+                    _verify_input_files(challenge, settings)
+                    previous = cached.get(challenge.split_id)
+                    fingerprints = _input_fingerprints(challenge, settings, config, previous)
+                    result = reuse_result(previous, challenge, fingerprints)
+                    reused = result is not None
+                    if result is None:
+                        evaluated_count += 1
+                        result = _evaluate_challenge(challenge, settings, config)
+                        for name in ("train", "test"):
+                            result[name]["input_fingerprint"] = fingerprints[name]
+                    # Do not publish identities for files modified during this run.
+                    _verify_input_files(challenge, settings)
+                    results.append(result)
+                    reused_count += int(reused)
                 except (ChallengeEvaluationError, OSError, ValueError) as exc:
                     results.append(_failure_result(challenge, exc, config))
     except CatalogueIntegrityError as exc:
@@ -702,14 +774,12 @@ def evaluate_catalogue(
             "or expected downstream model performance."
         ),
         "parameters": asdict(config),
-        "software": {
-            "python": platform.python_version(),
-            "numpy": np.__version__,
-            "scikit_learn": sklearn.__version__,
-        },
+        "software": software,
         "challenge_count": len(results),
         "success_count": success_count,
         "failure_count": len(results) - success_count,
+        "reused_count": reused_count,
+        "evaluated_count": evaluated_count,
         "ranking_stability": ranking_stability,
         "challenges": results,
     }
@@ -750,13 +820,21 @@ def evaluate_and_write(
     *,
     config: DifficultyConfig | None = None,
     force: bool = False,
+    recompute: bool = False,
 ) -> dict[str, Any]:
-    """Evaluate the catalogue, then atomically publish the complete report."""
-    if output.expanduser().resolve().exists() and not force:
+    """Reuse verified results by default; force controls overwrite, not model fitting."""
+    output = output.expanduser().resolve()
+    if output.exists() and not force:
         raise DifficultyEvaluationError(
-            f"output file already exists: {output.expanduser().resolve()}; "
-            "use --force to replace it"
+            f"output file already exists: {output}; use --force to replace it"
         )
-    report = evaluate_catalogue(settings, config)
+    previous_report = None
+    if not recompute:
+        # Experiments reuse their own output; never silently borrow the published ranking.
+        try:
+            previous_report = json.loads(output.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    report = evaluate_catalogue(settings, config, previous_report=previous_report)
     write_report_atomically(report, output, force=force)
     return report
