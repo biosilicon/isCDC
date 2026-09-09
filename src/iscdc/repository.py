@@ -7,6 +7,7 @@ from typing import Literal, Mapping, Sequence
 from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from .entry_names import fallback_entry_name
 from .models import Dataset, Modality
 from .schemas import ChallengeType, ScalarOrList
 
@@ -81,6 +82,11 @@ def _distinct_metadata_values(datasets: Sequence[Dataset], attribute: str) -> li
 class DatabaseEntry:
     entry_id: str
     datasets: list[Dataset]
+    display_name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.display_name:
+            object.__setattr__(self, "display_name", fallback_entry_name(self.datasets))
 
     @property
     def slide_count(self) -> int:
@@ -222,7 +228,12 @@ def _json_contains(column, value):  # noqa: ANN001, ANN202
     return exists(select(1).select_from(entries).where(entries.c.value == value))
 
 
-def _conditions(filters: CatalogueFilters, *, include_split_id: bool = False):  # noqa: ANN202
+def _conditions(  # noqa: ANN202
+    filters: CatalogueFilters,
+    *,
+    include_split_id: bool = False,
+    entry_names: Mapping[str, str] | None = None,
+):
     conditions = []
     if filters.query:
         pattern = _escaped_pattern(filters.query.strip())
@@ -239,6 +250,13 @@ def _conditions(filters: CatalogueFilters, *, include_split_id: bool = False):  
         ]
         if include_split_id:
             query_fields.append(Dataset.split_id.ilike(pattern, escape="\\"))
+        if entry_names:
+            query = filters.query.strip().casefold()
+            matching_ids = [
+                entry_id for entry_id, name in entry_names.items() if query in name.casefold()
+            ]
+            if matching_ids:
+                query_fields.append(Dataset.entry_id.in_(matching_ids))
         conditions.append(or_(*query_fields))
     if filters.organism:
         conditions.append(_json_contains(Dataset.organism, filters.organism))
@@ -295,9 +313,14 @@ def count_challenges(session: Session) -> int:
 
 
 def list_databases(
-    session: Session, filters: CatalogueFilters, offset: int, limit: int
+    session: Session,
+    filters: CatalogueFilters,
+    offset: int,
+    limit: int,
+    *,
+    entry_names: Mapping[str, str] | None = None,
 ) -> tuple[list[Dataset], int]:
-    conditions = [Dataset.dataset_type == "full", *_conditions(filters)]
+    conditions = [Dataset.dataset_type == "full", *_conditions(filters, entry_names=entry_names)]
     total = session.scalar(select(func.count()).select_from(Dataset).where(*conditions)) or 0
     databases = list(
         session.scalars(
@@ -321,14 +344,19 @@ def get_database(session: Session, dataset_id: str) -> Dataset | None:
 
 
 def list_database_entries(
-    session: Session, filters: CatalogueFilters, offset: int, limit: int
+    session: Session,
+    filters: CatalogueFilters,
+    offset: int,
+    limit: int,
+    *,
+    entry_names: Mapping[str, str] | None = None,
 ) -> tuple[list[DatabaseEntry], int]:
     matching_entries = (
         select(
             Dataset.entry_id.label("entry_id"),
             func.max(Dataset.imported_at).label("latest_import"),
         )
-        .where(Dataset.dataset_type == "full", *_conditions(filters))
+        .where(Dataset.dataset_type == "full", *_conditions(filters, entry_names=entry_names))
         .group_by(Dataset.entry_id)
     )
     total = session.scalar(
@@ -355,10 +383,15 @@ def list_database_entries(
     ).all()
     for dataset in datasets:
         grouped[dataset.entry_id].append(dataset)
-    return [DatabaseEntry(entry_id, grouped[entry_id]) for entry_id in entry_ids], int(total)
+    return [
+        DatabaseEntry(entry_id, grouped[entry_id], (entry_names or {}).get(entry_id, ""))
+        for entry_id in entry_ids
+    ], int(total)
 
 
-def get_database_entry(session: Session, entry_id: str) -> DatabaseEntry | None:
+def get_database_entry(
+    session: Session, entry_id: str, *, entry_names: Mapping[str, str] | None = None
+) -> DatabaseEntry | None:
     datasets = list(
         session.scalars(
             select(Dataset)
@@ -369,7 +402,11 @@ def get_database_entry(session: Session, entry_id: str) -> DatabaseEntry | None:
             .order_by(Dataset.imported_at.desc(), Dataset.dataset_id)
         ).all()
     )
-    return DatabaseEntry(entry_id, datasets) if datasets else None
+    return (
+        DatabaseEntry(entry_id, datasets, (entry_names or {}).get(entry_id, ""))
+        if datasets
+        else None
+    )
 
 
 def _validate_challenge_integrity(session: Session) -> None:

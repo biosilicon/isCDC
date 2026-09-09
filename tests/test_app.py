@@ -441,14 +441,19 @@ async def test_home_observations_exclude_splits_and_refresh_after_catalogue_chan
         )
 
 
+@pytest.mark.parametrize("configured", [True, False])
 async def test_database_entry_pages_and_api_group_all_slides_after_member_filter(
-    settings, write_h5mu, write_metadata
+    settings, write_h5mu, write_metadata, tmp_path, configured
 ):
+    names_path = tmp_path / "entry_names.yaml"
+    names_path.write_text("TEST001: Curated Heart and Kidney Study\n" if configured else "{}")
+    settings = replace(settings, entry_names_path=names_path)
     import_dataset(write_h5mu(), write_metadata(), settings)
     engine = create_database_engine(settings.database_path)
     with create_session_factory(engine)() as session:
         source = session.get(Dataset, "test_rna_protein")
         assert source is not None
+        source.source = "Grouped source accession"
         clone = Dataset(
             dataset_id="test_rna_protein_second_slide",
             entry_id=source.entry_id,
@@ -504,15 +509,209 @@ async def test_database_entry_pages_and_api_group_all_slides_after_member_filter
     assert "2 slides" in home.text
     assert '<dd id="database-observation-count" class="home-observation-count">9</dd>' in home.text
     assert "2 slides" in listing.text
-    assert "Test RNA and protein dataset" in listing.text
-    assert "Second slide in the same entry" in listing.text
+    assert "Grouped source accession" not in listing.text
+    assert "Grouped source accession" in detail.text
+    assert api_list.json()["items"][0]["sources"] == ["Grouped source accession"]
+    assert api_detail.json()["sources"] == ["Grouped source accession"]
+    for title in ["Test RNA and protein dataset", "Second slide in the same entry"]:
+        assert title not in listing.text
+        assert title in detail.text
+        assert title in dataset_listing.text
     assert detail.status_code == 200
     assert "Datasets in this entry" in detail.text
     assert api_list.json()["total"] == 1
     assert api_list.json()["items"][0]["slide_count"] == 2
+    expected_name = (
+        "Curated Heart and Kidney Study" if configured else "Xenium — Homo sapiens — heart, kidney"
+    )
+    assert api_list.json()["items"][0]["display_name"] == expected_name
+    assert api_detail.json()["display_name"] == expected_name
+    assert f'<h1 class="display-6 fw-bold">{expected_name}</h1>' in detail.text
     assert len(api_list.json()["items"][0]["datasets"]) == 2
     assert api_detail.json()["total_observations"] == 9
     assert "2 matching datasets" in dataset_listing.text
+
+
+@pytest.fixture
+def named_entries_app(settings, write_h5mu, write_metadata, tmp_path):
+    names_path = tmp_path / "entry_names.yaml"
+    names = {
+        "TEST001": "Discovery <Atlas> & 100%_Paired",
+        "SECOND": "Discovery Other Study",
+    }
+    names_path.write_text(yaml.safe_dump(names))
+    settings = replace(settings, entry_names_path=names_path, analytics_enabled=False)
+    import_dataset(write_h5mu(), write_metadata(), settings)
+    engine = create_database_engine(settings.database_path)
+    with create_session_factory(engine)() as session:
+        original = session.get(Dataset, "test_rna_protein")
+        for dataset_id, entry_id, tissue, dataset_type in [
+            ("sibling", "TEST001", "heart", "full"),
+            ("other", "SECOND", "kidney", "full"),
+            ("unmatched", "THIRD", "kidney", "full"),
+            ("derived", "TEST001", "kidney", "train"),
+        ]:
+            values = {
+                column.name: deepcopy(getattr(original, column.name))
+                for column in Dataset.__table__.columns
+            }
+            values.update(
+                dataset_id=dataset_id,
+                entry_id=entry_id,
+                tissue=tissue,
+                dataset_type=dataset_type,
+                storage_dir=dataset_id,
+                source=entry_id,
+            )
+            if dataset_type == "train":
+                values.update(
+                    split_id="derived_split",
+                    derivation={"challenge_type": "same_slice"},
+                )
+            session.add(
+                Dataset(
+                    **values,
+                    modalities=[
+                        Modality(
+                            name=m.name,
+                            technology=deepcopy(m.technology),
+                            value_type=m.value_type,
+                            n_obs=m.n_obs,
+                            n_vars=m.n_vars,
+                        )
+                        for m in original.modalities
+                    ],
+                )
+            )
+        session.commit()
+    engine.dispose()
+    return create_app(settings), names_path, names
+
+
+async def test_entry_name_search_precedes_pagination_and_combines_with_filters(named_entries_app):
+    app, _, names = named_entries_app
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        pages = [
+            (
+                await client.get(
+                    "/api/database-entries",
+                    params={
+                        "q": "dIsCoVeRy",
+                        "limit": 1,
+                        "offset": offset,
+                    },
+                )
+            ).json()
+            for offset in range(3)
+        ]
+        assert all(page["total"] == 2 for page in pages)
+        assert {page["items"][0]["entry_id"] for page in pages[:2]} == {"TEST001", "SECOND"}
+        assert pages[2]["items"] == []
+        filtered = (
+            await client.get(
+                "/api/database-entries",
+                params={
+                    "q": "Discovery",
+                    "tissue": "heart",
+                },
+            )
+        ).json()
+        assert filtered["total"] == 1
+        assert filtered["items"][0]["display_name"] == names["TEST001"]
+        assert len(filtered["items"][0]["datasets"]) == 2
+        assert filtered["items"][0]["slide_count"] == 2
+        slides = (
+            await client.get(
+                "/api/databases",
+                params={
+                    "q": "Discovery",
+                    "tissue": "heart",
+                },
+            )
+        ).json()
+        assert slides["total"] == 1
+        assert slides["items"][0]["dataset_id"] == "sibling"
+        slides = (
+            await client.get(
+                "/api/databases",
+                params={
+                    "q": "Discovery",
+                    "limit": 1,
+                    "offset": 2,
+                },
+            )
+        ).json()
+        assert slides["total"] == 3
+        assert len(slides["items"]) == 1
+        for query in ["100%_Paired", "TEST001"]:
+            result = (await client.get("/api/database-entries", params={"q": query})).json()
+            assert result["total"] == 1
+            assert result["items"][0]["entry_id"] == "TEST001"
+        # Literal wildcard characters cannot broaden a curated-name search.
+        empty = (await client.get("/api/database-entries?q=100%25XPaired")).json()
+        assert empty["total"] == 0
+        for view, count in [("entries", "2 matching entries"), ("datasets", "3 matching datasets")]:
+            page = await client.get("/databases", params={"q": "Discovery", "view": view})
+            assert page.status_code == 200
+            assert count in page.text
+        original_title_match = (
+            await client.get("/api/database-entries?q=Test%20RNA%20and%20protein")
+        ).json()
+        assert original_title_match["total"] == 3
+
+
+async def test_entry_names_are_escaped_consistent_and_loaded_at_startup(named_entries_app):
+    app, path, names = named_entries_app
+    path.write_text("TEST001: Replacement name\n")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        detail = await client.get("/databases/entries/TEST001")
+        slide = await client.get("/databases/test_rna_protein")
+        listing = await client.get("/databases?q=TEST001")
+        for page in [detail, slide, listing]:
+            assert page.status_code == 200
+            assert "Discovery &lt;Atlas&gt; &amp; 100%_Paired" in page.text
+            assert "Discovery <Atlas>" not in page.text
+        assert "Entry ID: <code>TEST001</code>" in detail.text
+        assert "<title>Discovery &lt;Atlas&gt; &amp; 100%_Paired · isCDC</title>" in detail.text
+        payload = (await client.get("/api/database-entries/TEST001")).json()
+        assert payload["display_name"] == names["TEST001"]
+        assert payload["entry_id"] == "TEST001"
+        assert (await client.get("/api/database-entries?q=Replacement")).json()["total"] == 0
+        assert (await client.get("/api/database-entries/absent")).status_code == 404
+        assert (await client.get("/databases/entries/absent")).status_code == 404
+    refreshed = create_app(app.state.settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=refreshed), base_url="http://test"
+    ) as client:
+        assert (await client.get("/api/database-entries/TEST001")).json()["display_name"] == (
+            "Replacement name"
+        )
+
+
+@pytest.mark.parametrize("content", [None, "A: [malformed", "TEST001: ' '"])
+async def test_unavailable_entry_names_keep_pages_api_and_fallback_search_working(
+    settings, write_h5mu, write_metadata, tmp_path, content
+):
+    path = tmp_path / "names.yaml"
+    if content is not None:
+        path.write_text(content)
+    settings = replace(settings, entry_names_path=path)
+    app = _app_with_database(settings, write_h5mu, write_metadata)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        name = "Test RNA and protein dataset"
+        for url in ["/databases", "/databases/entries/TEST001", "/databases/test_rna_protein"]:
+            response = await client.get(url)
+            assert response.status_code == 200
+            assert name in response.text
+        payload = (await client.get("/api/database-entries", params={"q": name})).json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["display_name"] == name
 
 
 async def test_file_metadata_omits_license_and_exposes_import_date_only(

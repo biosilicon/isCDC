@@ -39,6 +39,7 @@ from .difficulty_snapshot import (
     DifficultySnapshotError,
     load_difficulty_snapshot,
 )
+from .entry_names import DEFAULT_ENTRY_NAMES_PATH, resolve_entry_names
 from .models import Dataset
 from .repository import (
     DERIVED_DATASET_TYPES,
@@ -415,6 +416,7 @@ def _database_entry_response(
 ) -> DatabaseEntryResponse:
     return DatabaseEntryResponse(
         entry_id=entry.entry_id,
+        display_name=entry.display_name,
         slide_count=entry.slide_count,
         sources=entry.sources,
         organisms=entry.organisms,
@@ -484,6 +486,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]] = {}
     with session_factory() as session:
         catalogue_datasets = session.scalars(select(Dataset)).all()
+    entry_names = resolve_entry_names(
+        catalogue_datasets, settings.entry_names_path or DEFAULT_ENTRY_NAMES_PATH
+    )
     for dataset in catalogue_datasets:
         dataset_id = dataset.dataset_id
         storage_dir = dataset.storage_dir
@@ -592,6 +597,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.engine = engine
     application.state.session_factory = session_factory
+    application.state.entry_names = entry_names
     application.state.analytics = analytics
     application.state.difficulty_snapshot = difficulty_snapshot
     application.state.difficulty_path = difficulty_path
@@ -691,12 +697,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_page = 20
         if view == "entries":
             entries, total = list_database_entries(
-                session, filters, (page - 1) * per_page, per_page
+                session, filters, (page - 1) * per_page, per_page, entry_names=entry_names
             )
             databases = []
         else:
             databases, total = list_databases(
-                session, filters, (page - 1) * per_page, per_page
+                session, filters, (page - 1) * per_page, per_page, entry_names=entry_names
             )
             entries = []
         facets = get_facets(session, ("full",))
@@ -742,7 +748,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def database_entry_detail(
         request: Request, entry_id: str, session: SessionDependency
     ):
-        entry = get_database_entry(session, entry_id)
+        entry = get_database_entry(session, entry_id, entry_names=entry_names)
         if entry is None:
             return templates.TemplateResponse(
                 request=request,
@@ -822,6 +828,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             name="database_detail.html",
             context={
                 "database": database,
+                "entry": get_database_entry(
+                    session, database.entry_id, entry_names=entry_names
+                ),
                 "download_kinds": DOWNLOAD_FILES,
                 "cell_type_visualization": visualization_config,
                 "cell_type_annotation_method": (
@@ -1075,6 +1084,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _filters(q, organism, tissue, modality, technology, spatial_unit),
             offset,
             limit,
+            entry_names=entry_names,
         )
         return DatabaseListResponse(
             items=[
@@ -1108,6 +1118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _filters(q, organism, tissue, modality, technology, spatial_unit),
             offset,
             limit,
+            entry_names=entry_names,
         )
         return DatabaseEntryListResponse(
             items=[
@@ -1127,7 +1138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def api_database_entry_detail(
         request: Request, entry_id: str, session: SessionDependency
     ) -> DatabaseEntryResponse:
-        entry = get_database_entry(session, entry_id)
+        entry = get_database_entry(session, entry_id, entry_names=entry_names)
         if entry is None:
             raise HTTPException(status_code=404, detail="Database entry not found")
         return _database_entry_response(entry, request, auxiliary_files_by_dataset)

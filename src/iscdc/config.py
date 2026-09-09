@@ -53,6 +53,7 @@ class Settings:
     analytics_retention_days: int
     analytics_cookie_secure: bool
     cell_type_visualization_root: Path | None = None
+    entry_names_path: Path | None = None
 
     @classmethod
     def from_environment(cls, project_root: Path = PROJECT_ROOT) -> Settings:
@@ -66,6 +67,7 @@ class Settings:
             ),
             templates_dir=project_root / "assets" / "templates",
             static_dir=project_root / "assets" / "static",
+            entry_names_path=project_root / "assets" / "database_entry_names.yaml",
             analytics_database_path=_configured_path(
                 "ISCDC_ANALYTICS_DATABASE_PATH",
                 project_root / "data" / "analytics.db",

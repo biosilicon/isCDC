@@ -827,6 +827,18 @@ entry-ID 修正后旧快照不可用的问题已解决。同日后续已将流�
   Range 请求和断点续传。
 - `/healthz`：供部署脚本和监控使用的健康检查，不创建访客会话或行为事件。
 
+Database Entry 使用英文可读名称作为列表、详情页和面包屑的主要标签，原编号以
+`Entry ID` 保留；Entry JSON 增加 `display_name`。名称统一维护在受版本控制的
+`assets/database_entry_names.yaml`，按技术或研究名称、物种、组织或疾病概括整个 Entry。
+同组切片的筛选和排序不会改变名称。两种 Database 浏览视图及其列表 API 的 `q`
+均支持名称搜索，并继续支持原编号和文件标题搜索；名称匹配在其他筛选和分页前应用。
+
+新增 Entry 时同步补充名称配置，更新配置或导入新 Entry 后重启应用，使名称和名称搜索
+生效。未配置名称时，单文件 Entry 使用文件标题；多文件 Entry 使用全部成员去重、排序
+后的“技术列表 — 物种列表 — 组织列表”。缺失或无效配置会记录警告并使用上述临时名称。
+名称仅用于展示，不改写 `entry_id`、URL、H5MU、metadata、manifest 或 catalogue schema，
+因此单独修改名称无需迁移数据或刷新 Challenge 难度快照。
+
 网页列表使用 `q`、`organism`、`tissue`、`modality`、`technology` 和 `spatial_unit`
 筛选；Challenge 列表还支持 `challenge_type` 和
 `sort=newest|difficulty_asc|difficulty_desc`，API 列表另外支持 `limit`、`offset`。difficulty

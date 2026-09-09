@@ -28,16 +28,14 @@
         <article class="card dataset-card database-entry-card">
           <div class="card-body p-4">
             <div class="d-flex justify-content-between align-items-start gap-4 flex-wrap">
-              <div>
+              <div class="entry-card-info">
                 <div class="d-flex gap-2 flex-wrap mb-2">
                   {% for modality in entry.modalities %}<span class="badge text-bg-light">{{ modality }}</span>{% endfor %}
                   {% for spatial_unit in entry.spatial_units %}<span class="badge text-bg-light">{{ spatial_unit }}</span>{% endfor %}
                 </div>
-                <p class="text-uppercase small fw-semibold text-primary mb-1">Database entry</p>
-                <h2 class="h4 mb-2"><a class="text-decoration-none" href="{{ url_for('database_entry_detail', entry_id=entry.entry_id) }}">{{ entry.entry_id }}</a></h2>
-                <p class="text-secondary mb-2">{{ entry.sources|join(', ') }}</p>
+                <h2 class="h4 mb-2"><a class="text-decoration-none" href="{{ url_for('database_entry_detail', entry_id=entry.entry_id) }}">{{ entry.display_name }}</a></h2>
+                <p class="small text-secondary mb-2">Entry ID: <code>{{ entry.entry_id }}</code></p>
                 <p class="small mb-0"><span class="fw-semibold">{{ entry.organisms|join(', ') }}</span> · {{ entry.tissues|join(', ') }}</p>
-                <p class="small text-secondary mt-2 mb-0">{% for database in entry.datasets %}{{ database.title }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
               </div>
               <div class="entry-card-stats text-lg-end">
                 <div class="fw-semibold">{{ entry.slide_count }} slide{% if entry.slide_count != 1 %}s{% endif %}</div>

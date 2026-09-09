@@ -269,6 +269,12 @@ main > .container.py-5 {
   box-shadow: 0 1px 3px rgb(23 34 56 / 8%);
 }
 
+.entry-card-info {
+  flex: 1 1 18rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .entry-card-stats {
   flex: 0 0 auto;
 }
@@ -320,6 +326,7 @@ main > .container.py-5 {
   overflow-wrap: anywhere;
 }
 
+.database-breadcrumb,
 .dataset-card h2,
 .dataset-card h2 a,
 .dataset-card h2 code,

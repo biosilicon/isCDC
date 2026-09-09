@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Entry {{ entry.entry_id }} · isCDC{% endblock %}
+{% block title %}{{ entry.display_name }} · isCDC{% endblock %}
 {% block content %}
 <div class="container py-5">
-  <nav class="small mb-4"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ entry.entry_id }}</span></nav>
+  <nav class="small mb-4 database-breadcrumb"><a href="{{ url_for('database_list') }}">Databases</a> <span class="text-secondary">/ {{ entry.display_name }}</span></nav>
   <header class="database-detail-header mb-5">
     <p class="text-uppercase small fw-semibold text-primary mb-2">Database entry</p>
-    <h1 class="display-6 fw-bold">{{ entry.entry_id }}</h1>
+    <h1 class="display-6 fw-bold">{{ entry.display_name }}</h1>
+    <p class="small text-secondary mb-3">Entry ID: <code>{{ entry.entry_id }}</code></p>
     <p class="lead text-secondary mb-4">{{ entry.slide_count }} validated slide{% if entry.slide_count != 1 %}s{% endif %} from the same source entry.</p>
     <div class="entry-summary-grid">
       <div><span>Source</span><strong>{{ entry.sources|join(', ') }}</strong></div>

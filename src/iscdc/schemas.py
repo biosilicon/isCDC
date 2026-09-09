@@ -381,6 +381,7 @@ class DatabaseListResponse(BaseModel):
 
 class DatabaseEntryResponse(BaseModel):
     entry_id: str
+    display_name: str
     slide_count: int
     sources: list[str]
     organisms: list[str]
