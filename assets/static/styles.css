@@ -154,6 +154,25 @@ main > .container.py-5 {
   color: #607087 !important;
 }
 
+.home-observation-stat {
+  padding: clamp(1.25rem, 2.5vw, 2rem);
+  background: var(--catalogue-surface);
+  border: 1px solid var(--catalogue-border);
+  border-radius: var(--catalogue-radius);
+  box-shadow: var(--catalogue-shadow-sm);
+}
+
+.home-observation-count {
+  margin: 0.5rem 0;
+  color: var(--catalogue-blue);
+  font-size: clamp(1.75rem, 3vw, 2.75rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .hero + .container {
   padding-top: clamp(2.75rem, 6vw, 4.5rem) !important;
   padding-bottom: clamp(3.25rem, 7vw, 5.25rem) !important;

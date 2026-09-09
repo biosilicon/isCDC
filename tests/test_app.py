@@ -369,6 +369,10 @@ async def test_home_and_database_pages_use_new_entry_points(
         assert home.status_code == 200
         assert "Browse databases" in home.text
         assert "Browse challenges" in home.text
+        assert (
+            '<dd id="database-observation-count" class="home-observation-count">2</dd>'
+            in home.text
+        )
 
         response = await client.get(
             "/databases?q=kidney&organism=Homo%20sapiens&modality=rna"
@@ -384,6 +388,57 @@ async def test_home_and_database_pages_use_new_entry_points(
 
         datasets = await client.get("/databases?view=datasets&tissue=brain")
         assert "No matching databases" in datasets.text
+
+
+async def test_home_observations_are_zero_for_empty_catalogue(settings):
+    app = create_app(settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert (
+        '<dd id="database-observation-count" class="home-observation-count">0</dd>'
+        in response.text
+    )
+    assert "Observations</dt>" in response.text
+    assert "Across source databases" in response.text
+
+
+async def test_home_observations_exclude_splits_and_refresh_after_catalogue_changes(
+    tmp_path, settings, write_h5mu, write_metadata
+):
+    app = _app_with_challenge(tmp_path, settings, write_h5mu, write_metadata)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert (
+            '<dd id="database-observation-count" class="home-observation-count">2</dd>'
+            in response.text
+        )
+
+        with app.state.session_factory() as session:
+            source = session.get(Dataset, "test_rna_protein")
+            source.n_obs = 1_234_567
+            session.commit()
+        updated = await client.get("/")
+        assert updated.status_code == 200
+        assert (
+            '<dd id="database-observation-count" class="home-observation-count">'
+            '1,234,567</dd>' in updated.text
+        )
+
+        with app.state.session_factory() as session:
+            session.delete(session.get(Dataset, "test_rna_protein"))
+            session.commit()
+        derived_only = await client.get("/")
+        assert derived_only.status_code == 200
+        assert (
+            '<dd id="database-observation-count" class="home-observation-count">0</dd>'
+            in derived_only.text
+        )
 
 
 async def test_database_entry_pages_and_api_group_all_slides_after_member_filter(
@@ -447,6 +502,7 @@ async def test_database_entry_pages_and_api_group_all_slides_after_member_filter
 
     assert "1" in home.text
     assert "2 slides" in home.text
+    assert '<dd id="database-observation-count" class="home-observation-count">9</dd>' in home.text
     assert "2 slides" in listing.text
     assert "Test RNA and protein dataset" in listing.text
     assert "Second slide in the same entry" in listing.text

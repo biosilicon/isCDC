@@ -267,6 +267,14 @@ def count_databases(session: Session) -> int:
     return int(value or 0)
 
 
+def count_database_observations(session: Session) -> int:
+    """Sum top-level observations across full files, excluding derived splits."""
+    value = session.scalar(
+        select(func.sum(Dataset.n_obs)).where(Dataset.dataset_type == "full")
+    )
+    return int(value or 0)
+
+
 def count_database_entries(session: Session) -> int:
     value = session.scalar(
         select(func.count(func.distinct(Dataset.entry_id))).where(

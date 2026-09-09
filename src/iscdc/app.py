@@ -50,6 +50,7 @@ from .repository import (
     SampleSource,
     count_challenges,
     count_database_entries,
+    count_database_observations,
     count_databases,
     get_challenge,
     get_database,
@@ -658,6 +659,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def home(request: Request, session: SessionDependency):
         database_count = count_database_entries(session)
         database_slide_count = count_databases(session)
+        database_observation_count = count_database_observations(session)
         challenge_count = count_challenges(session)
         prepare_analytics_event(request, "page_view", "home", {"page": "home"})
         return templates.TemplateResponse(
@@ -666,6 +668,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             context={
                 "database_count": database_count,
                 "database_slide_count": database_slide_count,
+                "database_observation_count": database_observation_count,
                 "challenge_count": challenge_count,
             },
         )
