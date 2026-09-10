@@ -17,7 +17,7 @@
     {% set thumbnail_path = (database_thumbnail_paths|default({})).get(database.dataset_id) %}
     {% if thumbnail_path %}
       <figure class="database-thumbnail database-thumbnail-detail mt-4 mb-0">
-        <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+        {% with thumbnail_dataset = database, thumbnail_detail = true %}{% include "_thumbnail_content.html" %}{% endwith %}
       </figure>
     {% endif %}
   </header>

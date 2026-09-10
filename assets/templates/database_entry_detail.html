@@ -47,7 +47,7 @@
           </div>
           {% if thumbnail_path %}
             <figure class="database-thumbnail database-thumbnail-list mt-3 mb-0">
-              <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+              {% with thumbnail_dataset = database, thumbnail_detail = false %}{% include "_thumbnail_content.html" %}{% endwith %}
             </figure>
           {% endif %}
         </div>

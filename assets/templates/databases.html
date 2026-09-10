@@ -48,7 +48,7 @@
               <div class="entry-thumbnail-strip mt-3" aria-label="Entry slide thumbnails">
                 {% for database in thumbnail_members[:3] %}
                   <figure class="database-thumbnail mb-0">
-                    <img src="{{ url_for('static', path=database_thumbnail_paths[database.dataset_id]) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+                    {% with thumbnail_dataset = database, thumbnail_path = database_thumbnail_paths[database.dataset_id], thumbnail_detail = false %}{% include "_thumbnail_content.html" %}{% endwith %}
                   </figure>
                 {% endfor %}
               </div>
@@ -85,7 +85,7 @@
           </div>
           {% if thumbnail_path %}
             <figure class="database-thumbnail database-thumbnail-list mt-3 mb-0">
-              <img src="{{ url_for('static', path=thumbnail_path) }}" alt="Thumbnail for {{ database.title }}" loading="lazy" decoding="async">
+              {% with thumbnail_dataset = database, thumbnail_detail = false %}{% include "_thumbnail_content.html" %}{% endwith %}
             </figure>
           {% endif %}
         </div>

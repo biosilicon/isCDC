@@ -782,7 +782,7 @@ async def test_database_pages_show_matching_thumbnail(
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        listing = await client.get("/databases")
+        listing = await client.get("/databases?view=datasets")
         detail = await client.get("/databases/test_rna_protein")
         thumbnail = await client.get(
             "/static/database_thumbnails/test_rna_protein.webp"

@@ -396,6 +396,25 @@ Pillow/libtiff 解码同一金字塔层；两种解码器均失败时不生成�
 批量中单个条目失败不回滚已成功输出；任一失败或没有生成任何缩略图时命令返回非零状态。
 生成后必须重启应用，使启动时缩略图索引重新加载。
 
+缺少原生缩略图且没有注册 `he_wsi` 的 Database，可以离线生成空间信号预览：
+
+```bash
+PYTHONPATH=src python -m iscdc.cli generate-spatial-thumbnails DATASET_ID
+PYTHONPATH=src python -m iscdc.cli generate-spatial-thumbnails --all
+PYTHONPATH=src python -m iscdc.cli generate-spatial-thumbnails --all \
+  --output-dir temp/spatial_previews/first --audit-dir temp/spatial_previews/audit
+```
+
+RNA 文件使用总计数的彩色空间分布，低信号连续淡入白底；没有 RNA 时使用空间点密度。
+页面标明预览类型和局部视野，详情页提供相应色阶。它们展示采样覆盖，不代表组织学照片
+或组织分割，颜色不能跨数据集比较。原生图片和正式 WSI 始终优先。
+输出及其 JSON 说明位于被忽略的 `assets/static/database_thumbnails/spatial/`，
+逐观测审计默认写入 `catalog.db` 同级的 `spatial_thumbnail_audits/`。
+`--all` 跳过已有预览；`--force` 只覆盖本方法的预览，不替换原生图片。
+批量全部跳过视为成功，任何文件失败返回非零状态，并保留成功结果。
+先在临时目录生成、视觉验收和独立重放，再发布并重启应用；具体见
+[`doc/空间信号缩略图.md`](doc/空间信号缩略图.md)。
+
 现有 schema 1.1 catalogue 升级时，先停止应用并执行只读预检，再运行正式迁移：
 
 ```bash

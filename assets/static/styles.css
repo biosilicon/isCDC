@@ -540,6 +540,61 @@ main > .container.py-5 {
   max-height: 32rem;
 }
 
+.spatial-preview-caption {
+  display: block;
+  margin-top: 0.4rem;
+  max-width: 40rem;
+  color: var(--bs-secondary-color, #536070);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.database-thumbnail-list:has(.spatial-preview-caption) img {
+  max-height: 8rem;
+}
+
+.database-thumbnail:has(.spatial-preview-caption) img {
+  background: #fff;
+}
+
+.spatial-preview-label {
+  display: block;
+  font-weight: 600;
+}
+
+.spatial-preview-scale {
+  display: block;
+  width: 10rem;
+  height: 0.5rem;
+  margin-top: 0.65rem;
+  border-radius: 0.2rem;
+  background: linear-gradient(to right, #440154, #482878, #3e4989, #31688e, #26828e,
+    #1f9e89, #35b779, #6ece58, #b5de2b, #fde725);
+}
+
+.spatial-preview-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 10rem;
+  margin-bottom: 0.35rem;
+}
+
+.spatial-preview-scale-rna {
+  border: 1px solid var(--catalogue-border);
+  background: linear-gradient(to right, #fff, #fdfcfd, #f5f6f9, #e8eef2, #d4e6e9,
+    #bae1df, #a5dfc3, #a7e19a, #c5e558, #fde725);
+}
+
+.entry-thumbnail-strip .database-thumbnail:has(.spatial-preview-caption) {
+  aspect-ratio: auto;
+  overflow: visible;
+}
+
+.entry-thumbnail-strip .database-thumbnail:has(.spatial-preview-caption) img {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
 .data-file-section code {
   overflow-wrap: anywhere;
 }
@@ -560,6 +615,10 @@ main > .container.py-5 {
   padding-bottom: 0.72rem;
   margin-bottom: 0;
   border-bottom: 1px solid #e7ebf1;
+}
+
+.metadata-list dd {
+  overflow-wrap: anywhere;
 }
 
 .metadata-list dt {

@@ -1,0 +1,12 @@
+{% set preview = (spatial_thumbnail_info|default({})).get(thumbnail_dataset.dataset_id) %}
+<img src="{{ url_for('static', path=thumbnail_path) }}" alt="{% if preview %}{{ preview.label }}{% if preview.local_field %}, local field{% endif %} preview for{% else %}Thumbnail for{% endif %} {{ thumbnail_dataset.title }}" loading="lazy" decoding="async">
+{% if preview %}
+  <figcaption class="spatial-preview-caption">
+    <span class="spatial-preview-label">{{ preview.label }}{% if preview.local_field %} · Local field{% endif %}</span>
+    {% if thumbnail_detail|default(false) %}
+      <span class="spatial-preview-scale{% if preview.kind == 'rna_signal' %} spatial-preview-scale-rna{% endif %}" role="img" aria-label="Relative signal color scale, low to high"></span>
+      <span class="spatial-preview-scale-labels"><span>Low</span><span>High</span></span>
+      <span class="d-block">Colors show relative {% if preview.kind == 'rna_signal' %}RNA total counts{% else %}point density{% endif %} within this image. {% if preview.kind == 'rna_signal' %}Low signals fade into the white background. {% endif %}Spatial sampling preview; not a histology image or a tissue segmentation. {% if preview.local_field %}Only this local field is shown. {% endif %}Color scales are not comparable across datasets.</span>
+    {% endif %}
+  </figcaption>
+{% endif %}

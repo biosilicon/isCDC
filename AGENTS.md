@@ -33,6 +33,20 @@ discovery and the stylesheet content version are computed at application startup
 running application after adding or removing thumbnails or auxiliary files, or changing
 `assets/static/styles.css`.
 
+Missing native Database thumbnails can be supplemented with offline spatial previews through
+`generate-spatial-thumbnails DATASET_ID | --all`. Keep their RGB WebP files and versioned JSON
+sidecars under the ignored `assets/static/database_thumbnails/spatial/` directory, with exact
+`<dataset_id>` stems. Native thumbnails and registered `he_wsi` always take priority, including
+when `--force` is supplied. RNA previews use aligned raw-count row totals; files without RNA use
+local point density and must be labelled accordingly. These are sampling previews, not histology
+or inferred tissue segmentation. Fade low RNA signals continuously without changing source data.
+Keep coordinate geometry, display transforms and signal arrays reproducible; retain source hashes,
+code/environment snapshots and clean-directory replay evidence in ignored audit directories.
+The first version supports one sample in 2D and explicitly reviewed array-index geometries only.
+Validate sidecar/source/image identities at startup; invalid or stale previews fail open as absent.
+Restart the application after publishing previews. See `doc/空间信号缩略图.md` for the rendering
+contract, CLI behavior, provenance and verification requirements.
+
 Challenge difficulty is an offline, catalogue-wide distribution-separability snapshot stored in
 the ignored `challenge_difficulty.json` beside `catalog.db`; do not add it to the catalogue schema,
 train/test `.h5mu` files, metadata, or manifests. Generate it with the fixed domain-classifier

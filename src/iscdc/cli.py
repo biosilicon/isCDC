@@ -126,6 +126,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Atomically replace existing thumbnails."
     )
 
+    spatial_thumbnail_parser = subparsers.add_parser(
+        "generate-spatial-thumbnails", help="Generate offline spatial signal previews."
+    )
+    spatial_scope = spatial_thumbnail_parser.add_mutually_exclusive_group(required=True)
+    spatial_scope.add_argument("dataset_id", nargs="?")
+    spatial_scope.add_argument("--all", action="store_true")
+    spatial_thumbnail_parser.add_argument("--output-dir", type=Path)
+    spatial_thumbnail_parser.add_argument("--audit-dir", type=Path)
+    spatial_thumbnail_parser.add_argument("--force", action="store_true")
+
     difficulty_parser = subparsers.add_parser(
         "evaluate-challenge-difficulty",
         help="Evaluate and rank Challenge train-test separability offline.",
@@ -374,6 +384,47 @@ def _run_wsi_thumbnail_generation(args: argparse.Namespace) -> int:
     return 0 if generated and not failures else 1
 
 
+def _run_spatial_thumbnail_generation(args: argparse.Namespace) -> int:
+    from .spatial_thumbnails import (
+        DIRECTORY,
+        database_records,
+        generate_spatial_thumbnail,
+        skip_reason,
+    )
+
+    settings = Settings.from_environment()
+    generated, skipped, failures = [], [], []
+    try:
+        records = database_records(settings)
+        if not args.all:
+            records = [record for record in records if record["dataset_id"] == args.dataset_id]
+            if not records:
+                raise ThumbnailGenerationError("Dataset is not an indexed Database")
+    except Exception as exc:
+        print(json.dumps({"generated": [], "skipped": [], "failures": [str(exc)]}))
+        return 1
+    output = args.output_dir if args.output_dir is not None else settings.static_dir / DIRECTORY
+    for record in records:
+        dataset_id = record["dataset_id"]
+        try:
+            reason = skip_reason(record, settings)
+            if reason is None and args.all and not args.force and any(
+                (output / f"{dataset_id}.{ext}").exists() for ext in ("webp", "json")
+            ):
+                reason = "existing_spatial_preview"
+            if reason and args.all:
+                skipped.append({"dataset_id": dataset_id, "reason": reason})
+                continue
+            generated.append(generate_spatial_thumbnail(
+                record, settings, output_dir=args.output_dir, audit_dir=args.audit_dir,
+                force=args.force,
+            ))
+        except Exception as exc:  # isolate malformed or unreadable files in batch mode
+            failures.append({"dataset_id": dataset_id, "error": str(exc)})
+    print(json.dumps({"generated": generated, "skipped": skipped, "failures": failures}, indent=2))
+    return 1 if failures else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "import-dataset":
@@ -433,6 +484,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "generate-wsi-thumbnails":
         return _run_wsi_thumbnail_generation(args)
+    if args.command == "generate-spatial-thumbnails":
+        return _run_spatial_thumbnail_generation(args)
     if args.command == "evaluate-challenge-difficulty":
         try:
             from .difficulty import (

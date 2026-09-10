@@ -79,6 +79,7 @@ from .spatial_resolution import (
     SPATIAL_RESOLUTION_LABELS,
     spatial_resolution_label,
 )
+from .spatial_thumbnails import discover_spatial_thumbnails
 
 CHALLENGE_TYPE_LABELS = {
     "same_slice": "Same slice",
@@ -598,9 +599,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["cell_type_bundle_version"] = _static_asset_version(
         settings.static_dir / "cell_type_visualization.js"
     )
-    templates.env.globals["database_thumbnail_paths"] = _discover_database_thumbnails(
-        settings.static_dir
-    )
+    native_thumbnails = _discover_database_thumbnails(settings.static_dir)
+    spatial_thumbnails = discover_spatial_thumbnails(settings, [
+        {"dataset_id": dataset.dataset_id, "dataset_type": dataset.dataset_type,
+         "sha256": dataset.sha256, "entry_id": dataset.entry_id, "n_obs": dataset.n_obs,
+         "has_rna": any(modality.name == "rna" for modality in dataset.modalities)}
+        for dataset in catalogue_datasets
+        if dataset.dataset_id not in native_thumbnails
+        and dataset.dataset_id in auxiliary_files_by_dataset
+        and not any(item.auxiliary_id == "he_wsi"
+                    for item in auxiliary_files_by_dataset[dataset.dataset_id])
+    ])
+    templates.env.globals["database_thumbnail_paths"] = {
+        **{key: value["path"] for key, value in spatial_thumbnails.items()}, **native_thumbnails,
+    }
+    templates.env.globals["spatial_thumbnail_info"] = spatial_thumbnails
     templates.env.globals["auxiliary_files_by_dataset"] = auxiliary_files_by_dataset
 
     application = FastAPI(
