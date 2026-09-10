@@ -31,7 +31,7 @@
               <div class="entry-card-info">
                 <div class="d-flex gap-2 flex-wrap mb-2">
                   {% for modality in entry.modalities %}<span class="badge text-bg-light">{{ modality }}</span>{% endfor %}
-                  {% for spatial_unit in entry.spatial_units %}<span class="badge text-bg-light">{{ spatial_unit }}</span>{% endfor %}
+                  {% for spatial_unit in entry.spatial_units %}<span class="badge text-bg-light">{{ spatial_unit|spatial_resolution_label }}</span>{% endfor %}
                 </div>
                 <h2 class="h4 mb-2"><a class="text-decoration-none" href="{{ url_for('database_entry_detail', entry_id=entry.entry_id) }}">{{ entry.display_name }}</a></h2>
                 <p class="small text-secondary mb-2">Entry ID: <code>{{ entry.entry_id }}</code></p>
@@ -71,7 +71,7 @@
               <div class="d-flex gap-2 flex-wrap mb-2">
                 {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
                 {% if database.modalities|length > 2 %}<span class="badge text-bg-info">{{ database.modalities|length }} modalities</span>{% endif %}
-                <span class="badge text-bg-light">{{ database.spatial_unit }}</span>
+                <span class="badge text-bg-light">{{ database.spatial_unit|spatial_resolution_label }}</span>
                 <span class="badge text-bg-primary">full</span>
               </div>
               <h2 class="h4"><a class="text-decoration-none" href="{{ url_for('database_detail', dataset_id=database.dataset_id) }}">{{ database.title }}</a></h2>

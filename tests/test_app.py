@@ -382,6 +382,20 @@ async def test_home_and_database_pages_use_new_entry_points(
         assert "1 matching entry" in response.text
         assert "By entry" in response.text
         assert "By dataset" in response.text
+        assert "Spatial resolution" in response.text
+        assert "Single-cell" in response.text
+        assert "About resolution" in response.text
+
+        detail = await client.get("/databases/test_rna_protein")
+        assert detail.status_code == 200
+        assert "Single-cell" in detail.text
+        matching = await client.get("/api/databases?spatial_unit=single_cell")
+        assert matching.json()["total"] == 1
+        assert matching.json()["items"][0]["spatial_unit"] == "single_cell"
+        nonmatching = await client.get("/api/databases?spatial_unit=near_cellular")
+        assert nonmatching.json()["total"] == 0
+        invalid = await client.get("/api/databases?spatial_unit=invalid")
+        assert invalid.status_code == 422
 
         empty = await client.get("/databases?tissue=brain")
         assert "No matching entries" in empty.text
@@ -1357,6 +1371,7 @@ async def test_challenge_filter_matches_one_side_but_returns_both(
         test = session.get(Dataset, "web_test")
         assert test is not None
         test.tissue = "lung"
+        test.spatial_unit = "near_cellular"
         session.commit()
     engine.dispose()
 
@@ -1369,6 +1384,12 @@ async def test_challenge_filter_matches_one_side_but_returns_both(
         assert payload["total"] == 1
         assert payload["items"][0]["train"]["dataset_id"] == "web_train"
         assert payload["items"][0]["test"]["dataset_id"] == "web_test"
+
+        resolution = await client.get("/api/challenges?spatial_unit=near_cellular")
+        assert resolution.json()["total"] == 1
+        pair = resolution.json()["items"][0]
+        assert pair["train"]["spatial_unit"] == "single_cell"
+        assert pair["test"]["spatial_unit"] == "near_cellular"
 
         matching = await client.get("/api/challenges?challenge_type=same_slice")
         assert matching.status_code == 200

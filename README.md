@@ -72,7 +72,7 @@ exp/xenium_human_rcc_ffpe_rna_protein.h5mu
 exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml
 ```
 
-请在运行完整测试前准备这两个文件，并为生成的 train/test 产物预留约 300 MB 临时空间。
+请在运行完整测试前准备这两个文件，并为临时分类副本和生成的 train/test 产物预留约 450 MB 临时空间。
 缺失文件会使测试失败。
 
 显式完整验收使用 `make test`。
@@ -477,6 +477,8 @@ cell type sidecar，并保留独立回滚备份。默认会核对旧 SHA-256，�
 
 YAML 是网站元数据的主记录。`.h5mu` 内部已有的数据库、样本和 assay 元数据必须在
 YAML 中出现且值一致；YAML 可以包含文件内部没有的附加数据库元数据。
+示例 YAML 使用新分辨率分类，配套 H5MU 也须同步设置 `spatial_unit` 和
+`original_spatial_unit`；旧文件不能仅替换 YAML 后直接导入。
 
 ```yaml
 database:
@@ -487,7 +489,8 @@ database:
   source: GSE000000
   organism: Homo sapiens
   tissue: kidney
-  spatial_unit: cell
+  spatial_unit: single_cell
+  original_spatial_unit: cell
   coordinate_unit: micrometer
   pairing_type: same_unit
 sample_ids:
@@ -708,8 +711,13 @@ feature ID 到 canonical ID 的非空映射，路径相对 compose 配置解析�
 对正式 full 文件重算交集并核对矩阵和坐标。没有这些配置的旧 compose 行为保持不变。
 示例的 `spot/bin` 表示 Challenge 来源同时使用捕获 spot 与 bin；逐来源实际单位保留在
 坐标 provenance 中，各文件说明应明确自身包含的单位。它不表示区域聚合或统一物理分辨率。
-两侧的 harmonization 摘要必须一致。`spatial_unit` 支持非空字符串，当前验证器会为这一复合
-标签给出 `nonstandard_spatial_unit` 提示；这不是配对或来源验证失败。
+两侧的 harmonization 摘要必须一致。这里的坐标统一标签继续记录原始单位，不覆盖文件级
+`database.spatial_unit`；文件级分类按本侧来源取最粗一级。旧文件中的 `spot/bin` 仍可读取。
+
+文件级 `spatial_unit` 使用 `single_cell`、`near_cellular`、`spot_level`，网页名称为
+Single-cell、Near-cellular、Spot-level。原始单位另存 `original_spatial_unit`，API 在
+`additional_metadata` 中返回。新导入和新拆分需要这两个值；历史文件须先逐数据分类。
+分类定义、混合来源规则和迁移进度见[空间分辨率分类](doc/空间分辨率分类.md)。
 
 组合产物的顶层观测 ID 和样本 ID 分别编码为
 `<source_dataset_id>::<source_obs_id>` 和

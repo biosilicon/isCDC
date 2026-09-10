@@ -6,7 +6,8 @@ database:
   source: https://www.10xgenomics.com/cn/datasets/xenium-protein-ffpe-human-renal-carcinoma
   organism: Homo sapiens
   tissue: kidney
-  spatial_unit: cell
+  spatial_unit: single_cell
+  original_spatial_unit: cell
   coordinate_unit: micrometer
   pairing_type: same_unit
 sample_ids:

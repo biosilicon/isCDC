@@ -17,6 +17,7 @@ from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
 from .models import Dataset, Modality
 from .schemas import MetadataDocument, load_metadata
+from .spatial_resolution import original_spatial_unit, require_spatial_resolution
 from .validation import ValidationOutcome, validate_h5mu
 
 
@@ -175,6 +176,11 @@ def import_dataset(
         raise DatasetImportError(f"Metadata file does not exist: {metadata_path}")
 
     metadata = load_metadata(metadata_path)
+    try:
+        require_spatial_resolution(metadata.database.spatial_unit)
+        original_spatial_unit(metadata.database_values())
+    except ValueError as exc:
+        raise DatasetImportError(str(exc)) from exc
     dataset_id = metadata.database.dataset_id
     settings.data_root.mkdir(parents=True, exist_ok=True)
     staging_root = settings.data_root / ".staging"

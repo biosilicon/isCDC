@@ -21,6 +21,11 @@ import pandas as pd
 import yaml
 from scipy import sparse
 
+from .spatial_resolution import (
+    coarsest_resolution,
+    original_spatial_unit,
+    require_spatial_resolution,
+)
 from .validation import (
     CELL_TYPE_PROVENANCE_KEY,
     CELL_TYPE_PROVENANCE_VERSION,
@@ -658,7 +663,7 @@ def _ensure_source_compatibility(
     if len(set(dataset_ids)) != len(dataset_ids):
         raise SplitterError("source dataset_id values must be unique")
     if not coordinates_harmonized:
-        for field in ("spatial_unit", "coordinate_unit"):
+        for field in ("original_spatial_unit", "coordinate_unit"):
             values = {source.database[field] for source in sources}
             if len(values) != 1:
                 raise SplitterError(f"all sources must have the same {field}")
@@ -1041,11 +1046,12 @@ def _derivation_database(
         "source": _deduplicated_metadata(sources, "source"),
         "organism": _deduplicated_metadata(sources, "organism"),
         "tissue": _deduplicated_metadata(sources, "tissue"),
-        "spatial_unit": (
-            coordinate_harmonization["spatial_unit"]
-            if coordinate_harmonization is not None
-            else sources[0].database["spatial_unit"]
-        ),
+        "spatial_unit": coarsest_resolution(source.database["spatial_unit"] for source in sources),
+        "original_spatial_unit": "/".join(dict.fromkeys(
+            unit
+            for source in sources
+            for unit in original_spatial_unit(source.database).split("/")
+        )),
         "coordinate_unit": (
             coordinate_harmonization["coordinate_unit"]
             if coordinate_harmonization is not None
@@ -1426,7 +1432,7 @@ def _build_composite_product(
                     "key": coordinate_spec.sources[source.dataset_id].key,
                     "x": coordinate_spec.sources[source.dataset_id].x,
                     "y": coordinate_spec.sources[source.dataset_id].y,
-                    "input_spatial_unit": source.database["spatial_unit"],
+                    "input_spatial_unit": original_spatial_unit(source.database),
                     "input_coordinate_unit": source.database["coordinate_unit"],
                 }
                 for source in global_sources
@@ -1591,6 +1597,11 @@ def spatial_split(config_path: Path | str) -> tuple[Path, Path]:
         raise SplitterError(f"output directory already exists: {config.output_dir}")
     source = _read_source(config.source)
     try:
+        try:
+            require_spatial_resolution(source.database["spatial_unit"])
+            original_spatial_unit(source.database)
+        except ValueError as exc:
+            raise SplitterError(str(exc)) from exc
         if config.train_id == source.dataset_id or config.test_id == source.dataset_id:
             raise SplitterError("output dataset_id values must differ from source dataset_id")
         samples = source.mdata.obs["sample_id"].astype(str).to_numpy()
@@ -1657,6 +1668,11 @@ def compose_split(config_path: Path | str) -> tuple[Path, Path]:
     try:
         for path in all_paths:
             sources.append(_read_source(path))
+            try:
+                require_spatial_resolution(sources[-1].database["spatial_unit"])
+                original_spatial_unit(sources[-1].database)
+            except ValueError as exc:
+                raise SplitterError(f"{path}: {exc}") from exc
         _ensure_source_compatibility(
             sources, coordinates_harmonized=config.coordinate_harmonization is not None
         )

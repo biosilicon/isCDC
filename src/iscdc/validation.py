@@ -17,6 +17,12 @@ from pydantic import ValidationError
 from scipy import sparse
 
 from .schemas import DatabaseMetadata, MetadataDocument, ScalarOrList
+from .spatial_resolution import (
+    LEGACY_SPATIAL_UNITS,
+    SPATIAL_RESOLUTION_LABELS,
+    coarsest_resolution,
+    original_spatial_unit,
+)
 from .technology import technology_vocabulary_message, unsupported_technologies
 
 REQUIRED_DATABASE_FIELDS = {
@@ -49,7 +55,7 @@ STANDARD_MODALITIES = {
     "fungal_rna",
     "microbiome",
 }
-RECOMMENDED_SPATIAL_UNITS = {"cell", "nucleus", "spot", "bin", "region"}
+RECOMMENDED_SPATIAL_UNITS = set(SPATIAL_RESOLUTION_LABELS) | (LEGACY_SPATIAL_UNITS - {"spot/bin"})
 RECOMMENDED_COORDINATE_UNITS = {"micrometer", "millimeter", "pixel", "array_index"}
 RECOMMENDED_VALUE_TYPES = {
     "counts",
@@ -525,6 +531,14 @@ def _validate_common(
                 f"/uns/database/{name}",
             )
     if database is not None:
+        if database.spatial_unit in SPATIAL_RESOLUTION_LABELS:
+            try:
+                original_spatial_unit(internal_database)
+            except ValueError as exc:
+                _error(
+                    outcome, "missing_original_spatial_unit", str(exc),
+                    "/uns/database/original_spatial_unit",
+                )
         outcome.dataset_type = database.dataset_type
         outcome.split_id = database.derivation.split_id if database.derivation else None
         outcome.challenge_type = (
@@ -1225,7 +1239,10 @@ def _validate_harmonized_coordinates(
         or metadata.get("coordinate_unit") != summary.coordinate_unit
         or list(map(str, _normalize(metadata.get("source_dataset_ids", []))))
         != summary.source_dataset_ids
-        or database.spatial_unit != summary.spatial_unit
+        or (
+            database.spatial_unit not in SPATIAL_RESOLUTION_LABELS
+            and database.spatial_unit != summary.spatial_unit
+        )
         or database.coordinate_unit != summary.coordinate_unit
     ):
         _error(
@@ -1522,6 +1539,21 @@ def _validate_derivation(
             }
         if len(sources) != len(context_source_ids):
             return
+
+        if database.spatial_unit in SPATIAL_RESOLUTION_LABELS:
+            try:
+                expected_resolution = coarsest_resolution(
+                    sources[source_id].uns["database"]["spatial_unit"]
+                    for source_id in declared_source_ids
+                )
+                if database.spatial_unit != expected_resolution:
+                    raise ValueError(
+                        "Derived spatial_unit must use the coarsest source resolution."
+                    )
+            except ValueError as exc:
+                _error(
+                    outcome, "source_resolution_mismatch", str(exc), "/uns/database/spatial_unit"
+                )
 
         for source_id, obs_id in pairs:
             if source_id not in source_obs or obs_id not in source_obs[source_id]:

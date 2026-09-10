@@ -15,6 +15,7 @@ from iscdc.database import create_database_engine, create_session_factory
 from iscdc.importer import DatasetImportError, import_dataset
 from iscdc.models import Dataset
 from iscdc.splitter import compose_split, spatial_split
+from iscdc.validation import validate_h5mu
 
 
 def _normalize(value):  # noqa: ANN001, ANN202
@@ -80,6 +81,8 @@ def test_import_creates_catalogue_and_provenance_files(settings, write_h5mu, wri
         dataset = session.get(Dataset, "test_rna_protein")
         assert dataset is not None
         assert dataset.entry_id == "TEST001"
+        assert dataset.spatial_unit == "single_cell"
+        assert dataset.additional_metadata["original_spatial_unit"] == "cell"
         assert {modality.name for modality in dataset.modalities} == {"rna", "protein"}
     engine.dispose()
 
@@ -91,6 +94,17 @@ def test_duplicate_dataset_is_rejected(settings, write_h5mu, write_metadata):
 
     with pytest.raises(DatasetImportError, match="already indexed"):
         import_dataset(source, metadata, settings)
+
+
+@pytest.mark.parametrize("unit", ["cell", "bin", "unknown"])
+def test_import_requires_explicit_resolution(
+    settings, metadata_values, write_h5mu, write_metadata, unit
+):
+    metadata_values["database"]["spatial_unit"] = unit
+    source = write_h5mu()
+    assert validate_h5mu(source).valid  # Legacy files remain readable.
+    with pytest.raises(DatasetImportError, match="classify legacy observations explicitly"):
+        import_dataset(source, write_metadata(), settings)
 
 
 def test_replace_rejects_entry_identity_change(

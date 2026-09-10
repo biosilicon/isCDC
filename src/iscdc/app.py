@@ -73,6 +73,12 @@ from .schemas import (
     DataFileResponse,
     SampleSourceResponse,
 )
+from .spatial_resolution import (
+    LEGACY_SPATIAL_UNITS,
+    SPATIAL_RESOLUTION_DESCRIPTIONS,
+    SPATIAL_RESOLUTION_LABELS,
+    spatial_resolution_label,
+)
 
 CHALLENGE_TYPE_LABELS = {
     "same_slice": "Same slice",
@@ -286,6 +292,12 @@ def _filters(
     spatial_unit: str | None,
     challenge_type: ChallengeType | None = None,
 ) -> CatalogueFilters:
+    if (
+        spatial_unit
+        and spatial_unit not in SPATIAL_RESOLUTION_LABELS
+        and spatial_unit not in LEGACY_SPATIAL_UNITS
+    ):
+        raise HTTPException(status_code=422, detail="Unknown spatial resolution.")
     return CatalogueFilters(
         q, organism, tissue, modality, technology, spatial_unit, challenge_type
     )
@@ -578,6 +590,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.filters["as_list"] = _as_list
     templates.env.filters["metadata_values"] = _format_metadata
     templates.env.filters["challenge_type_label"] = CHALLENGE_TYPE_LABELS.__getitem__
+    templates.env.filters["spatial_resolution_label"] = spatial_resolution_label
+    templates.env.globals["spatial_resolution_descriptions"] = SPATIAL_RESOLUTION_DESCRIPTIONS
     templates.env.globals["static_styles_version"] = _static_asset_version(
         settings.static_dir / "styles.css"
     )
@@ -969,6 +983,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sample_sources_by_dataset_id = resolve_sample_sources(
             session, challenge.datasets
         )
+        source_ids = {
+            source_id
+            for dataset in challenge.datasets
+            for source_id in dataset.derivation["source_dataset_ids"]
+        }
+        resolution_sources = {
+            source.dataset_id: source
+            for source in session.scalars(select(Dataset).where(Dataset.dataset_id.in_(source_ids)))
+        }
+        if set(resolution_sources) != source_ids:
+            raise CatalogueIntegrityError("Challenge resolution sources are missing.")
         return templates.TemplateResponse(
             request=request,
             name="challenge_detail.html",
@@ -977,6 +1002,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "difficulty": difficulty_by_split_id.get(challenge.split_id),
                 "download_kinds": DOWNLOAD_FILES,
                 "sample_sources_by_dataset_id": sample_sources_by_dataset_id,
+                "resolution_sources": resolution_sources,
             },
         )
 

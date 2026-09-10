@@ -34,7 +34,7 @@
             <div class="col-lg-9">
               <div class="d-flex gap-2 flex-wrap mb-2">
                 {% for modality in database.modalities %}<span class="badge text-bg-light">{{ modality.name }}</span>{% endfor %}
-                <span class="badge text-bg-light">{{ database.spatial_unit }}</span>
+                <span class="badge text-bg-light">{{ database.spatial_unit|spatial_resolution_label }}</span>
               </div>
               <h3 class="h4"><a class="text-decoration-none" href="{{ url_for('database_detail', dataset_id=database.dataset_id) }}">{{ database.title }}</a></h3>
               <p class="text-secondary mb-2">{{ database.description }}</p>

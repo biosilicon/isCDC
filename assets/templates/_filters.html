@@ -12,7 +12,7 @@
       ('tissue', 'Tissue', facets.tissues),
       ('modality', 'Modality', facets.modalities),
       ('technology', 'Technology', facets.technologies),
-      ('spatial_unit', 'Spatial unit', facets.spatial_units)
+      ('spatial_unit', 'Spatial resolution', facets.spatial_units)
     ] %}
     {% if facets.challenge_types %}
       {% set filter_fields = filter_fields + [
@@ -24,7 +24,7 @@
         <label class="form-label" for="{{ name }}">{{ label }}</label>
         <select class="form-select" id="{{ name }}" name="{{ name }}">
           <option value="">All</option>
-          {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{% if name == 'challenge_type' %}{{ value|challenge_type_label }}{% else %}{{ value }}{% endif %}</option>{% endfor %}
+          {% for value in values %}<option value="{{ value }}" {% if selected.get(name) == value %}selected{% endif %}>{% if name == 'challenge_type' %}{{ value|challenge_type_label }}{% elif name == 'spatial_unit' %}{{ value|spatial_resolution_label }}{% else %}{{ value }}{% endif %}</option>{% endfor %}
         </select>
       </div>
     {% endfor %}
@@ -36,6 +36,16 @@
         </select>
       </div>
     {% endif %}
+    <div class="col-12">
+      <details class="small text-secondary">
+        <summary>About resolution</summary>
+        <div class="row g-3 mt-0">
+          {% for key, description in spatial_resolution_descriptions.items() %}
+            <p class="col-md-4 mb-0"><strong>{{ key|spatial_resolution_label }}:</strong> {{ description }}</p>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
     <div class="col-12 d-flex gap-2">
       <button class="btn btn-primary" type="submit">Apply filters</button>
       <a class="btn btn-outline-secondary" href="{{ clear_url|default(url_for(clear_endpoint)) }}">Clear</a>

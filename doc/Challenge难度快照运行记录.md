@@ -1,5 +1,22 @@
 # Challenge 难度快照运行记录
 
+## 2026-09-10：空间分辨率元数据迁移后的复用发布
+
+用户批准将空间分辨率改为 Single-cell、Near-cellular、Spot-level 后，289 份正式文件
+完成元数据迁移，其中 58 份 train/test 的文件校验和发生变化。使用现有
+`evaluate_catalogue` 流程核验实际文件和评估输入指纹，并在本次一次性脚本中禁止调用
+分类器；29 个 Challenge 全部复用，`reused_count=29`、`evaluated_count=0`、
+`failure_count=0`。AUROC、shift score、全局及类别百分位与迁移前精确一致。
+
+2026-09-10 03:32:52 UTC 完成切换后重启服务，04:12:26 UTC 线上验收通过：29 项 API
+难度值与快照一致，升降序排序及分页正确。此次迁移共核验 60 个 HTTP 响应，另覆盖全部
+289 份文件的分类、筛选、代表性下载及 32 份有效可视化的保留展示。
+
+旧快照、原目录和文件备份保留在 `data/backups/spatial_resolution_20260910/`；一次性
+脚本、批准清单、执行报告及 `live_verification.json` 保留在
+`temp/spatial_resolution_20260910/`。分类及既有可视化问题见
+[空间分辨率分类](空间分辨率分类.md#批准执行与上线结果)。未重新训练或增加新的校验和体系。
+
 本文件记录本地目录的日期化发布结果。评估方法和使用命令见
 [README](../README.md#challenge-distribution-shift-难度参考)，快照契约见
 [数据库存储规范 1.2](数据库存储规范_v1.2.md)。运行快照、输入数据、备份和详细审计均不纳入

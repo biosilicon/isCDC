@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import warnings
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import mudata as md
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from anndata.io import write_elem
 
 from iscdc.schemas import load_metadata
 from iscdc.splitter import (
@@ -58,7 +61,7 @@ def _write_full(
     matrices: dict[str, np.ndarray] | None = None,
     schema_version: str = "1.2",
     entry_id: str | None = None,
-    spatial_unit: str = "cell",
+    spatial_unit: str = "single_cell",
     coordinate_unit: str = "micrometer",
     value_types: dict[str, str] | None = None,
     technologies: dict[str, str] | None = None,
@@ -126,6 +129,7 @@ def _write_full(
         "organism": "Homo sapiens",
         "tissue": "kidney",
         "spatial_unit": spatial_unit,
+        "original_spatial_unit": "cell",
         "coordinate_unit": coordinate_unit,
         "pairing_type": _pairing_type(modality_obs),
         **(database_extra or {}),
@@ -261,7 +265,8 @@ def test_compose_harmonizes_features_coordinates_and_provenance(tmp_path):
             "rna": np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.int32),
             "protein": np.asarray([[7, 8], [9, 10]], dtype=np.int32),
         },
-        spatial_unit="spot",
+        spatial_unit="spot_level",
+        database_extra={"original_spatial_unit": "spot"},
         coordinate_unit="pixel",
         value_types={"rna": "counts", "protein": "counts"},
     )
@@ -273,7 +278,8 @@ def test_compose_harmonizes_features_coordinates_and_provenance(tmp_path):
             "rna": np.asarray([[11, 12, 13], [14, 15, 16]], dtype=np.int32),
             "protein": np.asarray([[17, 18], [19, 20]], dtype=np.int32),
         },
-        spatial_unit="bin",
+        spatial_unit="near_cellular",
+        database_extra={"original_spatial_unit": "bin"},
         coordinate_unit="array_index",
         value_types={"rna": "counts", "protein": "counts"},
     )
@@ -362,7 +368,9 @@ def test_compose_harmonizes_features_coordinates_and_provenance(tmp_path):
         )
         assert list(train.mod["protein"].var_names) == ["P1", "P2"]
         np.testing.assert_array_equal(train.obsm["spatial"], [[10, 30], [20, 40]])
-        assert train.uns["database"]["spatial_unit"] == "region"
+        assert train.uns["database"]["spatial_unit"] == "spot_level"
+        assert test.uns["database"]["spatial_unit"] == "near_cellular"
+        assert train.uns["database"]["original_spatial_unit"] == "spot"
         assert train.uns["database"]["coordinate_unit"] == "array_index"
         assert COORDINATE_HARMONIZATION_KEY in train.uns
         assert (
@@ -696,9 +704,18 @@ def test_spatial_cleans_temporary_directory_when_second_write_fails(tmp_path, mo
 
 
 def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
-    source_a = _write_full(tmp_path, "full_a", samples=["shared", "shared"])
-    source_b = _write_full(tmp_path, "full_b", samples=["shared", "shared"])
-    source_c = _write_full(tmp_path, "full_c", samples=["shared", "shared"])
+    source_a = _write_full(
+        tmp_path, "full_a", samples=["shared", "shared"], spatial_unit="near_cellular",
+        database_extra={"original_spatial_unit": "bin"},
+    )
+    source_b = _write_full(
+        tmp_path, "full_b", samples=["shared", "shared"], spatial_unit="spot_level",
+        database_extra={"original_spatial_unit": "bin"},
+    )
+    source_c = _write_full(
+        tmp_path, "full_c", samples=["shared", "shared"], spatial_unit="near_cellular",
+        database_extra={"original_spatial_unit": "bin"},
+    )
     config = _compose_config(
         tmp_path,
         "preserve",
@@ -718,6 +735,9 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
         ]
         assert set(train.obs["sample_id"].astype(str)) == {"full_a::shared", "full_b::shared"}
         assert list(test.obs_names) == ["full_c::cell_1", "full_c::cell_2"]
+        assert train.uns["database"]["spatial_unit"] == "spot_level"
+        assert test.uns["database"]["spatial_unit"] == "near_cellular"
+        assert train.uns["database"]["original_spatial_unit"] == "bin"
         assert train.uns["database"]["derivation"]["construction_type"] == "composite"
         assert test.uns["database"]["derivation"]["construction_type"] == "subset"
         assert train.uns["database"]["derivation"]["challenge_type"] == "cross_subject"
@@ -740,6 +760,14 @@ def test_compose_assigns_whole_sources_and_encodes_global_ids(tmp_path):
         )
         assert train_pairs.isdisjoint(test_pairs)
         assert len(train_pairs | test_pairs) == 6
+        train.uns["database"]["spatial_unit"] = "near_cellular"
+        wrong_resolution = tmp_path / "wrong_resolution.h5mu"
+        train.write_h5mu(wrong_resolution)
+        outcome = validate_h5mu(
+            wrong_resolution,
+            source_paths={"full_a": source_a, "full_b": source_b},
+        )
+        assert "source_resolution_mismatch" in {issue.code for issue in outcome.errors}
     finally:
         train.file.close()
         test.file.close()
@@ -1225,7 +1253,15 @@ def test_real_h5mu_spatial_split_end_to_end():
     with tempfile.TemporaryDirectory(prefix="iscdc-real-split-") as temporary:
         work_dir = Path(temporary)
         output_dir = work_dir / "real_spatial_output"
-        config_values["source"] = str(REAL_SPATIAL_SOURCE)
+        # Explicitly classify a temporary copy of the known Xenium cell fixture.
+        classified_source = work_dir / REAL_SPATIAL_SOURCE.name
+        shutil.copy2(REAL_SPATIAL_SOURCE, classified_source)
+        with h5py.File(classified_source, "r+") as handle:
+            database = handle["uns/database"]
+            assert database["spatial_unit"].asstr()[()] in {"cell", "single_cell"}
+            write_elem(database, "spatial_unit", "single_cell")
+            write_elem(database, "original_spatial_unit", "cell")
+        config_values["source"] = str(classified_source)
         config_values["output_dir"] = str(output_dir)
         config_path = _write_yaml(work_dir / "real_spatial_split.yaml", config_values)
 

@@ -34,7 +34,22 @@
           <dt class="col-sm-4">Species</dt><dd class="col-sm-8">{{ dataset.organism|metadata_values }}</dd>
           <dt class="col-sm-4">Tissue</dt><dd class="col-sm-8">{{ dataset.tissue|metadata_values }}</dd>
           <dt class="col-sm-4">Samples</dt><dd class="col-sm-8">{{ dataset.sample_ids|join(', ') }}</dd>
-          <dt class="col-sm-4">Spatial unit</dt><dd class="col-sm-8">{{ dataset.spatial_unit }}</dd>
+          <dt class="col-sm-4">Spatial resolution</dt>
+          <dd class="col-sm-8">
+            {{ dataset.spatial_unit|spatial_resolution_label }}
+            {% if dataset.spatial_unit in spatial_resolution_descriptions %}
+              <p class="small text-secondary mb-0">{{ spatial_resolution_descriptions[dataset.spatial_unit] }}</p>
+            {% endif %}
+            {% if dataset.derivation and resolution_sources|default({}) %}
+              <p class="small text-secondary mt-2 mb-1">{% if dataset.spatial_unit in spatial_resolution_descriptions %}The file uses the coarsest resolution among its sources.{% else %}Source observation units (not yet classified).{% endif %}</p>
+              <ul class="small mb-0">
+                {% for source_id in dataset.derivation.source_dataset_ids %}
+                  {% set source = resolution_sources.get(source_id) %}
+                  <li>{% if source %}<a href="{{ url_for('database_detail', dataset_id=source_id) }}">{{ source.title }}</a>: {{ source.spatial_unit|spatial_resolution_label }}{% else %}{{ source_id }}: unavailable{% endif %}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </dd>
           <dt class="col-sm-4">Coordinates</dt><dd class="col-sm-8">{{ dataset.coordinate_dimensions }}D, {{ dataset.coordinate_unit }}</dd>
           <dt class="col-sm-4">Pairing</dt><dd class="col-sm-8">{{ dataset.pairing_type }}</dd>
           <dt class="col-sm-4">Modality count</dt><dd class="col-sm-8">{{ dataset.modalities|length }}</dd>

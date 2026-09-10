@@ -127,9 +127,15 @@ regions, and spot-by-cell-type aggregates. Judge the actual shared observation r
 matrix row, not a study's finest imaging resolution, sample/FOV names, or downstream region
 annotations. Author-registered data with verified spot/bin observations remain eligible. Historical
 Challenge coordinate-harmonization labels must be checked against their direct source observations
-before excluding them. Mixed spot/bin Challenges may use the truthful shared `spot/bin` label,
-with native units retained in per-source coordinate provenance and explained per file. This is a
-composite label, not a new observation level or a claim of equal physical resolution. Record scope
+before excluding them. `spatial_unit` now records biological resolution: `single_cell`, `near_cellular`, or
+`spot_level`. Single-cell includes validated individual cell/nucleus segmentation; near-cellular
+measurements approach cell scale without identifying individual cells. Classify the actual paired
+observations using source evidence, not platform names or a universal size cutoff. Preserve the
+native observation unit in `original_spatial_unit` (additional database metadata). Mixed files use
+the coarsest source class, calculated separately for train and test. Coordinate harmonization's
+historical `spatial_unit` and per-source `input_spatial_unit` retain their native-unit meaning and
+must not override the file's biological resolution. Legacy files remain readable; imports and new
+splits require the new classification and original unit. See `doc/空间分辨率分类.md`. Record scope
 decisions in the intake manifest and staged source manifest;
 excluded entries must not return to download, conversion, or import queues. Preserve original
 sources and withdrawal audits. The schema remains backward-readable; schema validity alone does
@@ -308,7 +314,7 @@ The complete suite requires these local real-data fixtures:
 - `exp/xenium_human_rcc_ffpe_rna_protein.h5mu`
 - `exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml`
 
-The real-data test reruns the configured spatial split in a temporary directory and needs roughly 300 MB of temporary disk space. Missing fixtures must fail the suite with a clear message; do not skip the real-data test. Keep synthetic MuData for focused unit and edge-case coverage so those cases remain fast and reproducible.
+The real-data test reruns the configured spatial split in a temporary directory and needs roughly 450 MB of temporary disk space (including a classified copy of the legacy fixture). Missing fixtures must fail the suite with a clear message; do not skip the real-data test. Keep synthetic MuData for focused unit and edge-case coverage so those cases remain fast and reproducible.
 
 For a change spanning the splitter module, run the narrowest affected splitter tests, for example:
 
