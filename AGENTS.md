@@ -1,343 +1,103 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Working scope and completion
 
-Production code lives under `src/iscdc/`, automated tests under `tests/`, and templates, styles, and example metadata under `assets/`. Keep all tracked documentation except the root `AGENTS.md` and `README.md` under `doc/`; annotation-specific documentation belongs under `doc/annotation/`. Runtime catalogue data, visitor analytics, and imported files are written to the ignored `data/` directory. The ignored `temp/` directory stages datasets that are not yet ready for catalogue import; keep source files, their in-progress `metadata.yaml`, and dataset-specific conversion work and output directories there until they satisfy schema 1.2. The ignored `exp/` directory is the local real-data experiment area: keep required real inputs, manual test YAML, and generated experiment outputs there, and never commit its contents. Local `dataset_planner` and `dataset_worker` definitions and their concurrency settings live under the ignored `.codex/` directory; follow `doc/原始数据处理规范.md` when using them, and do not assume those local definitions exist in a fresh checkout. Mirror source paths in the test tree where practical and keep root-level files limited to project configuration, `AGENTS.md`, `README.md`, and entry points.
+Work through the requested outcome: implement the change, run relevant checks, fix failures caused
+by the change, and report the result and any remaining blockers. A first implementation is not a
+review gate unless the user requested one. Use existing session decisions and authorization;
+routine implementation choices, reversible local edits, and affected fixture-based test reruns
+do not need repeated approval.
 
-The tracked `annotation/` directory contains the isolated R/Conda environment declarations and R
-adapters for offline cell type work. The tracked `frontend/` directory contains the Node 24 source,
-lock file, and tests used to build committed browser bundles; neither toolchain is a website runtime
-dependency. The dated 2026-08-18 35-dataset annotation architecture and operational lessons are
-documented in
-`README.md` and `doc/annotation/细胞类型注释经验总结.md`; keep those records synchronized when methods,
-QC gates, scheduling limits, or sidecar contracts change.
+Ask only when a missing decision materially affects scientific meaning, scope, or an action outside
+existing authorization. Identify the blocked action and continue independent work. Data import,
+replacement, publication/restart, and source cleanup must stay within the requested scope; a
+documentation or code edit alone does not authorize them. Dataset-specific decision boundaries
+are in [原始数据处理规范](doc/原始数据处理规范.md#授权与完成边界).
 
-Local Database thumbnails live under the ignored `assets/static/database_thumbnails/` directory
-as WebP files named exactly `<dataset_id>.webp`; do not commit them. Keep images downloaded only
-to produce thumbnails in the separately ignored `assets/he_wsi_thumbnails/` directory. A missing
-thumbnail is valid and must not produce a placeholder or empty image container. When a `full`
-Database has a registered `he_wsi`, generate its thumbnail directly from that WSI with
-`generate-wsi-thumbnails`; do not substitute a separate preview image. Preserve the whole-slide
-view and aspect ratio, do not crop to tissue, and use the fixed 640 px maximum dimension. The
-output must be RGB WebP encoded with quality 85 and method 6. The command must refuse existing
-output unless `--force` is supplied, and replacements must remain atomic. Store downloadable WSI
-and other formal auxiliary files under the owning dataset's ignored
-`data/datasets/<dataset_id>/auxiliary/` directory, never under assets, and register them through
-`add-auxiliary-file` so manifest 1.1
-records their stable ID, original filename, media type, size, SHA-256, source URL, and retrieval
-time. Auxiliary files remain part of the owning data-file detail page and JSON record; do not give
-them catalogue rows, independent detail pages, or user-controlled filesystem paths. Keep manifest
-1.0 readable for datasets without auxiliary files. Invalid or missing auxiliary files must fail
-open without breaking catalogue pages, JSON APIs, or primary downloads. Thumbnail and auxiliary
-discovery and the stylesheet content version are computed at application startup, so restart a
-running application after adding or removing thumbnails or auxiliary files, or changing
-`assets/static/styles.css`.
+## Layout and environments
 
-Missing native Database thumbnails can be supplemented with offline spatial previews through
-`generate-spatial-thumbnails DATASET_ID | --all`. Keep their RGB WebP files and versioned JSON
-sidecars under the ignored `assets/static/database_thumbnails/spatial/` directory, with exact
-`<dataset_id>` stems. Native thumbnails and registered `he_wsi` always take priority, including
-when `--force` is supplied. RNA previews use aligned raw-count row totals; files without RNA use
-local point density and must be labelled accordingly. These are sampling previews, not histology
-or inferred tissue segmentation. Fade low RNA signals continuously without changing source data.
-Keep coordinate geometry, display transforms and signal arrays reproducible; retain source hashes,
-code/environment snapshots and clean-directory replay evidence in ignored audit directories.
-The first version supports one sample in 2D and explicitly reviewed array-index geometries only.
-Validate sidecar/source/image identities at startup; invalid or stale previews fail open as absent.
-Restart the application after publishing previews. See `doc/空间信号缩略图.md` for the rendering
-contract, CLI behavior, provenance and verification requirements.
+- `src/iscdc/`: production Python; `tests/`: automated tests; `assets/`: templates, styles,
+  example metadata and committed browser bundles.
+- `frontend/`: Node 24 source, lock file and tests for browser bundles; `annotation/`: isolated
+  R/Conda declarations and offline annotation adapters. Neither is a website runtime dependency.
+- Keep tracked documentation under `doc/`, except root `AGENTS.md` and `README.md`.
+  Annotation documentation belongs under `doc/annotation/`.
+- Ignored `data/` holds runtime catalogues, analytics and imported files; `temp/<dataset_name>/`
+  holds original inputs, in-progress metadata, isolated conversion work and outputs until accepted;
+  `exp/` holds real-data fixtures and experiments. Keep their contents out of Git.
+- Ignored `.codex/` holds local dataset agent definitions and concurrency settings; do not assume
+  it exists in a fresh checkout. Use the dataset workflow only for dataset preparation tasks.
+- Keep root files to project configuration, entry points, `AGENTS.md` and `README.md`.
+  Document new top-level directories in `README.md` and update this layout when established.
 
-Challenge difficulty is an offline, catalogue-wide distribution-separability snapshot stored in
-the ignored `challenge_difficulty.json` beside `catalog.db`; do not add it to the catalogue schema,
-train/test `.h5mu` files, metadata, or manifests. Generate it with the fixed domain-classifier
-workflow and publish only mean AUROC, shift score, and global percentile on Challenge list/detail
-pages and JSON responses. The website must validate the complete Challenge set, type, input
-modality, train/test IDs and checksums, and metric consistency at startup. Missing, invalid, stale,
-or individually failed results must fail open as unavailable without breaking the catalogue.
-Difficulty ordering must be applied after filtering and before pagination, with unavailable items
-last in either direction. Refresh the snapshot after a Challenge import, replacement, or removal,
-and restart the application after replacing it. Refreshing must reuse verified per-Challenge
-results by default and regenerate cohort rankings; do not refit unchanged classifiers. If the
-Challenge set and files are unchanged, no refresh is needed (including full-only catalogue edits).
-Metadata-only H5MU rewrites, including entry-ID migrations and reconciliation, also change file
-checksums. `reconcile-entry-ids` normally rebinds affected snapshot checksums after checking the
-old values, without recomputing metrics. Otherwise, `evaluate-challenge-difficulty --force`
-verifies actual file checksums against the catalogue and reuses results when the evaluation-input
-fingerprints match, rebinding file identities without fitting. Fingerprints cover the input
-matrix, ordered observation/feature IDs, effective measurement mask, value type, technology and
-hierarchy diagnostics; unrelated metadata and other modalities do not invalidate results.
-Correcting `challenge_type` alone updates the category rankings without refitting classifiers.
-Only new, changed, failed or unverifiable results need evaluation. Parameter, method or software
-changes invalidate reuse. Legacy snapshots without fingerprints can be bootstrapped without
-fitting only when their recorded file checksums still match the verified files. `--force` permits
-overwrite; `--recompute` explicitly requests refitting all classifiers. Never infer unchanged
-inputs merely from unchanged file IDs, dimensions or similar AUROC. Do not manually edit snapshot
-checksums to bypass validation. Preserve the previous snapshot, verify
-actual input-file checksums, and check published metrics and sorting/pagination after restart.
-Dated deployment results belong in `doc/Challenge难度快照运行记录.md`; keep runtime snapshots and
-detailed local audits in ignored data/staging directories.
+Activate `conda activate iscdc` before website, catalogue and general development commands,
+including dependency installation, tests and lint. Cell type reference, annotation, calibration,
+artifact and annotation-audit commands use the separately locked `iscdc-cell-annotation` environment.
 
-Keep the read-only catalogue in `catalog.db` and visitor tracking in the independently versioned
-`analytics.db`; do not add analytics fields to catalogue tables. Analytics initialization, reads,
-writes, and retention cleanup must fail open so catalogue pages, JSON APIs, and downloads remain
-available. The default `data/` location may be a network filesystem, so analytics SQLite databases
-must use DELETE journal mode; do not switch them to WAL. Treat retained IP addresses, User-Agent
-values, and referrers as sensitive operational data: keep raw events for 30 days by default, expose
-them only through the local CLI, and never add them to public pages or APIs. Health checks, static
-assets, JSON APIs, and failed requests must not create visitor sessions or behavior events.
+## Read by task
 
-All preprocessing must be explicitly recorded in a reproducible form. Follow the reproducibility
-contract in `doc/原始数据处理规范.md`: preserve exact input/member/reference identities and hashes,
-the executed code (including uncommitted changes), a reconstructable pinned environment, resolved
-parameters and defaults, ordered commands, and machine-readable observation/feature mappings,
-filters, coordinate transforms and value semantics. Freeze manual decisions as versioned artifacts.
-Retain per-step validation and a clean-directory replay report that checks ordered axes, matrices,
-coordinates and metadata; a narrative or output checksum alone is insufficient. Distinguish upstream
-author processing from project processing and explicitly record unavailable upstream steps. Missing
-reproducibility evidence blocks acceptance/import of the affected output; never claim an unrun
-replay succeeded. Keep dataset-specific reproducibility bundles with the ignored staging/audit
-artifacts and preserve them after import.
+Read the relevant sections when a task touches these areas; no full documentation sweep is required.
 
-Prefer small, focused modules with clear public interfaces. Group code by feature or domain rather than creating broad utility directories. Document any new top-level directory in `README.md` and update this guide when the layout becomes established.
+| Task | Guidance |
+| --- | --- |
+| Setup, CLI usage, test deployment or complete-suite prerequisites | [README](README.md) |
+| Catalogue, API grouping, schema, IDs, import/replacement or splitting | [Catalogue contracts](doc/开发约束.md#catalogue), [schema 1.2](doc/数据库存储规范_v1.2.md) |
+| Raw dataset investigation, conversion, acceptance or import | [Dataset workflow](doc/原始数据处理规范.md) |
+| Intake eligibility or spatial resolution | [Resolution rules](doc/空间分辨率分类.md), [scope decisions](doc/空间观测层级收录审计_2026-09-05.md) |
+| Source cell types, propagation or visualization | [Cell type contracts](doc/开发约束.md#cell-type); for inference/reference/QC work, [annotation guide](doc/annotation/README.md) and [operational lessons](doc/annotation/细胞类型注释经验总结.md) |
+| WSI, thumbnails, auxiliary files or stylesheet publication | [Thumbnail contracts](doc/开发约束.md#thumbnails); for spatial previews, [rendering and replay contract](doc/空间信号缩略图.md) |
+| Difficulty evaluation, publication or changed Challenge files | [Difficulty contracts](doc/开发约束.md#difficulty); dated results go in [run records](doc/Challenge难度快照运行记录.md) |
+| Visitor analytics | [Analytics contracts](doc/开发约束.md#analytics) |
 
-The public catalogue has two presentation classes without adding another `dataset_type`
-value or a separate persisted presentation-class field:
+Retain these boundaries across features: the public catalogue is read-only, catalogue writes are
+serialized, and analytics remains separate. Imports require schema and collection eligibility,
+consistent `entry_id`, and reproducibility evidence. Inferred labels belong in visualization
+sidecars, not canonical source annotations. Feature-specific details and regression coverage live
+in the linked contracts.
 
-- `full` files are exposed as **Databases**.
-- `train` and `test` files are grouped by `split_id` and exposed as one **Challenge**. Every
-  train/test file must declare `derivation.challenge_type` as `same_slice`,
-  `cross_slice_same_subject`, or `cross_subject`; both sides of one Challenge must agree.
+Keep `README.md` and `doc/annotation/细胞类型注释经验总结.md` synchronized when annotation methods,
+QC gates, scheduling limits or sidecar contracts change.
 
-Database and Challenge list pages and JSON APIs must apply filters within their own class.
-Challenge lists must support `challenge_type` filtering, and Challenge responses must expose
-the type derived from schema 1.2 derivation metadata. A Challenge response must include both
-imported sides even when only one side matched the filters. Show an incomplete status when one
-side is absent, and treat multiple train files, multiple test files, a missing or invalid
-`challenge_type`, or conflicting types under one `split_id` as a catalogue integrity error.
-Do not duplicate either the Database/Challenge presentation class or `challenge_type` in a
-separate catalogue column.
+## Verification
 
-When one train/test file has multiple direct source Databases, every derived `sample_id` must be
-`<source_dataset_id>::<original_sample_id>` and must map to an existing sample in exactly one of
-its `derivation.source_dataset_ids`. On Challenge detail pages, File metadata Source and
-Derivation Source databases must present one row per sample, including repeated source values.
-Challenge JSON must expose the same mapping through additive `sample_sources` records containing
-the derived sample, original sample, source Database ID/title, and that Database's scalar-or-list
-Source. Keep the existing aggregate `source` and `derivation.source_dataset_ids` fields unchanged;
-return an empty `sample_sources` list for full and single-source files. Missing or ambiguous
-source/sample relationships are catalogue integrity errors and must not be silently omitted.
+Choose checks for the changed behavior. For code changes, use the narrowest relevant pytest node
+IDs or test files and add regression coverage when behavior changes. Fixture-based tests use
+temporary catalogues and outputs; run and repair affected tests within the existing task without
+asking at each step. Once relevant checks pass, repeat or broaden them only for a new change,
+failure or unresolved concern. Documentation-only edits normally need link and consistency checks.
 
-Schema 1.2 is restricted to cross-omics translation data. A file with exactly two modalities
-must use `pairing_type: same_unit`, and both modality `obs_names` sets must be identical. Files
-with three or more modalities may use `same_unit` or `partially_shared`; partially shared files
-may retain observations present in only one modality, but at least one modality pair must overlap.
-Reject `unpaired` files and do not make the importer silently discard observations. Derive
-`modality_count` from the modality relationship rather than adding a persisted catalogue field,
-and visibly annotate files with more than two modalities in pages and JSON responses.
+Run `make test` or the complete pytest suite only when explicitly requested. The complete suite
+requires the two ignored Xenium fixtures, about 450 MB of temporary space, and local IPC sockets;
+see [README prerequisites](README.md#快速开始). Missing fixtures must fail clearly, not be skipped.
+If the sandbox blocks IPC, request the minimum required local communication permission before
+running the suite; this does not authorize external network access.
 
-The collection scope is limited to cell (including nucleus), spot, and bin observations. Exclude
-region-level paired products, including GeoMx AOI/segments, morphology-selected pooled LCM
-regions, and spot-by-cell-type aggregates. Judge the actual shared observation represented by a
-matrix row, not a study's finest imaging resolution, sample/FOV names, or downstream region
-annotations. Author-registered data with verified spot/bin observations remain eligible. Historical
-Challenge coordinate-harmonization labels must be checked against their direct source observations
-before excluding them. `spatial_unit` now records biological resolution: `single_cell`, `near_cellular`, or
-`spot_level`. Single-cell includes validated individual cell/nucleus segmentation; near-cellular
-measurements approach cell scale without identifying individual cells. Classify the actual paired
-observations using source evidence, not platform names or a universal size cutoff. Preserve the
-native observation unit in `original_spatial_unit` (additional database metadata). Mixed files use
-the coarsest source class, calculated separately for train and test. Coordinate harmonization's
-historical `spatial_unit` and per-source `input_spatial_unit` retain their native-unit meaning and
-must not override the file's biological resolution. Legacy files remain readable; imports and new
-splits require the new classification and original unit. See `doc/空间分辨率分类.md`. Record scope
-decisions in the intake manifest and staged source manifest;
-excluded entries must not return to download, conversion, or import queues. Preserve original
-sources and withdrawal audits. The schema remains backward-readable; schema validity alone does
-not establish collection eligibility. See `doc/空间观测层级收录审计_2026-09-05.md`.
+Application/page/API tests use `httpx.AsyncClient` with `httpx.ASGITransport`, not synchronous
+FastAPI/Starlette `TestClient`. Pure imports use importer results, `validation_report.json`, hashes,
+manifests and direct catalogue reads; they do not require new ASGI tests. Relevant feature
+contracts specify additional checks for data publication and browser behavior.
 
-Every formal data file must declare a scalar `entry_id` in embedded H5MU metadata and
-`metadata.yaml`; the values must agree and are also persisted in manifest metadata, the dedicated
-non-null indexed catalogue column, detail pages, and data-file JSON responses. For intake data,
-`entry_id` is exactly `source_manifest.row_id`, and sibling files created from one intake row share
-it. It is distinct from the per-file `dataset_id`, external `source`, and derived
-`source_dataset_ids`. Spatial subsets inherit the source entry; compose outputs preserve a shared
-source entry or use `split_id` when they cross entries. Existing catalogue v4 data must be migrated
-explicitly with `migrate-catalogue-v5`; application startup must not infer or auto-write entry IDs.
-
-Modality `technology` is a controlled platform/method-level vocabulary defined in
-`src/iscdc/technology.py`. Keep its spelling and punctuation exact, and do not add vendor prefixes,
-modalities, reagent versions, histone marks, or processing details. Register a new technology in
-the shared vocabulary before importing it. Histone modalities use `Spatial CUT&Tag-RNA-seq` and
-store the specific mark only in `mdata.uns["database"]["histone_mark"]`.
-
-Top-level `mdata.obs["cell_type"]` is an optional schema 1.2 annotation. Include it only when a
-public source supplies reliable discrete labels aligned to all or a verified subset of top-level
-observations. For verified partial coverage, assign the project-reserved final category
-`Unannotated` only to source-unmatched observations and record the versioned source-file URL,
-SHA-256, alignment columns, and actual annotated/unannotated counts in
-`mdata.uns["cell_type_provenance"]`; never use this fallback to conceal duplicate, foreign,
-ambiguous, blank, or conflicting source rows. When present, `cell_type` must be an unordered pandas
-categorical with non-null, non-blank, whitespace-trimmed string labels and no unused categories.
-Preserve the source's biological semantics and spelling rather than imposing a cross-dataset
-ontology; an explicit source category such as `Unlabeled` is valid and remains distinct from the
-project fallback. Do not add canonical cell type metadata to
-`metadata.yaml`, catalogue tables, public JSON responses, or filters. The Database detail page may
-render a separately versioned, startup-validated cell type visualization sidecar; that sidecar and
-its internal data endpoint must not present inferred labels as canonical dataset metadata. Spatial
-splits propagate the source column. The visualization heading must provide a method-details entry.
-For `annotation.kind: source`, identify the existing annotation file as the source and state that no
-computational inference was performed; do not render inference-only reference, parameter, threshold,
-or QC sections. For `annotation.kind: inferred`, show the validated method, reference ID/version,
-runtime parameters, QC publication thresholds, and QC results from the in-memory manifest/report.
-Keep point confidence in the existing hover interaction rather than the method-details panel.
-When a sidecar contains the exact project-reserved label `Unannotated`, keep its legend checkbox
-available but unchecked on initial render and assign those points zero display radius until the user
-selects it. Other labels remain selected by default; source labels such as `Unlabeled` are not covered
-by this presentation rule.
-Each composed output side includes it only when every full source assigned to that side has a valid
-column; categories are merged in source and first-seen order with `Unannotated` forced last, and
-partial-source provenance counts are recomputed for the output observations. If any source lacks
-the column, the output omits it.
-
-`import-dataset` rejects existing IDs unless `--replace` is explicit. Replacement must preserve
-the indexed `entry_id` and `dataset_type` and, for derived data, the construction type, ordered
-source IDs,
-`split_id`, and `challenge_type`. It must stage and validate the new data first, checksum and
-preserve registered auxiliary files, and restore the original database record and directory if
-the transaction or filesystem switch fails. Serialize catalogue writes. Rebuild dependent
-Challenges after changing a full source when their propagated annotations need updating, then
-refresh the catalogue-wide difficulty snapshot, reusing verified unchanged evaluation inputs.
-
-## Build, Test, and Development Commands
-
-Website, catalogue, and general development commands must be run in the Conda environment named
-`iscdc`. Activate it with `conda activate iscdc` before installing dependencies, running normal
-tests, linting, or starting the application. Cell type reference, annotation, calibration, artifact,
-and annotation-audit commands are the sole exception: run them through the separately locked Conda
-environment `iscdc-cell-annotation`, never through the website environment.
-
-The project uses requirements files and a small Makefile command set documented in `README.md`:
-
-- `make setup` — install development dependencies from `requirements-dev.txt`.
-- `make test` — run the complete pytest suite, including the required real-data split; agents use
-  it only when the user explicitly requests the complete suite.
-- `make lint` — run Ruff static-analysis checks.
-- `make run` — start the FastAPI application with Uvicorn.
-- `make import-example` — import the documented example dataset into the local catalogue.
-
-Install the optional domain-classifier dependency set through `requirements-difficulty.txt` (it is
-already included by `requirements-dev.txt`) and refresh the complete Challenge ranking with:
-
-```bash
-PYTHONPATH=src python -m iscdc.cli evaluate-challenge-difficulty [--force] [--recompute]
-```
-
-The default published destination is `challenge_difficulty.json` beside `catalog.db`. A non-default
-`--output` is an experiment snapshot and is not read by the website.
-Existing output is reused after verification; `--force` only authorizes atomic replacement.
-Use `--recompute` only when a full classifier rerun is intended. Preserve the old output before
-replacement and record `reused_count` and `evaluated_count` separately from successful results.
-
-Invoke the standalone schema 1.2 splitter with:
-
-```bash
-PYTHONPATH=src python -m iscdc.splitter
-```
-
-Use these subcommands:
-
-- `range FULL.h5mu` for read-only coordinate inspection.
-- `spatial CONFIG.yaml` for a spatial train/test split.
-- `compose CONFIG.yaml` to assign whole datasets to train or test.
-
-All split parameters belong in the YAML configuration; paths in it are resolved
-relative to the configuration file.
-
-Do not document placeholder commands as working until their targets are implemented.
-
-## Coding Style & Naming Conventions
-
-Follow the standard formatter and linter for the chosen language, checked into project configuration. Use spaces rather than tabs unless the ecosystem requires otherwise. Choose descriptive names: `snake_case` for files and functions in Python, `camelCase` for JavaScript/TypeScript functions, and `PascalCase` for classes and components. Avoid unrelated formatting changes in feature commits.
-
-## Testing Guidelines
-
-Add tests with every behavior change and bug fix. Keep tests deterministic and independent of
-network services by default. Name tests after observable behavior, and place shared fixtures in
-the nearest appropriate test support module. During agent work, run only tests directly related
-to the code and behavior modified in the current task, preferring exact pytest node IDs or the
-narrowest relevant test file. Do not proactively run `make test` or the complete pytest suite;
-run it only when the user explicitly requests complete-suite verification. No coverage threshold
-is currently enforced.
-
-Complete-suite runs must allow local IPC sockets because the PyTorch suite exercises multi-process
-`DataLoader` workers. In sandboxed environments, request the minimum additional permission needed
-for local process-to-process communication before running `make test`; this does not authorize
-external network access. Do not run the suite in a socket-blocking sandbox, where worker queue
-failures can leave pytest waiting indefinitely.
-
-Application, page, and API tests must use `httpx.AsyncClient` with
-`httpx.ASGITransport`; do not use the synchronous `fastapi.testclient.TestClient` or
-`starlette.testclient.TestClient`. Pure data imports that do not change source code, schemas,
-templates, or API behavior do not require HTTP/ASGI-layer tests. Validate those imports through
-the importer result, `validation_report.json`, checksum and manifest consistency, and direct
-catalogue or repository reads instead. Run network-layer tests when application behavior changes,
-not merely to confirm that a data file was imported.
-
-Entry-ID behavior tests must cover missing or unsafe values, H5MU/YAML mismatch, the dedicated
-catalogue index and API/detail exposure, replacement identity rejection, spatial/compose
-propagation, and explicit v4-to-v5 migration with rollback. Pure imports must additionally verify
-that H5MU, metadata, manifest, and the catalogue row contain the same approved `entry_id`.
-
-Cell type visualization selection tests must verify both legend state and rendered point filtering:
-the exact `Unannotated` category starts unchecked with zero-radius points, all other categories start
-checked, and browser smoke testing against a published sidecar must confirm the initial checkbox state
-without console errors. Allow the real dataset enough time to decode and render before failing the
-browser test; do not weaken the state assertions to compensate for a large point file.
-
-Partial source `cell_type` tests must cover exact `Unannotated` spelling and terminal category
-order, safe source-file/URL/SHA-256 provenance, actual per-source annotated/unannotated counts,
-rejection of missing/orphan/mismatched provenance, exact derived-label agreement with direct full
-sources, and provenance/count propagation through spatial and composite splits.
-
-Auxiliary-file behavior tests must cover safe manifest parsing, atomic registration rollback,
-duplicate and path rejection, fail-open discovery, detail-page and JSON exposure, HEAD and byte
-Range downloads, and 404/416 failures. A pure auxiliary-data registration using already-tested
-code does not require a new ASGI test, but it must be verified through CLI output, source and stored
-SHA-256/size equality, manifest consistency, format-specific checks, and direct endpoint reads.
-
-WSI-thumbnail behavior tests must use small deterministic tiled TIFF fixtures and cover pyramid
-level selection, aspect-ratio-preserving 640 px output, RGB WebP validation, existing-output
-protection, atomic replacement rollback, invalid inputs, single-dataset and `--all` CLI modes,
-batch skipping, and partial failures. Real WSI thumbnail generation additionally requires visual
-inspection for completeness, orientation, tile seams, and black borders, plus direct detail-page
-and static-file reads after restarting the application.
-
-Difficulty publication tests must cover strict snapshot validation, startup-only loading,
-fail-open missing/corrupt/stale reports, nullable API results, list/detail presentation, one shared
-accessible method modal per page, ascending and descending ordering before pagination, and
-unavailable items sorting last. Domain-classifier tests must retain same-distribution, clear-shift,
-label-swap, reproducibility, seed stability, and class-imbalance sanity checks.
-Incremental refresh tests must prove unchanged files and unrelated metadata edits do not fit
-classifiers, effective-input changes invalidate only affected results, legacy bootstrap requires
-verified file identity, and additions/removals regenerate cohort percentiles without stale warnings.
-Cover actual checksum mismatches, failed/corrupt cache rows, configuration/method/software changes,
-and the distinction between `--force` overwrite and explicit `--recompute`.
-
-The complete suite requires these local real-data fixtures:
-
-- `exp/xenium_human_rcc_ffpe_rna_protein.h5mu`
-- `exp/xenium_human_rcc_ffpe_rna_protein_vertical_split.yaml`
-
-The real-data test reruns the configured spatial split in a temporary directory and needs roughly 450 MB of temporary disk space (including a classified copy of the legacy fixture). Missing fixtures must fail the suite with a clear message; do not skip the real-data test. Keep synthetic MuData for focused unit and edge-case coverage so those cases remain fast and reproducible.
-
-For a change spanning the splitter module, run the narrowest affected splitter tests, for example:
+Useful commands after activating the environment:
 
 ```bash
 PYTHONPATH=src python -m pytest tests/test_splitter.py::test_compose_assigns_whole_sources_and_encodes_global_ids
+make lint
+make run
 ```
 
-## Commit & Pull Request Guidelines
+The pytest node is an example for compose changes, not a mandatory check for unrelated work.
+`make setup` installs development dependencies; `make import-example` imports the documented
+example into the local catalogue. Split parameters belong in YAML and paths resolve relative to
+that YAML; see README for `range`, `spatial` and `compose` usage.
 
-Use a descriptive Conventional Commit subject in the form `type(scope): imperative summary`; omit the scope only when none is useful. Every commit must include a body that explains the motivation, the principal implementation changes, and the verification performed. Record breaking changes, migration requirements, and related issues in the body or footer when applicable. Do not use an underspecified single-line message, even for a focused change.
+## Code and contribution conventions
 
-Pull requests should explain the change, motivation, and verification performed. Link relevant issues, identify breaking changes, and include screenshots or terminal output when behavior is visual or operational. Keep each pull request focused and ensure documented checks pass before requesting review.
+Prefer focused feature/domain modules and mirror source paths in tests where practical. Follow
+the checked-in formatter/linter and existing naming conventions; avoid unrelated formatting.
+Keep tests deterministic and independent of network services by default. Do not document placeholder
+commands as working before their targets exist.
+
+When committing, use `type(scope): imperative summary` (scope optional) with a body explaining
+motivation, principal changes and verification. Include migration/breaking-change notes when
+applicable. PRs should describe the problem, resulting behavior and verification, with screenshots
+or operational evidence when useful. Commit and PR creation follow the user's requested scope.
