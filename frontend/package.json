@@ -7,7 +7,7 @@
     "node": "^24.0.0"
   },
   "scripts": {
-    "build": "esbuild src/cell_type_visualization.js --bundle --minify --tree-shaking=true --platform=browser --target=es2022 --outfile=../assets/static/cell_type_visualization.js",
+    "build": "node build.mjs",
     "test": "node --test",
     "test:browser": "playwright test"
   },

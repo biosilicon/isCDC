@@ -54,6 +54,7 @@ class Settings:
     analytics_cookie_secure: bool
     cell_type_visualization_root: Path | None = None
     entry_names_path: Path | None = None
+    spatial_domain_visualization_root: Path | None = None
 
     @classmethod
     def from_environment(cls, project_root: Path = PROJECT_ROOT) -> Settings:
@@ -83,6 +84,11 @@ class Settings:
             cell_type_visualization_root=_configured_path(
                 "ISCDC_CELL_TYPE_VISUALIZATION_ROOT",
                 project_root / "data" / "cell_type_visualizations",
+                project_root,
+            ),
+            spatial_domain_visualization_root=_configured_path(
+                "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT",
+                project_root / "data" / "spatial_domain_visualizations",
                 project_root,
             ),
         )

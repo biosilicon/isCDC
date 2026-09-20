@@ -33,6 +33,7 @@ are in [原始数据处理规范](doc/原始数据处理规范.md#授权与完�
 Activate `conda activate iscdc` before website, catalogue and general development commands,
 including dependency installation, tests and lint. Cell type reference, annotation, calibration,
 artifact and annotation-audit commands use the separately locked `iscdc-cell-annotation` environment.
+Spatial-domain inference uses its separately locked `iscdc-spatial-domain` environment.
 
 ## Read by task
 
@@ -45,6 +46,7 @@ Read the relevant sections when a task touches these areas; no full documentatio
 | Raw dataset investigation, conversion, acceptance or import | [Dataset workflow](doc/原始数据处理规范.md) |
 | Intake eligibility or spatial resolution | [Resolution rules](doc/空间分辨率分类.md), [scope decisions](doc/空间观测层级收录审计_2026-09-05.md) |
 | Source cell types, propagation or visualization | [Cell type contracts](doc/开发约束.md#cell-type); for inference/reference/QC work, [annotation guide](doc/annotation/README.md) and [operational lessons](doc/annotation/细胞类型注释经验总结.md) |
+| Spatial-domain inference or visualization | [Domain workflow](doc/annotation/空间域识别.md), [feature contracts](doc/开发约束.md#spatial-domain-visualization) |
 | WSI, thumbnails, auxiliary files or stylesheet publication | [Thumbnail contracts](doc/开发约束.md#thumbnails); for spatial previews, [rendering and replay contract](doc/空间信号缩略图.md) |
 | Difficulty evaluation, publication or changed Challenge files | [Difficulty contracts](doc/开发约束.md#difficulty); dated results go in [run records](doc/Challenge难度快照运行记录.md) |
 | Visitor analytics | [Analytics contracts](doc/开发约束.md#analytics) |

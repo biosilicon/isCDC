@@ -160,6 +160,38 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 修改页面样式后，应执行 `./deploy_test.sh restart`。
 样式表 URL 会携带内容哈希，重启后浏览器会自动获取新版本，无需用户手动清除缓存。
 
+### 空间域识别与可视化
+
+Database 详情页支持在同一画布中切换 Cell types / Spatial domains。空间域以 RNA 和二维
+坐标为输入：Single-cell 使用 BANKSY，Near-cellular / Spot-level 使用 GraphST；各样本
+独立计算，采用固定分辨率 Leiden 聚类。域编号仅在当前样本内有效。
+
+结果保存在独立 sidecar 中，通过 `ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT` 指定目录，
+默认 `data/spatial_domain_visualizations/`。算法在独立 `iscdc-spatial-domain` 环境运行，
+单任务默认最多 40 个 CPU 线程和 128 GiB 内存，为 SSH 和网站保留资源。
+输入规则、环境安装、CLI、配置和发布边界见[空间域识别](doc/annotation/空间域识别.md)。
+全量后台队列支持冻结输入、每分钟进度/ETA、逐数据集日志与断点恢复；启动方法见该文档的
+[全量后台队列](doc/annotation/空间域识别.md#全量后台队列)章节。
+并行续跑支持最多 8 项、共享 64 核/192 GiB 预算，按任务预计内存调度，详见
+[并行续跑](doc/annotation/空间域识别.md#并行续跑)。
+适配器兼容 H5MU 的 `null` 元数据编码；Seurat v3 HVG 数值拟合失败时按固定 span 序列重试，
+完整记录重试参数。修复后可用 `continue --retry-failed` 保留成功结果并重排失败项；大型 BANKSY
+任务的 ETA 纳入 observation 规模和超时反馈，仍属动态估计。
+
+分析全部成功完成后，一键审计、发布空间域结果并重启现有测试网站：
+
+```bash
+bash annotation/spatial_domain/publish_completed.sh
+```
+
+脚本自动激活 `iscdc`、读取最新运行目录，核验源文件与全部成功 sidecar，保留旧版本，发布后
+检查全部详情页和点位文件；启动或 HTTP 验证失败时自动回滚。`--check-only` 仅生成审计报告。
+未完成、仍有计算失败或来源变化时拒绝发布；输入资格造成的正常跳过会记录在报告中。
+需要先发布已经完成的结果、让后台继续计算时，执行
+`bash annotation/spatial_domain/publish_completed.sh --completed-only`。该模式固定本次成功清单，
+暂缓未完成/失败项并保留它们的现有正式结果；之后再次运行同一命令补充新完成的结果。
+具体路径、前提与恢复说明见[分析完成后一键发布](doc/annotation/空间域识别.md#分析完成后一键发布)。
+
 ### Cell type 空间可视化
 
 Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h5mu`、catalogue schema、

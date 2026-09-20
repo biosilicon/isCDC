@@ -90,3 +90,17 @@ conda run -n iscdc-cell-annotation \
 conda run -n iscdc env PYTHONPATH=src \
   python -m pytest tests/test_cell_type_annotation.py -q
 ```
+
+## Spatial domains
+
+[Spatial domain identification](空间域识别.md) adds a separate RNA-based BANKSY/GraphST
+pipeline and same-canvas mode switch. Its `iscdc-spatial-domain` environment and lockfile
+are under `annotation/spatial_domain/`; PyTorch remains outside `iscdc-cell-annotation`.
+Domain labels are sample-local clusters, without reference labels or confidence scores.
+The default CPU ceiling is 40 threads, memory budget 128 GiB, with serialized jobs,
+resource preflight and runtime RSS monitoring. Source H5MU and canonical annotations
+are not modified. Source/inferred cell-type sidecar contracts remain unchanged.
+
+The [parallel continuation](空间域识别.md#并行续跑) supervisor owns the global resource lock
+and leases disjoint CPU sets to workers. Its default limits are eight jobs, 64 logical CPUs
+and 192 GiB aggregate reserved memory; actual concurrency follows memory availability.

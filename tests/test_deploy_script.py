@@ -33,11 +33,7 @@ def _fake_tmux(tmp_path: Path) -> Path:
     bin_dir.mkdir()
     _write_executable(
         bin_dir / "tmux",
-        "#!/bin/sh\n"
-        'if [ "$1" = "has-session" ]; then\n'
-        "    exit 1\n"
-        "fi\n"
-        "exit 99\n",
+        '#!/bin/sh\nif [ "$1" = "has-session" ]; then\n    exit 1\nfi\nexit 99\n',
     )
     return bin_dir
 
@@ -96,7 +92,7 @@ def test_status_bypasses_proxy_for_local_health_check(tmp_path: Path) -> None:
     )
     _write_executable(
         bin_dir / "curl",
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FAKE_CURL_ARGUMENTS\"\n",
+        '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$FAKE_CURL_ARGUMENTS"\n',
     )
 
     result = _run_script(
@@ -151,3 +147,41 @@ def test_stop_sends_interrupt_to_the_managed_session(tmp_path: Path) -> None:
         "iscdc_running_test",
         "C-c",
     ]
+
+
+def test_start_passes_domain_root_explicitly_to_existing_tmux_server(tmp_path: Path) -> None:
+    import shlex
+    import sys
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "launch"
+    _write_executable(
+        bin_dir / "tmux",
+        "#!/bin/sh\n"
+        'if [ "$1" = "has-session" ]; then exit 1; fi\n'
+        'if [ "$1" = "new-session" ]; then\n'
+        '  printf \'%s\\n\' "$@" > "$CAPTURE_LAUNCH"\n'
+        "  exit 0\nfi\nexit 99\n",
+    )
+    _write_executable(bin_dir / "ss", "#!/bin/sh\nexit 0\n")
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    catalogue = tmp_path / "catalog.db"
+    catalogue.touch()
+    domain_root = tmp_path / "domain results"
+    result = _run_script(
+        "start",
+        env={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "CAPTURE_LAUNCH": str(capture),
+            "ISCDC_PYTHON": sys.executable,
+            "ISCDC_DATABASE_PATH": str(catalogue),
+            "ISCDC_DATA_ROOT": str(tmp_path),
+            "ISCDC_DEPLOY_LOG": str(tmp_path / "server.log"),
+            "ISCDC_ANALYTICS_DATABASE_PATH": str(tmp_path / "analytics.db"),
+            "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT": str(domain_root),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    command = shlex.split(capture.read_text().splitlines()[-1])
+    assert f"ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT={domain_root}" in command

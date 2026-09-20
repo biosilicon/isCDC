@@ -126,3 +126,16 @@ test("unknown binary category is reported as a load error", async () => {
   assert.equal(calls.render.length, 0);
   assert.equal(calls.states.at(-1)[0], "error");
 });
+
+test("mode switch rejects old results and validates sample-local domain categories", async () => {
+  const stale = deferred();
+  const {lifecycle, calls} = harness({load: () => stale.promise});
+  const original = lifecycle.start();
+  lifecycle.samples = [{key: "domain", id: "A", count: 1, categories: [{code: 8, label: "Domain 8"}]}];
+  lifecycle.load = async () => ({count: 1, type: new Uint16Array([8])});
+  await lifecycle.switchSample("domain");
+  stale.resolve(point);
+  await original;
+  assert.equal(calls.render.length, 1);
+  assert.equal(calls.states.at(-1)[0], "ready");
+});

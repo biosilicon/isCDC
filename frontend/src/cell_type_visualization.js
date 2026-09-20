@@ -2,13 +2,13 @@ import {Deck, OrthographicView} from "@deck.gl/core";
 import {ScatterplotLayer} from "@deck.gl/layers";
 
 import {decodePointData} from "./point_data.js";
+import {VisualizationModes} from "./visualization_modes.js";
 import {VisualizationLifecycle} from "./visualization_lifecycle.js";
 import {
   buildBinaryAttributes,
   buildLegendEntries,
   coordinateBounds,
   formatHoverText,
-  initialSelectedCategoryCodes,
   resetViewState,
 } from "./visualization_state.js";
 
@@ -44,7 +44,11 @@ function validateConfig(value) {
 class CellTypeVisualization {
   constructor(root, config) {
     this.root = root;
-    this.config = config;
+    this.modes = new VisualizationModes(config.views || [{...config, kind: "cell_type"}]);
+    this.config = this.modes.view;
+    this.displayYAxis = config.yAxis;
+    this.modeSelect = root.querySelector("[data-visualization-mode]");
+    this.renderedSampleId = null;
     this.stage = requiredElement(root, "[data-cell-type-stage]");
     this.canvasHost = requiredElement(root, "[data-cell-type-canvas]");
     this.sampleSelect = requiredElement(root, "[data-cell-type-sample]");
@@ -59,7 +63,7 @@ class CellTypeVisualization {
     this.attributes = null;
     this.initialViewState = null;
     this.viewState = null;
-    this.selectedCodes = initialSelectedCategoryCodes(config.categories);
+    this.selectedCodes = this.modes.selectedCodes;
     this.currentSampleKey = config.initialSampleKey || config.samples[0].key;
     this.onContextLost = (event) => {
       event.preventDefault();
@@ -67,10 +71,10 @@ class CellTypeVisualization {
     };
     this.onResize = () => this.deck?.redraw(true);
     this.onSampleChange = () => {
-      this.currentSampleKey = this.sampleSelect.value;
-      this.tooltip.hidden = true;
-      this.lifecycle.switchSample(this.currentSampleKey);
+      const sample = this.config.samples.find((item) => item.key === this.sampleSelect.value);
+      this.selectView(this.config.kind, sample.id);
     };
+    this.onModeChange = () => this.selectView(this.modeSelect.value);
     this.onReset = () => this.lifecycle.reset();
     this.onRetry = () => this.lifecycle.retry();
     this.onClose = () => this.lifecycle.destroy(true);
@@ -96,10 +100,32 @@ class CellTypeVisualization {
 
   bindControls() {
     this.sampleSelect.addEventListener("change", this.onSampleChange);
+    this.modeSelect?.addEventListener("change", this.onModeChange);
     this.resetButton.addEventListener("click", this.onReset);
     this.retryButton.addEventListener("click", this.onRetry);
     this.closeButton.addEventListener("click", this.onClose);
     window.addEventListener("pagehide", this.onPageHide, {once: true});
+  }
+
+  selectView(kind, sampleId) {
+    this.modes.select(kind, sampleId);
+    this.config = this.modes.view;
+    this.selectedCodes = this.modes.selectedCodes;
+    this.currentSampleKey = this.modes.sample.key;
+    this.tooltip.hidden = true;
+    this.points = null;
+    this.attributes = null;
+    this.deck?.setProps({layers: []});
+    if (this.modeSelect) this.modeSelect.value = kind;
+    this.root.querySelector("[data-visualization-title]").textContent = this.config.title;
+    this.root.querySelector("[data-visualization-legend-title]").textContent = this.config.label;
+    this.root.querySelector("[data-visualization-method]").dataset.bsTarget = this.config.methodModal;
+    this.populateSamples();
+    this.renderLegend(buildLegendEntries(new Uint16Array(), this.modes.categories));
+    this.lifecycle.samples = this.config.samples;
+    this.lifecycle.categories = this.modes.categories;
+    if (this.lifecycle.started) this.lifecycle.switchSample(this.currentSampleKey);
+    else this.lifecycle.currentSampleKey = this.currentSampleKey;
   }
 
   populateSamples() {
@@ -125,30 +151,36 @@ class CellTypeVisualization {
   }
 
   async fetchPoints(sample, signal) {
+    const kind = this.config.kind;
     const response = await fetch(sample.url, {
       signal,
       credentials: "same-origin",
-      headers: {Accept: "application/vnd.iscdc.cell-type-points"},
+      headers: {Accept: this.config.kind === "spatial_domain"
+        ? "application/vnd.iscdc.spatial-domain-points" : "application/vnd.iscdc.cell-type-points"},
     });
     if (!response.ok) throw new Error(`Point request failed with HTTP ${response.status}`);
-    return decodePointData(await response.arrayBuffer());
+    return decodePointData(await response.arrayBuffer(), kind);
   }
 
   renderPoints(points, sample) {
     this.currentSampleKey = sample.key;
     this.sampleSelect.value = sample.key;
     this.points = points;
-    this.renderLegend(buildLegendEntries(points.type, this.config.categories));
-    this.rebuildLayer(true);
+    this.renderLegend(buildLegendEntries(points.type, this.modes.categories));
+    this.rebuildLayer(this.renderedSampleId !== sample.id);
+    this.renderedSampleId = sample.id;
+    for (const section of document.querySelectorAll("[data-domain-method-sample]")) {
+      section.hidden = section.dataset.domainMethodSample !== sample.id;
+    }
   }
 
   rebuildLayer(resetView = false) {
     if (!this.points) return;
     this.attributes = buildBinaryAttributes(
       this.points,
-      this.config.categories,
+      this.modes.categories,
       this.selectedCodes,
-      this.config.yAxis,
+      this.displayYAxis,
     );
     const data = {
       length: this.points.count,
@@ -214,7 +246,7 @@ class CellTypeVisualization {
     const text = formatHoverText(
       this.points,
       info.index,
-      this.config.categories,
+      this.modes.categories,
       this.config.annotationKind,
     );
     if (!text) {
@@ -272,7 +304,8 @@ class CellTypeVisualization {
     }
     this.legend.append(list);
     const setAll = (selected) => {
-      this.selectedCodes = selected ? new Set(entries.map((entry) => entry.code)) : new Set();
+      this.selectedCodes.clear();
+      if (selected) for (const entry of entries) this.selectedCodes.add(entry.code);
       for (const checkbox of list.querySelectorAll('input[type="checkbox"]')) checkbox.checked = selected;
       this.rebuildLayer(false);
     };
@@ -282,6 +315,7 @@ class CellTypeVisualization {
 
   destroyRenderer() {
     this.sampleSelect.removeEventListener("change", this.onSampleChange);
+    this.modeSelect?.removeEventListener("change", this.onModeChange);
     this.resetButton.removeEventListener("click", this.onReset);
     this.retryButton.removeEventListener("click", this.onRetry);
     this.closeButton.removeEventListener("click", this.onClose);

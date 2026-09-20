@@ -15,21 +15,22 @@ function asBytes(input) {
   throw new TypeError("Point data must be an ArrayBuffer or typed-array view");
 }
 
-function validateMagic(bytes) {
-  for (let index = 0; index < MAGIC.length; index += 1) {
-    if (bytes[index] !== MAGIC[index]) {
+function validateMagic(bytes, kind) {
+  const magic = kind === "spatial_domain" ? Uint8Array.of(73, 83, 67, 68, 67, 83, 68, 0) : MAGIC;
+  for (let index = 0; index < magic.length; index += 1) {
+    if (bytes[index] !== magic[index]) {
       throw new Error("Invalid cell type point-data magic");
     }
   }
 }
 
 /** Decode the strict little-endian cell type point format without copying payloads. */
-export function decodePointData(input) {
+export function decodePointData(input, kind = "cell_type") {
   let bytes = asBytes(input);
   if (bytes.byteLength < POINT_DATA_HEADER_BYTES) {
     throw new Error("Cell type point data is shorter than its 32-byte header");
   }
-  validateMagic(bytes);
+  validateMagic(bytes, kind);
 
   let view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = view.getUint16(8, true);
@@ -49,6 +50,7 @@ export function decodePointData(input) {
   }
 
   const hasConfidence = (flags & POINT_DATA_FLAG_CONFIDENCE) !== 0;
+  if (kind === "spatial_domain" && hasConfidence) throw new Error("Domains cannot contain confidence");
   const bytesPerPoint = hasConfidence ? 14 : 10;
   const expectedSize = POINT_DATA_HEADER_BYTES + bytesPerPoint * count;
   if (declaredSize !== BigInt(expectedSize) || bytes.byteLength !== expectedSize) {

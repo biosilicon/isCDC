@@ -47,7 +47,7 @@ export class VisualizationLifecycle {
       const points = await this.load(sample, this.abortController.signal);
       if (!this.requestGate.isCurrent(token) || this.destroyed) return false;
       if (points.count !== Number(sample.count)) throw new Error(`Point count mismatch for ${sample.id}`);
-      validateCategoryCodes(points.type, this.categories);
+      validateCategoryCodes(points.type, sample.categories || this.categories);
       this.renderer.render(points, sample);
       this.onState("ready", "");
       return true;

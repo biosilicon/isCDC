@@ -11,6 +11,7 @@ PYTHON_BIN="${ISCDC_PYTHON:-/home1/shezixi/miniconda3/envs/iscdc/bin/python}"
 DATABASE_PATH="${ISCDC_DATABASE_PATH:-${PROJECT_ROOT}/data/catalog.db}"
 ANALYTICS_DATABASE_PATH="${ISCDC_ANALYTICS_DATABASE_PATH:-${PROJECT_ROOT}/data/analytics.db}"
 DATA_ROOT="${ISCDC_DATA_ROOT:-${PROJECT_ROOT}/data/datasets}"
+DOMAIN_ROOT="${ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT:-${PROJECT_ROOT}/data/spatial_domain_visualizations}"
 LOG_PATH="${ISCDC_DEPLOY_LOG:-${PROJECT_ROOT}/data/iscdc-server.log}"
 LOCAL_URL="http://127.0.0.1:${PORT}/healthz"
 PUBLIC_URL="http://10.138.46.171:${PORT}"
@@ -20,6 +21,9 @@ if [[ "${DATABASE_PATH}" != /* ]]; then
 fi
 if [[ "${DATA_ROOT}" != /* ]]; then
     DATA_ROOT="${PROJECT_ROOT}/${DATA_ROOT}"
+fi
+if [[ "${DOMAIN_ROOT}" != /* ]]; then
+    DOMAIN_ROOT="${PROJECT_ROOT}/${DOMAIN_ROOT}"
 fi
 if [[ "${ANALYTICS_DATABASE_PATH}" != /* ]]; then
     ANALYTICS_DATABASE_PATH="${PROJECT_ROOT}/${ANALYTICS_DATABASE_PATH}"
@@ -56,6 +60,8 @@ Optional environment variables:
   ISCDC_ANALYTICS_COOKIE_SECURE
                         Add Secure to the visitor cookie (default: false).
   ISCDC_DATA_ROOT       Dataset directory (default: data/datasets).
+  ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT
+                        Spatial-domain results (default: data/spatial_domain_visualizations).
 EOF
 }
 
@@ -141,6 +147,7 @@ start_service() {
         "ISCDC_DATABASE_PATH=${DATABASE_PATH}" \
         "ISCDC_ANALYTICS_DATABASE_PATH=${ANALYTICS_DATABASE_PATH}" \
         "ISCDC_DATA_ROOT=${DATA_ROOT}" \
+        "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT=${DOMAIN_ROOT}" \
         "${PYTHON_BIN}" -m uvicorn iscdc.app:app \
         --app-dir "${PROJECT_ROOT}/src" \
         --host "${HOST}" \

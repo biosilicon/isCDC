@@ -1,0 +1,47 @@
+import {expect, test} from "@playwright/test";
+
+const databasePath = process.env.ISCDC_DOMAIN_DATABASE_PATH;
+test("spatial domains share a canvas with cell types and keep independent legends", async ({page}) => {
+  test.skip(!databasePath, "Set ISCDC_DOMAIN_DATABASE_PATH to a Database with both valid sidecars");
+  test.setTimeout(90000);
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  // The site's unrelated favicon may be absent in isolated previews.
+  await page.route("**/favicon.ico", (route) => route.fulfill({status: 204}));
+  await page.goto(databasePath);
+  const region = page.locator("#cell-type-visualization");
+  await region.scrollIntoViewIfNeeded();
+  await expect(region).toHaveAttribute("data-visualization-state", "ready", {timeout: 60000});
+  const mode = region.locator("[data-visualization-mode]");
+  await expect(mode).toBeVisible();
+  await expect(mode).toHaveValue("cell_type");
+  const canvas = region.locator("canvas");
+  const originalCanvas = await canvas.elementHandle();
+  const cellLegend = region.locator(".cell-type-legend-item input");
+  await cellLegend.first().uncheck();
+  await mode.selectOption("spatial_domain");
+  await expect(region).toHaveAttribute("data-visualization-state", "ready");
+  await expect(region.locator("[data-visualization-title]")).toHaveText("Spatial domains");
+  expect(await originalCanvas.evaluate((element) => element.isConnected)).toBe(true);
+  const domains = region.locator(".cell-type-legend-item").filter({hasText: /^Domain /});
+  expect(await domains.count()).toBeGreaterThan(0);
+  await domains.first().locator("input").uncheck();
+  await region.locator("[data-visualization-method]").click();
+  const modal = page.locator("#spatial-domain-method-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText("GraphST + Leiden");
+  await expect(modal).toContainText("RNA counts and spatial coordinates");
+  await expect(modal).not.toContainText("Reference ID");
+  await modal.getByRole("button", {name: "Close", exact: true}).click();
+  await expect(modal).not.toBeVisible();
+  await mode.selectOption("cell_type");
+  await expect(region).toHaveAttribute("data-visualization-state", "ready");
+  await expect(cellLegend.first()).not.toBeChecked();
+  await mode.selectOption("spatial_domain");
+  await expect(region).toHaveAttribute("data-visualization-state", "ready");
+  await expect(domains.first().locator("input")).not.toBeChecked();
+  await region.locator("[data-cell-type-select-all]").click();
+  await expect(domains.first().locator("input")).toBeChecked();
+  expect(errors).toEqual([]);
+});

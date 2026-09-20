@@ -3,12 +3,19 @@
     <div>
       <p class="text-uppercase small fw-semibold text-primary mb-1">Spatial annotation</p>
       <h2 id="cell-type-visualization-title" class="h3 mb-1">
-        Cell type visualization
-        <sup><button class="method-help" type="button" data-bs-toggle="modal" data-bs-target="#cell-type-method-modal" aria-label="View cell type annotation method details">?</button></sup>
+        <span data-visualization-title>{{ cell_type_visualization.title }}</span>
+        <sup><button class="method-help" type="button" data-bs-toggle="modal" data-bs-target="{{ cell_type_visualization.methodModal }}" data-visualization-method aria-label="View annotation method details">?</button></sup>
       </h2>
-      <p class="small text-secondary mb-0">Explore cell type assignments without modifying the source data file.</p>
+      <p class="small text-secondary mb-0">Explore spatial annotations. Domain numbers describe groups within each sample.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-end">
+      <label class="small fw-semibold"{% if cell_type_visualization.views|length < 2 %} hidden{% endif %}>Color by
+        <select class="form-select form-select-sm mt-1" data-visualization-mode>
+          {% for view in cell_type_visualization.views %}
+            <option value="{{ view.kind }}">{{ view.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label class="small fw-semibold"{% if cell_type_visualization.samples|length == 1 %} hidden{% endif %}>Sample
         <select class="form-select form-select-sm mt-1" data-cell-type-sample>
           {% for sample in cell_type_visualization.samples %}
@@ -17,18 +24,18 @@
         </select>
       </label>
       <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-reset>Reset view</button>
-      <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-close aria-label="Close cell type visualization">Close</button>
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-close aria-label="Close spatial visualization">Close</button>
     </div>
   </div>
   <div class="cell-type-visualization-layout mt-3">
     <div class="cell-type-stage" data-cell-type-stage>
-      <div class="cell-type-canvas" data-cell-type-canvas aria-label="Interactive spatial cell type map"></div>
+      <div class="cell-type-canvas" data-cell-type-canvas aria-label="Interactive spatial annotation map"></div>
       <div class="cell-type-status" data-cell-type-status role="status">Visualization loads when it enters the viewport.</div>
       <div class="cell-type-tooltip" data-cell-type-tooltip hidden></div>
       <button class="btn btn-sm btn-primary cell-type-retry" type="button" data-cell-type-retry hidden>Retry</button>
     </div>
-    <aside class="cell-type-legend" aria-label="Cell type legend">
-      <p class="small fw-semibold mb-2">Cell types</p>
+    <aside class="cell-type-legend" aria-label="Annotation legend">
+      <p class="small fw-semibold mb-2" data-visualization-legend-title>{{ cell_type_visualization.label }}</p>
       <div data-cell-type-legend></div>
     </aside>
   </div>

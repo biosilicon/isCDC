@@ -73,6 +73,12 @@ from .schemas import (
     DataFileResponse,
     SampleSourceResponse,
 )
+from .spatial_domain_visualization import (
+    POINT_MEDIA_TYPE as DOMAIN_POINT_MEDIA_TYPE,
+)
+from .spatial_domain_visualization import (
+    load_spatial_domain_visualizations,
+)
 from .spatial_resolution import (
     LEGACY_SPATIAL_UNITS,
     SPATIAL_RESOLUTION_DESCRIPTIONS,
@@ -542,6 +548,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Cell type visualizations are unavailable; continuing without them"
             )
 
+    domain_visualizations = {}
+    if settings.spatial_domain_visualization_root is not None:
+        domain_visualizations = load_spatial_domain_visualizations(
+            settings.spatial_domain_visualization_root,
+            [dataset for dataset in catalogue_datasets if dataset.dataset_type == "full"],
+        )
+
     difficulty_by_split_id: dict[str, ChallengeDifficulty] = {}
     difficulty_snapshot = None
     difficulty_path = settings.database_path.parent / "challenge_difficulty.json"
@@ -629,6 +642,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.difficulty_snapshot = difficulty_snapshot
     application.state.difficulty_path = difficulty_path
     application.state.cell_type_visualizations = cell_type_visualizations
+    application.state.spatial_domain_visualizations = domain_visualizations
     application.state.templates = templates
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
@@ -850,6 +864,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "samples": samples,
                 "initialSampleKey": samples[0]["key"],
             }
+        views = []
+        if visualization_config is not None:
+            visualization_config.update(
+                kind="cell_type", label="Cell types", title="Cell type visualization",
+                methodModal="#cell-type-method-modal",
+            )
+            views.append(visualization_config)
+        domain = domain_visualizations.get(database.dataset_id)
+        if domain is not None:
+            manifest = domain.manifest
+            domain_samples = [
+                {
+                    "key": sample["key"], "id": sample["id"], "count": sample["count"],
+                    "categories": sample["categories"],
+                    "url": str(request.url_for(
+                        "spatial_domain_visualization_points", dataset_id=database.dataset_id,
+                        generation_id=domain.generation_id, sample_key=sample["key"],
+                    )),
+                }
+                for sample in manifest["samples"]
+            ]
+            views.append({
+                "kind": "spatial_domain", "label": "Spatial domains",
+                "title": "Spatial domains",
+                "methodModal": "#spatial-domain-method-modal",
+                "datasetId": database.dataset_id, "generationId": domain.generation_id,
+                "annotationKind": "spatial_domain", "yAxis": manifest["coordinates"]["y_axis"],
+                "categories": domain_samples[0]["categories"], "samples": domain_samples,
+                "initialSampleKey": domain_samples[0]["key"],
+            })
+        if views:
+            visualization_config = {**views[0], "views": views}
         return templates.TemplateResponse(
             request=request,
             name="database_detail.html",
@@ -860,12 +906,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 "download_kinds": DOWNLOAD_FILES,
                 "cell_type_visualization": visualization_config,
+                "spatial_domain_method": ({
+                    "method": domain.manifest["method"],
+                    "packages": domain.manifest["provenance"]["packages"],
+                    "samples": domain.report["samples"],
+                } if domain is not None else None),
                 "cell_type_annotation_method": (
                     _cell_type_method_details(visualization)
                     if visualization is not None
                     else None
                 ),
             },
+        )
+
+    @application.api_route(
+        "/databases/{dataset_id}/spatial-domain-visualization/{generation_id}/{sample_key}",
+        methods=["GET", "HEAD"],
+        name="spatial_domain_visualization_points", include_in_schema=False,
+    )
+    async def spatial_domain_visualization_points(
+        request: Request, dataset_id: str, generation_id: str, sample_key: str,
+    ):
+        snapshot = domain_visualizations.get(dataset_id)
+        if snapshot is None or snapshot.generation_id != generation_id:
+            raise HTTPException(status_code=404, detail="Spatial domains not found")
+        sample = snapshot.samples.get(sample_key)
+        if sample is None:
+            raise HTTPException(status_code=404, detail="Spatial domain sample not found")
+        encoding = _preferred_content_encoding(
+            request.headers.get("accept-encoding"), set(sample.representations),
+        )
+        if encoding is None:
+            raise HTTPException(status_code=406, detail="No acceptable visualization encoding")
+        representation = sample.resolve(encoding)
+        if (representation.path.is_symlink() or not representation.path.is_file()
+                or representation.path.stat().st_size != representation.size):
+            raise HTTPException(status_code=404, detail="Visualization file not found")
+        headers = {
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{representation.sha256}"', "Vary": "Accept-Encoding",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if encoding != "identity":
+            headers["Content-Encoding"] = encoding
+        return FileResponse(
+            representation.path, media_type=DOMAIN_POINT_MEDIA_TYPE, headers=headers,
         )
 
     @application.api_route(

@@ -90,3 +90,8 @@ test("reset view centers finite bounds and preserves equal x/y scale", () => {
   assert.deepEqual(state.target, [10, 0, 0]);
   assert.equal(state.zoom, Math.log2(45));
 });
+
+test("domain hover shows original coordinates without cell-type confidence", () => {
+  assert.equal(formatHoverText(points, 0, [{code: 1, label: "Domain 1"}], "spatial_domain"),
+    "Domain 1 · x 0.00, y 3.00");
+});

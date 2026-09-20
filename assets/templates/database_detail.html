@@ -27,7 +27,10 @@
   {% set suppress_summary = true %}
   {% include "_data_file_detail.html" %}
 </div>
-{% if cell_type_visualization %}
+{% if cell_type_annotation_method %}
   {% include "_cell_type_method_modal.html" %}
+{% endif %}
+{% if spatial_domain_method %}
+  {% include "_spatial_domain_method_modal.html" %}
 {% endif %}
 {% endblock %}

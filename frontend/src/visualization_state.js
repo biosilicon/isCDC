@@ -137,6 +137,9 @@ export function formatHoverText(points, index, categories, annotationKind) {
   if (!points || index < 0 || index >= points.count) return "";
   const code = points.type[index];
   const label = categoryMap(categories).get(code)?.label || `Unknown category ${code}`;
+  if (annotationKind === "spatial_domain") {
+    return `${label} · x ${points.x[index].toFixed(2)}, y ${points.y[index].toFixed(2)}`;
+  }
   if (annotationKind !== "inferred" || points.confidence === null) return label;
   const confidence = points.confidence[index];
   return Number.isFinite(confidence) ? `${label} · confidence ${confidence.toFixed(3)}` : label;

@@ -9,48 +9,56 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TextIO
 
-from sqlalchemy.exc import SQLAlchemyError
+# Offline domain jobs can run without importing catalogue migration/WSI dependencies.
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] in {
+    "generate-spatial-domain-visualization", "audit-spatial-domain-visualizations",
+}:
+    from .spatial_domain_annotation import main as domain_main
 
-from .analytics import AnalyticsSchemaError, create_analytics_service
-from .auxiliary import AuxiliaryFileError, register_auxiliary_file
-from .catalogue_migration import (
-    CatalogueV4Inventory,
-    CatalogueV4MigrationError,
-    CatalogueV4MigrationResult,
-    finalize_catalogue_v4_migration,
-    migrate_catalogue_v4,
-)
-from .config import Settings
-from .database import CatalogueSchemaError
-from .entry_migration import (
-    EntryIdMigrationError,
-    EntryIdMigrationInventory,
-    EntryIdMigrationResult,
-    finalize_entry_id_migration,
-    migrate_entry_ids,
-)
-from .entry_reconciliation import (
-    EntryIdReconciliationError,
-    EntryIdReconciliationInventory,
-    EntryIdReconciliationResult,
-    finalize_entry_id_reconciliation,
-    reconcile_entry_ids,
-)
-from .importer import DatasetImportError, import_dataset
-from .schema_migration import (
-    MigrationInventory,
-    MigrationResult,
-    SchemaMigrationError,
-    finalize_schema_1_2_migration,
-    migrate_schema_1_2,
-)
-from .schemas import MetadataLoadError
-from .thumbnails import (
-    ThumbnailGenerationError,
-    database_has_he_wsi,
-    generate_wsi_thumbnail,
-    list_database_ids,
-)
+    raise SystemExit(domain_main(sys.argv[1:]))
+else:
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from .analytics import AnalyticsSchemaError, create_analytics_service
+    from .auxiliary import AuxiliaryFileError, register_auxiliary_file
+    from .catalogue_migration import (
+        CatalogueV4Inventory,
+        CatalogueV4MigrationError,
+        CatalogueV4MigrationResult,
+        finalize_catalogue_v4_migration,
+        migrate_catalogue_v4,
+    )
+    from .config import Settings
+    from .database import CatalogueSchemaError
+    from .entry_migration import (
+        EntryIdMigrationError,
+        EntryIdMigrationInventory,
+        EntryIdMigrationResult,
+        finalize_entry_id_migration,
+        migrate_entry_ids,
+    )
+    from .entry_reconciliation import (
+        EntryIdReconciliationError,
+        EntryIdReconciliationInventory,
+        EntryIdReconciliationResult,
+        finalize_entry_id_reconciliation,
+        reconcile_entry_ids,
+    )
+    from .importer import DatasetImportError, import_dataset
+    from .schema_migration import (
+        MigrationInventory,
+        MigrationResult,
+        SchemaMigrationError,
+        finalize_schema_1_2_migration,
+        migrate_schema_1_2,
+    )
+    from .schemas import MetadataLoadError
+    from .thumbnails import (
+        ThumbnailGenerationError,
+        database_has_he_wsi,
+        generate_wsi_thumbnail,
+        list_database_ids,
+    )
 
 ANALYTICS_EXPORT_FIELDS = (
     "id",
@@ -86,6 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="iscdc", description="Manage the isCDC dataset catalogue."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    from .spatial_domain_annotation import add_cli_commands
+
+    add_cli_commands(subparsers)
     import_parser = subparsers.add_parser(
         "import-dataset", help="Validate and atomically import a dataset."
     )
@@ -427,6 +438,16 @@ def _run_spatial_thumbnail_generation(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command in {
+        "generate-spatial-domain-visualization", "audit-spatial-domain-visualizations"
+    }:
+        from .spatial_domain_annotation import execute_cli
+
+        try:
+            return execute_cli(args)
+        except (ValueError, OSError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     if args.command == "import-dataset":
         try:
             result = import_dataset(
