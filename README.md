@@ -206,9 +206,9 @@ Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h
 QC。计算推断 sidecar 则从启动时已校验的 manifest/report 展示方法、reference ID 与版本、
 运行参数、QC 发布阈值和实际 QC 结果；未配置阈值显示为 `Not configured`。该说明弹窗不重复
 展示逐点 confidence，confidence 仍只在现有点位 hover 中呈现，公共 Database JSON 保持不变。
-若 sidecar 包含项目保留类别 `Unannotated`，图例仍提供该复选框，但首次加载时默认不勾选，
+若 cell type sidecar 包含 `Unannotated` 或 `Uncertain`，图例仍提供这些复选框，但首次加载时默认不勾选，
 对应点位以零半径隐藏；用户可单独勾选或通过 `Select all` 恢复显示。该规则只匹配精确标签
-`Unannotated`，不会隐藏来源自身定义的 `Unlabeled` 等类别。
+`Unannotated` 和 `Uncertain`，`Mixed`、来源自身定义的 `Unlabeled` 等类别仍默认显示。
 
 2026-08-18 批次的全量结果为 35/35 Database success：3 个使用来源标签，1 个 Xenium
 使用 SingleR，31 个 bin/spot 使用 RCTD `full`。这是当时的 sidecar 快照；后续新增 Database

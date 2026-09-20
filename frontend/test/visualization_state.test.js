@@ -46,25 +46,31 @@ test("strict category validation rejects codes missing from configuration", () =
   assert.throws(() => validateCategoryCodes(points.type, categories), /Unknown category code 9/);
 });
 
-test("Unannotated is the only category hidden by default", () => {
-  const selected = initialSelectedCategoryCodes([
+test("Unannotated and Uncertain start hidden and can be selected", () => {
+  const allCategories = [
     ...categories,
     {code: 3, label: "Unannotated", color: "#778899"},
-  ]);
+    {code: 4, label: "Uncertain", color: "#999999"},
+    {code: 5, label: "Mixed"},
+    {code: 6, label: "Unlabeled"},
+  ];
+  const selected = initialSelectedCategoryCodes(allCategories);
+  const sample = {
+    count: 6,
+    x: new Float32Array([0, 1, 2, 3, 4, 5]),
+    y: new Float32Array([0, 1, 2, 3, 4, 5]),
+    type: new Uint16Array([1, 2, 3, 4, 5, 6]),
+  };
 
-  assert.deepEqual([...selected], [1, 2]);
+  assert.deepEqual([...selected], [1, 2, 5, 6]);
   assert.deepEqual(
-    [...buildBinaryAttributes(
-      {
-        count: 3,
-        x: new Float32Array([0, 1, 2]),
-        y: new Float32Array([0, 1, 2]),
-        type: new Uint16Array([1, 2, 3]),
-      },
-      [...categories, {code: 3, label: "Unannotated", color: "#778899"}],
-      selected,
-    ).radii],
-    [2.25, 2.25, 0],
+    [...buildBinaryAttributes(sample, allCategories, selected).radii],
+    [2.25, 2.25, 0, 0, 2.25, 2.25],
+  );
+  selected.add(4);
+  assert.deepEqual(
+    [...buildBinaryAttributes(sample, allCategories, selected).radii],
+    [2.25, 2.25, 0, 2.25, 2.25, 2.25],
   );
 });
 

@@ -25,11 +25,18 @@ test("database detail cell type visualization loads and pans without browser err
   }
   await expect(region.locator("[data-cell-type-reset]")).toBeVisible();
   await expect(region.locator("[data-cell-type-legend]")).toBeVisible();
-  const unannotated = region
+  const defaultHidden = region
     .locator(".cell-type-legend-item")
-    .filter({hasText: "Unannotated"})
+    .filter({has: page.locator("span", {hasText: /^(Unannotated|Uncertain)$/})})
     .locator('input[type="checkbox"]');
-  if (await unannotated.count() > 0) await expect(unannotated).not.toBeChecked();
+  for (const checkbox of await defaultHidden.all()) {
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+    await checkbox.uncheck();
+  }
+  await region.locator("[data-cell-type-select-all]").click();
+  for (const checkbox of await defaultHidden.all()) await expect(checkbox).toBeChecked();
   await expect(canvas).toBeVisible({timeout: 60_000});
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();

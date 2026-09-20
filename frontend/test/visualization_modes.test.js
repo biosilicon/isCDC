@@ -4,7 +4,7 @@ import {VisualizationModes} from "../src/visualization_modes.js";
 import {buildBinaryAttributes} from "../src/visualization_state.js";
 import {decodePointData} from "../src/point_data.js";
 
-const cell = {kind: "cell_type", categories: [{code: 0, label: "Unannotated"}, {code: 1, label: "T cell"}],
+const cell = {kind: "cell_type", categories: [{code: 0, label: "Unannotated"}, {code: 1, label: "T cell"}, {code: 2, label: "Uncertain"}],
   samples: [{id: "A", key: "cell_a"}, {id: "B", key: "cell_b"}]};
 const domains = {kind: "spatial_domain", samples: [
   {id: "A", key: "domain_a", categories: [{code: 0, label: "Not analyzed"}, {code: 1, label: "Domain 1"}]},
@@ -15,6 +15,7 @@ test("mode changes retain sample identity and independent selections", () => {
   const modes = new VisualizationModes([cell, domains]);
   assert.deepEqual([...modes.selectedCodes], [1]);
   modes.selectedCodes.add(0);
+  modes.selectedCodes.add(2);
   modes.select("spatial_domain");
   assert.equal(modes.sample.key, "domain_a");
   assert.deepEqual([...modes.selectedCodes], [1]);
@@ -22,8 +23,10 @@ test("mode changes retain sample identity and independent selections", () => {
   modes.select("spatial_domain", "B");
   assert.deepEqual([...modes.selectedCodes], [1, 2]);
   modes.select("cell_type", "A");
-  assert.deepEqual([...modes.selectedCodes], [1, 0]);
-  modes.select("spatial_domain");
+  assert.deepEqual([...modes.selectedCodes], [1, 0, 2]);
+  modes.select("cell_type", "B");
+  assert.deepEqual([...modes.selectedCodes], [1]);
+  modes.select("spatial_domain", "A");
   assert.deepEqual([...modes.selectedCodes], []);
 });
 

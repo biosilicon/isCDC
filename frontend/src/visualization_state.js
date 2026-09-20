@@ -1,5 +1,5 @@
 const FALLBACK_COLOR = [108, 117, 125, 230];
-const DEFAULT_HIDDEN_LABELS = new Set(["Unannotated"]);
+const DEFAULT_HIDDEN_LABELS = new Set(["Unannotated", "Uncertain"]);
 
 export function createRequestGate() {
   let sequence = 0;
