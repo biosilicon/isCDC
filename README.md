@@ -155,7 +155,7 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 脚本默认等待应用就绪 60 秒；可通过 `ISCDC_DEPLOY_START_TIMEOUT` 设置 1 至 600 秒的等待
 时间。运行 `./deploy_test.sh --help` 可查看全部选项。该方式只用于测试，不会开机自启，
 也不会修改防火墙。若服务器本机检查正常但其他机器无法访问，需要管理员放行对应端口。
-应用在启动时扫描 Database 缩略图和辅助文件 manifest、校验 Challenge difficulty 快照，并计算
+应用在启动时读取 Database 缩略图、辅助文件和 Challenge difficulty 的预先校验元数据，并计算
 `styles.css` 的内容版本；新增或删除缩略图、注册或移除辅助文件、重新生成 difficulty 快照或
 修改页面样式后，应执行 `./deploy_test.sh restart`。
 样式表 URL 会携带内容哈希，重启后浏览器会自动获取新版本，无需用户手动清除缓存。
@@ -167,6 +167,12 @@ Database 详情页在同一区域用始终可见的 `Cell types` / `RNA domains`
 默认显示有效的细胞类型注释；缺少结果的选项禁用并说明原因。空间域以 RNA 和二维
 坐标为输入：Single-cell 使用 BANKSY，Near-cellular / Spot-level 使用 GraphST；各样本
 独立计算，采用固定分辨率 Leiden 聚类。域编号仅在当前样本内有效。
+
+RNA 与 SpatialGLUE 的显示配色按样本内细胞重合进行一对一匹配，优先保留 RNA 颜色。
+在 `iscdc` 环境执行 `PYTHONPATH=src python -m iscdc.cli generate-spatial-domain-colors`，
+提前生成 `catalog.db` 同目录的 `spatial_domain_colors.json`。网站启动仅读取该表，
+不校验或计算匹配；映射缺失或无法读取时保留原色。更新域结果后须显式重新生成
+配色表，再按发布范围重启服务；无需重新推断或改写点文件。
 
 SpatialGLUE 支持除微生物相关模态外的二维多模态全集，不再要求包含 RNA。
 不同数值类型使用已记录的专用预处理配方；有效的未检出零值保留，真正缺失独立记录。
@@ -234,13 +240,13 @@ bash annotation/spatial_domain/publish_completed.sh
 Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h5mu`、catalogue schema、
 公共 `/api/databases*` 响应和筛选字段均不因此改变。应用默认在
 `data/cell_type_visualizations/` 查找产物，也可设置
-`ISCDC_CELL_TYPE_VISUALIZATION_ROOT`。启动时会校验最新 `status.json`、源文件 SHA-256、
-二维坐标声明、manifest 与各压缩点位文件；缺失、失败、过期或损坏的项目不会在页面产生
-占位区。替换产物后必须重启应用。
+`ISCDC_CELL_TYPE_VISUALIZATION_ROOT`。所有产物校验在离线准备和发布阶段完成。启动时仅读取最新
+`status.json`、manifest 和 report，不计算摘要、不解压点位、不校验来源或 QC；
+缺失、失败或无法读取元数据的项目不展示。替换产物后必须重启应用。
 
 可视化标题旁的 `?` 按钮用于查看当前数据集的注释方法。来源标签 sidecar 只显示具体方法，
 并明确说明标签来自既有注释文件、没有执行计算推断，不显示 reference、运行参数、阈值或推断
-QC。计算推断 sidecar 则从启动时已校验的 manifest/report 展示方法、reference ID 与版本、
+QC。计算推断 sidecar 则从预先校验、启动时读取的 manifest/report 展示方法、reference ID 与版本、
 运行参数、QC 发布阈值和实际 QC 结果；未配置阈值显示为 `Not configured`。该说明弹窗不重复
 展示逐点 confidence，confidence 仍只在现有点位 hover 中呈现，公共 Database JSON 保持不变。
 若 cell type sidecar 包含 `Unannotated` 或 `Uncertain`，图例仍提供这些复选框，但首次加载时默认不勾选，
@@ -423,7 +429,7 @@ catalogue 列、网页/API 字段或筛选项。原始公开来源提供可与�
 保留类别 `Unannotated`；重复、外来、冲突、空白或无法唯一对齐的来源行仍是错误，不能借此
 补齐。不得用聚类或模型推断结果填充 canonical `cell_type`。
 
-Database 页面可以另外显示独立、版本化并经启动校验的 cell type sidecar；其中的推断标签、
+Database 页面可以另外显示独立、版本化并经离线校验的 cell type sidecar；其中的推断标签、
 confidence、`Mixed` 和 `Uncertain` 不属于本字段，也不会写回 `.h5mu` 或公共 JSON。该边界见
 [Cell type 空间可视化](#cell-type-空间可视化)。
 
@@ -895,14 +901,14 @@ representation 或 classifier 泄漏 held-out 数据。train/test feature 仅取
 （实际尝试评估项）；文件校验阶段失败不计入评估次数。单个 Challenge 失败时仍会出现在报告中，但 rank/percentile 为 `null`，
 且 CLI 返回非零状态。
 
-网站在应用启动时读取并校验该快照，确认报告版本、Challenge 集合、类型、train/test 数据集 ID
-和 SHA-256 均与当前 catalogue 一致后，才会发布其中的指标。重新生成报告后需要重启应用。
-报告缺失、损坏、过期或单个 Challenge 评估失败时，目录和 API 仍可用，对应 difficulty 显示为
+网站启动直接读取预先校验的快照，不再核验 Challenge 集合、来源摘要或重算指标一致性。
+报告版本、类型、train/test ID 和 SHA-256 的一致性由离线准备阶段负责。重新生成报告后需要
+重启应用。报告缺失、无法读取或单个 Challenge 评估失败时，对应 difficulty 显示为
 `Unavailable` 或 `null`。
 
 即使表达矩阵未变，`entry_id` 迁移或修正等 H5MU 重写也会改变文件 SHA-256；不能只按
 Challenge 数量是否变化判断快照是否仍有效。除 `reconcile-entry-ids` 自带的校验和同步外，
-文件变更后与目录不一致的快照应通过上述增量命令刷新，不应手工改写 SHA-256 来绕过启动校验。
+文件变更后与目录不一致的快照应通过上述增量命令刷新，不应手工改写 SHA-256 来绕过离线校验。
 刷新前保留旧快照，并核对正式 train/test 文件的实际 SHA-256；发布后确认报告覆盖完整目录、
 成功/失败数量与逐项状态一致，再重启并检查详情页、JSON 指标和升降序分页。
 

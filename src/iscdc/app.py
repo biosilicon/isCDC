@@ -26,21 +26,25 @@ from .analytics import (
     create_analytics_service,
     is_automated_user_agent,
 )
-from .auxiliary import AuxiliaryFile, AuxiliaryFileError, load_auxiliary_files
+from .auxiliary import AuxiliaryFile
 from .cell_type_visualization import (
     POINT_MEDIA_TYPE,
     CellTypeVisualization,
-    load_cell_type_visualizations,
 )
 from .config import Settings
 from .database import create_database_engine, create_session_factory, initialize_database
-from .difficulty_snapshot import (
-    ChallengeDifficulty,
-    DifficultySnapshotError,
-    load_difficulty_snapshot,
-)
+from .difficulty_snapshot import ChallengeDifficulty
 from .entry_names import DEFAULT_ENTRY_NAMES_PATH, resolve_entry_names
 from .models import Dataset
+from .prepared_visualizations import (
+    READ_ERRORS,
+    discover_spatial_thumbnails,
+    load_auxiliary_files,
+    load_cell_type_visualizations,
+    load_difficulty_snapshot,
+    load_spatial_domain_visualizations,
+    load_spatialglue_combinations,
+)
 from .repository import (
     DERIVED_DATASET_TYPES,
     CatalogueFilters,
@@ -73,12 +77,9 @@ from .schemas import (
     DataFileResponse,
     SampleSourceResponse,
 )
+from .spatial_domain_colors import SNAPSHOT_NAME, load_domain_color_overrides
 from .spatial_domain_visualization import (
     POINT_MEDIA_TYPE as DOMAIN_POINT_MEDIA_TYPE,
-)
-from .spatial_domain_visualization import (
-    load_spatial_domain_visualizations,
-    load_spatialglue_combinations,
 )
 from .spatial_resolution import (
     LEGACY_SPATIAL_UNITS,
@@ -86,7 +87,6 @@ from .spatial_resolution import (
     SPATIAL_RESOLUTION_LABELS,
     spatial_resolution_label,
 )
-from .spatial_thumbnails import discover_spatial_thumbnails
 
 CHALLENGE_TYPE_LABELS = {
     "same_slice": "Same slice",
@@ -500,8 +500,10 @@ def _challenge_response(
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     mimetypes.add_type("image/webp", ".webp")
+    new_catalogue = not settings.database_path.exists()
     engine = create_database_engine(settings.database_path)
-    initialize_database(engine)
+    if new_catalogue:
+        initialize_database(engine)
     session_factory = create_session_factory(engine)
     auxiliary_files_by_dataset: dict[str, tuple[AuxiliaryFile, ...]] = {}
     with session_factory() as session:
@@ -516,9 +518,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             auxiliary_files_by_dataset[dataset_id] = load_auxiliary_files(
                 settings.data_root / storage_dir, dataset_id
             )
-        except AuxiliaryFileError:
+        except READ_ERRORS:
             logger.warning(
-                "Ignoring invalid auxiliary file manifest for dataset %s",
+                "Unable to read auxiliary file metadata for dataset %s",
                 dataset_id,
                 exc_info=True,
             )
@@ -567,23 +569,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             [dataset for dataset in catalogue_datasets if dataset.dataset_type == "full"],
         )
 
+    domain_color_overrides = load_domain_color_overrides(
+        settings.database_path.parent / SNAPSHOT_NAME,
+        domain_visualizations,
+        spatialglue_combinations,
+    )
+
     difficulty_by_split_id: dict[str, ChallengeDifficulty] = {}
     difficulty_snapshot = None
     difficulty_path = settings.database_path.parent / "challenge_difficulty.json"
     try:
-        with session_factory() as session:
-            catalogue_challenges, challenge_total = list_challenges(
-                session, CatalogueFilters(), offset=0, limit=1_000_000
-            )
-        if len(catalogue_challenges) != challenge_total:
-            raise DifficultySnapshotError(
-                "unable to load the complete Challenge catalogue for difficulty validation"
-            )
-        difficulty_snapshot = load_difficulty_snapshot(
-            difficulty_path, catalogue_challenges
-        )
+        difficulty_snapshot = load_difficulty_snapshot(difficulty_path)
         difficulty_by_split_id = dict(difficulty_snapshot.by_split_id)
-    except (CatalogueIntegrityError, DifficultySnapshotError) as exc:
+    except READ_ERRORS as exc:
         logger.warning(
             "Challenge difficulty information is unavailable; continuing without it: %s",
             exc,
@@ -910,10 +908,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if snapshot is None:
                 continue
             manifest = snapshot.manifest
+            colors = {}
+            if family == "spatialglue":
+                color_combination = "__".join(manifest["provenance"]["input_modalities"])
+                colors = domain_color_overrides.get(database.dataset_id, {}).get(
+                    color_combination, {}
+                )
             domain_samples = [
                 {
                     "key": sample["key"], "id": sample["id"], "count": sample["count"],
-                    "categories": sample["categories"],
+                    "categories": [
+                        {**category, "color": colors.get(sample["id"], {}).get(
+                            category["code"], category["color"]
+                        )}
+                        for category in sample["categories"]
+                    ],
                     "url": str(request.url_for(
                         ("spatialglue_combination_points" if combination
                          else "spatial_domain_method_points"),

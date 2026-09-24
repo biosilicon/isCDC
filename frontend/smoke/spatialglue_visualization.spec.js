@@ -1,6 +1,74 @@
 import {expect, test} from "@playwright/test";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
 
 const databasePath = process.env.ISCDC_GLUE_DATABASE_PATH;
+
+test.beforeEach(async ({page}) => {
+  // Optional local copies keep isolated browser verification independent of the CDN.
+  const bootstrap = process.env.ISCDC_BOOTSTRAP_ASSET_DIR;
+  if (!bootstrap) return;
+  for (const [file, contentType] of [
+    ["bootstrap.min.css", "text/css"], ["bootstrap.bundle.min.js", "text/javascript"],
+  ]) {
+    await page.route(`https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/**/${file}`, async (route) => {
+      await route.fulfill({body: await readFile(join(bootstrap, file)), contentType});
+    });
+  }
+});
+
+test("permuted domain labels retain RNA colors in the legend and rendered points", async ({page}, testInfo) => {
+  test.skip(!databasePath || !process.env.ISCDC_GLUE_COLOR_PERMUTATION,
+    "Requires an isolated fixture with RNA labels 1/2 and SpatialGLUE labels 2/1 on the same cells");
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.route("**/favicon.ico", (route) => route.fulfill({status: 204}));
+  await page.goto(databasePath);
+  const region = page.locator("#cell-type-visualization");
+  const rna = region.getByRole("button", {name: "RNA domains", exact: true});
+  const glue = region.getByRole("button", {name: "SpatialGLUE domains", exact: true});
+  const swatch = (code) => region.locator(".cell-type-legend-item")
+    .filter({has: page.locator(`input[value="${code}"]`)}).locator(".cell-type-legend-swatch")
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  for (const [size, viewport] of [
+    ["desktop", {width: 1280, height: 900}], ["mobile", {width: 390, height: 844}],
+  ]) {
+    await page.setViewportSize(viewport);
+    await region.scrollIntoViewIfNeeded();
+    await rna.click();
+    await expect(region).toHaveAttribute("data-visualization-state", "ready");
+    await region.locator("[data-cell-type-reset]").click();
+    const rnaColors = await Promise.all([swatch(1), swatch(2)]);
+    expect(rnaColors[0]).not.toBe(rnaColors[1]);
+    const plot = region.locator("[data-cell-type-canvas]");
+    const screenshotPlot = async (path) => {
+      const box = await plot.boundingBox();
+      // As in the camera test, exclude CSS corners whose subpixel antialiasing
+      // changes when the SpatialGLUE combination selector moves the plot.
+      return page.screenshot({path, clip: {
+        x: box.x + 16, y: box.y + 16, width: box.width - 32, height: box.height - 32,
+      }});
+    };
+    await plot.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    const before = await screenshotPlot(testInfo.outputPath(`${size}-rna.png`));
+    const canvas = await region.locator("canvas").elementHandle();
+    await glue.click();
+    await expect(region).toHaveAttribute("data-visualization-state", "ready");
+    expect(await Promise.all([swatch(1), swatch(2)])).toEqual(rnaColors.slice().reverse());
+    expect(await canvas.evaluate((element) => element.isConnected)).toBe(true);
+    await plot.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    // Labels are permuted, but every observation must keep its rendered color.
+    await screenshotPlot(testInfo.outputPath(`${size}-spatialglue.png`));
+    await expect.poll(async () => (await screenshotPlot()).equals(before)).toBe(true);
+    await region.screenshot({path: testInfo.outputPath(`${size}-legend.png`)});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(errors).toEqual([]);
+});
+
 test("SpatialGLUE keeps camera, sample, independent legend and method details", async ({page}, testInfo) => {
   test.skip(!databasePath, "Set ISCDC_GLUE_DATABASE_PATH to a Database with RNA and SpatialGLUE sidecars");
   test.setTimeout(120000);

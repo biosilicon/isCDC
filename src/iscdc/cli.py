@@ -97,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
     from .spatial_domain_annotation import add_cli_commands
 
     add_cli_commands(subparsers)
+    color_parser = subparsers.add_parser(
+        "generate-spatial-domain-colors",
+        help="Prepare fixed RNA/SpatialGLUE display colors offline, before website startup.",
+    )
+    color_parser.add_argument("--output", type=Path, help="Default: beside catalog.db")
+    color_parser.add_argument("--domain-root", type=Path, help="Override published domain root")
     import_parser = subparsers.add_parser(
         "import-dataset", help="Validate and atomically import a dataset."
     )
@@ -438,6 +444,17 @@ def _run_spatial_thumbnail_generation(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "generate-spatial-domain-colors":
+        from .spatial_domain_color_prepare import prepare_catalogue_colors
+
+        try:
+            prepare_catalogue_colors(
+                Settings.from_environment(), output=args.output, domain_root=args.domain_root
+            )
+            return 0
+        except (ValueError, TypeError, OSError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     if args.command in {
         "generate-spatial-domain-visualization", "audit-spatial-domain-visualizations"
     }:
