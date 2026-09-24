@@ -241,3 +241,23 @@ rounds:
     lessons:
       - Verified partial public labels can be visualized without promoting Unannotated to an inferred or canonical biological type.
       - The 690322-point browser render needs a larger smoke-test timeout than the earlier 15-second threshold.
+
+  - round_id: source-backfill-and-historical-binding-recovery-20260920
+    status: completed
+    completed_at: "2026-09-20T02:46:40.159809+00:00"
+    inputs: 56
+    annotation_execution: {source_tasks: 52, workers: 6, blas_threads_per_worker: 1}
+    outcomes: {source_published: 52, historical_bindings_restored: 4, failed: 0}
+    active_coverage: {datasets: 88, source: 56, rctd: 31, singler: 1}
+    verification:
+      canonical_source_contracts: 52
+      staged_observation_and_point_checks: 56
+      historical_point_and_inference_bytes_preserved: 4
+      live_pages: 231
+      live_cell_type_point_files: 88
+      spatial_domain_generations_unchanged: true
+    evidence: doc/annotation/细胞类型可视化接入记录_2026-09-20.md
+    lessons:
+      - Historical full-catalogue success is a dated snapshot, not coverage of later imports.
+      - Recover a stale binding only after exact backup checksums and metadata-only differences are proven.
+      - Reuse verified source labels without running inference or inventing confidence.

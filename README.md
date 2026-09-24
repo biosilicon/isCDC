@@ -162,12 +162,49 @@ PYTHONPATH=src python -m iscdc.cli analytics export --format jsonl --output even
 
 ### 空间域识别与可视化
 
-Database 详情页支持在同一画布中切换 Cell types / Spatial domains。空间域以 RNA 和二维
+Database 详情页在同一区域用始终可见的 `Cell types` / `RNA domains` /
+`SpatialGLUE domains` 按钮切换，
+默认显示有效的细胞类型注释；缺少结果的选项禁用并说明原因。空间域以 RNA 和二维
 坐标为输入：Single-cell 使用 BANKSY，Near-cellular / Spot-level 使用 GraphST；各样本
 独立计算，采用固定分辨率 Leiden 聚类。域编号仅在当前样本内有效。
 
+SpatialGLUE 支持除微生物相关模态外的二维多模态全集，不再要求包含 RNA。
+不同数值类型使用已记录的专用预处理配方；有效的未检出零值保留，真正缺失独立记录。
+已核实的 S032 E11 replicate 甲基化有符号残差采用独立配方，保留来源值并标准化／PCA，
+其他甲基化比例继续要求 `[0,1]`。仅重算受影响数据集可在新运行目录使用 `--dataset ID`。
+四模态数据自动运行全部四个三模态组合，各组合独立保存、审计和切换。
+GPU 推断采用独立锁定环境、稀疏图和分块精确近邻；网站不依赖 CUDA。
+资源 supervisor 按阶段和实时余量分配最多 80 核、768 GiB 主存，保留至少 8 GiB 显存；
+主存同时预留可用量的 15% 且至少 64 GiB。默认任务上限为 80，实际并发由资源准入决定；
+已完成 690,322 观测资源预热，高并发吞吐量扫描按用户要求取消，上限不代表实测并发。
+任务完成或阶段释放资源后自动补位，
+按规模分组使用实测峰值加 10% 可变占用余量更新估算，并允许小任务填入剩余资源。
+建图工作区固定为 128 MiB。配置、命令及特殊配方见
+[SpatialGLUE 工作流](doc/annotation/空间域识别.md#spatialglue-多模态空间域)，
+本次实施与测量记录见[准入扩展和调度测试](doc/annotation/SpatialGLUE准入扩展与调度测试_2026-09-20.md)。
+
+SpatialGLUE 全量后台计算使用 `annotation/spatial_domain/gpu/run_full.sh start`，
+断开 SSH 后继续运行；`status --watch` 查看阶段及资源，`logs` 跟踪日志，`stop` 停止，
+`resume` 仅续算未完成或失效组合。默认每 15 秒记录心跳，失败项追加一轮重试，
+使用完整训练参数并动态补位。结果保存在 `temp/spatialglue_full/sidecars/`，不会自动发布。
+GPU 监控通过进程内 NVML 采样；临时读取失败时暂停新任务／新阶段准入，保留已运行任务，
+恢复后自动继续，避免单次 `nvidia-smi` 超时中止整批计算。
+查询核对及本次修复后的续跑目录见
+[GPU 监控修复记录](doc/annotation/SpatialGLUE后台监控修复_2026-09-20.md)。
+冻结清单、自定义目录及复用已有结果的方法见
+[SpatialGLUE 全量后台续跑](doc/annotation/空间域识别.md#spatialglue-全量后台续跑)。
+
+发布指定 SpatialGLUE 批次的已完成组合：
+`bash annotation/spatial_domain/publish_completed.sh --method spatialglue --run-root temp/spatialglue_full_nvml_20260920 --completed-only`。
+逐组合核验冻结代码、参数、来源和产物，合入现有结果后重启网站；失败组合留待补算，
+保留已有 RNA 空间域及其他结果，发布失败自动回滚。
+2026-09-20 已上线 201 个 Database 的 207 个 SpatialGLUE 组合，1 个失败组合留待补算，
+详见[发布记录](doc/annotation/空间域识别发布记录_2026-09-20.md#spatialglue-成功组合上线1702-utc)。
+该失败组合已于 2026-09-21 在 node3 单独启动后台补算；按用户决定暂缓发布，
+监控路径与修复依据见[甲基化残差补算记录](doc/annotation/SpatialGLUE残差补算_2026-09-21.md)。
+
 结果保存在独立 sidecar 中，通过 `ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT` 指定目录，
-默认 `data/spatial_domain_visualizations/`。算法在独立 `iscdc-spatial-domain` 环境运行，
+默认 `data/spatial_domain_visualizations/`。RNA 算法在独立 `iscdc-spatial-domain` 环境运行，
 单任务默认最多 40 个 CPU 线程和 128 GiB 内存，为 SSH 和网站保留资源。
 输入规则、环境安装、CLI、配置和发布边界见[空间域识别](doc/annotation/空间域识别.md)。
 全量后台队列支持冻结输入、每分钟进度/ETA、逐数据集日志与断点恢复；启动方法见该文档的
@@ -220,6 +257,11 @@ dataset metadata。完整 provenance/QC 结果见
 2026-08-28 新增的 `xenium_human_ccrcc_ffpe_rna_protein` 已另行发布来源型 sidecar：690,322
 个点位、19 个展示类别，其中 331,237 个 `Unannotated` 按上述规则默认隐藏，且没有执行计算
 推断。该增量发布不改写 2026-08-18 的 35/35 历史批次统计。
+
+2026-09-20 已补齐当前有可用标签的 88 份可视化：56 份来源标签、31 份 RCTD、1 份 SingleR。
+其中新增 52 份来源型 sidecar，并在确认科学输入未变后恢复 4 份历史来源绑定；旧 generation
+和推断置信度保留。全站 231 个详情页及 88 份点位 HTTP 校验通过，空间域结果未改变。
+余下 143 份尚无可直接接入的细胞类型结果，见[接入记录](doc/annotation/细胞类型可视化接入记录_2026-09-20.md)。
 
 参考构建、SingleR、RCTD、校准、生成和审计必须在隔离环境中运行，不能向网站使用的
 `iscdc` 环境安装 R 或注释依赖：
@@ -958,3 +1000,8 @@ temp/            待整理数据及其隔离的转换产物（不纳入版本控
 exp/             本地真实输入、手工测试配置和实验产物（不纳入版本控制）
 .codex/          本地 agent 角色和并发配置（不纳入版本控制）
 ```
+
+SpatialGLUE 已扩展至所有非微生物多模态数据，69 万观测预热已完成；
+追加测试已按用户要求停止，自动补位上限 80 尚无高并发吞吐量实测结论。
+[原测试记录](doc/annotation/SpatialGLUE并行度测试_2026-09-20.md)保留历史证据；当前状态见
+[准入扩展和调度测试](doc/annotation/SpatialGLUE准入扩展与调度测试_2026-09-20.md)。

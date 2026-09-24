@@ -78,6 +78,7 @@ from .spatial_domain_visualization import (
 )
 from .spatial_domain_visualization import (
     load_spatial_domain_visualizations,
+    load_spatialglue_combinations,
 )
 from .spatial_resolution import (
     LEGACY_SPATIAL_UNITS,
@@ -549,8 +550,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
     domain_visualizations = {}
+    spatialglue_visualizations = {}
+    spatialglue_combinations = {}
     if settings.spatial_domain_visualization_root is not None:
         domain_visualizations = load_spatial_domain_visualizations(
+            settings.spatial_domain_visualization_root,
+            [dataset for dataset in catalogue_datasets if dataset.dataset_type == "full"],
+        )
+        spatialglue_visualizations = load_spatial_domain_visualizations(
+            settings.spatial_domain_visualization_root,
+            [dataset for dataset in catalogue_datasets if dataset.dataset_type == "full"],
+            method_family="spatialglue",
+        )
+        spatialglue_combinations = load_spatialglue_combinations(
             settings.spatial_domain_visualization_root,
             [dataset for dataset in catalogue_datasets if dataset.dataset_type == "full"],
         )
@@ -643,6 +655,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.difficulty_path = difficulty_path
     application.state.cell_type_visualizations = cell_type_visualizations
     application.state.spatial_domain_visualizations = domain_visualizations
+    application.state.spatialglue_visualizations = spatialglue_visualizations
     application.state.templates = templates
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
@@ -867,29 +880,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         views = []
         if visualization_config is not None:
             visualization_config.update(
-                kind="cell_type", label="Cell types", title="Cell type visualization",
+                kind="cell_type", viewId="cell_type", methodFamily="cell_type", label="Cell types",
+                title="Cell type visualization",
                 methodModal="#cell-type-method-modal",
             )
             views.append(visualization_config)
         domain = domain_visualizations.get(database.dataset_id)
-        if domain is not None:
-            manifest = domain.manifest
+        combinations = spatialglue_combinations.get(database.dataset_id, {})
+        glue_methods = []
+        view_sources = [("rna", domain, "RNA domains", "spatial_domain",
+                         "#spatial-domain-method-modal", None)]
+        for combination, snapshot in combinations.items():
+            legacy = snapshot.manifest["manifest_version"] == 2
+            modal = "spatialglue-method-modal" if legacy else f"spatialglue-method-{combination}"
+            view_id = "spatialglue" if legacy else f"spatialglue:{combination}"
+            label = "SpatialGLUE domains" if len(combinations) == 1 else (
+                "SpatialGLUE · " + " + ".join(snapshot.manifest["provenance"]["input_modalities"]))
+            view_sources.append(("spatialglue", snapshot, label, view_id, "#" + modal,
+                                 None if legacy else combination))
+            glue_methods.append({
+                "modal_id": modal, "method": snapshot.manifest["method"],
+                "input": " + ".join(snapshot.manifest["provenance"]["input_modalities"])
+                         + " and spatial coordinates",
+                "unused_modalities": snapshot.manifest["provenance"]["unused_modalities"],
+                "packages": snapshot.manifest["provenance"]["packages"],
+                "samples": snapshot.report["samples"],
+            })
+        for family, snapshot, label, view_id, modal, combination in view_sources:
+            if snapshot is None:
+                continue
+            manifest = snapshot.manifest
             domain_samples = [
                 {
                     "key": sample["key"], "id": sample["id"], "count": sample["count"],
                     "categories": sample["categories"],
                     "url": str(request.url_for(
-                        "spatial_domain_visualization_points", dataset_id=database.dataset_id,
-                        generation_id=domain.generation_id, sample_key=sample["key"],
+                        ("spatialglue_combination_points" if combination
+                         else "spatial_domain_method_points"),
+                        dataset_id=database.dataset_id,
+                        **({"combination_id": combination} if combination
+                           else {"method_family": family}),
+                        generation_id=snapshot.generation_id, sample_key=sample["key"],
                     )),
                 }
                 for sample in manifest["samples"]
             ]
             views.append({
-                "kind": "spatial_domain", "label": "Spatial domains",
-                "title": "Spatial domains",
-                "methodModal": "#spatial-domain-method-modal",
-                "datasetId": database.dataset_id, "generationId": domain.generation_id,
+                "kind": "spatial_domain", "viewId": view_id, "label": label,
+                "methodFamily": "spatial_domain" if family == "rna" else family,
+                "combinationLabel": " + ".join(manifest["provenance"].get("input_modalities", [])),
+                "title": label, "methodModal": modal,
+                "datasetId": database.dataset_id, "generationId": snapshot.generation_id,
                 "annotationKind": "spatial_domain", "yAxis": manifest["coordinates"]["y_axis"],
                 "categories": domain_samples[0]["categories"], "samples": domain_samples,
                 "initialSampleKey": domain_samples[0]["key"],
@@ -911,6 +952,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "packages": domain.manifest["provenance"]["packages"],
                     "samples": domain.report["samples"],
                 } if domain is not None else None),
+                "spatialglue_methods": glue_methods,
                 "cell_type_annotation_method": (
                     _cell_type_method_details(visualization)
                     if visualization is not None
@@ -927,7 +969,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def spatial_domain_visualization_points(
         request: Request, dataset_id: str, generation_id: str, sample_key: str,
     ):
-        snapshot = domain_visualizations.get(dataset_id)
+        return await domain_points(request, dataset_id, generation_id, sample_key, "rna")
+
+    @application.api_route(
+        "/databases/{dataset_id}/spatial-domain-visualization/{method_family}/{generation_id}/{sample_key}",
+        methods=["GET", "HEAD"], name="spatial_domain_method_points", include_in_schema=False,
+    )
+    async def spatial_domain_method_points(
+        request: Request, dataset_id: str, method_family: str, generation_id: str, sample_key: str,
+    ):
+        return await domain_points(request, dataset_id, generation_id, sample_key, method_family)
+
+    @application.api_route(
+        "/databases/{dataset_id}/spatial-domain-visualization/spatialglue/{combination_id}/{generation_id}/{sample_key}",
+        methods=["GET", "HEAD"], name="spatialglue_combination_points", include_in_schema=False,
+    )
+    async def spatialglue_combination_points(
+        request: Request, dataset_id: str, combination_id: str, generation_id: str, sample_key: str,
+    ):
+        return await domain_points(request, dataset_id, generation_id, sample_key,
+                                   "spatialglue", combination_id)
+
+    async def domain_points(
+        request, dataset_id, generation_id, sample_key, method_family, combination_id=None,
+    ):
+        collections = {"rna": domain_visualizations, "spatialglue": spatialglue_visualizations}
+        snapshot = (spatialglue_combinations.get(dataset_id, {}).get(combination_id)
+                    if combination_id else collections.get(method_family, {}).get(dataset_id))
+        if combination_id and snapshot and snapshot.manifest["manifest_version"] != 3:
+            snapshot = None
         if snapshot is None or snapshot.generation_id != generation_id:
             raise HTTPException(status_code=404, detail="Spatial domains not found")
         sample = snapshot.samples.get(sample_key)

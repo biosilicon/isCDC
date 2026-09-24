@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from html.parser import HTMLParser
 
 import httpx
 import pytest
@@ -27,6 +28,18 @@ from iscdc.spatial_domain_visualization import (
     obs_order_sha256,
     publish_generation,
 )
+
+
+class ModeButtons(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.buttons = {}
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "button" and "data-visualization-mode" in attributes:
+            self.buttons[attributes["data-visualization-mode"]] = attributes
 
 
 def generation(record=None):
@@ -236,7 +249,13 @@ async def test_domain_only_page_and_internal_endpoint_leave_public_api_unchanged
     ) as client:
         page = await client.get(f"/databases/{record['dataset_id']}")
         assert page.status_code == 200
-        assert "Spatial domains" in page.text
+        assert "RNA domains" in page.text
+        buttons = ModeButtons(page.text).buttons
+        cells, domains = buttons["cell_type"], buttons["spatial_domain"]
+        assert "disabled" in cells
+        assert domains["aria-pressed"] == "true"
+        assert "disabled" not in domains
+        assert "Cell type annotations are not available" in page.text
         assert 'id="spatial-domain-method-modal"' in page.text
         assert 'id="cell-type-method-modal"' not in page.text
         path = f"/databases/{record['dataset_id']}/spatial-domain-visualization/run-1/sample_0"
@@ -303,8 +322,13 @@ async def test_both_modes_and_corrupt_domain_preserve_cell_types(
         assert response.status_code == 200
         assert 'id="cell-type-method-modal"' in response.text
         assert ('id="spatial-domain-method-modal"' in response.text) is (not corrupt)
-        assert 'value="cell_type"' in response.text
-        assert ('value="spatial_domain"' in response.text) is (not corrupt)
+        buttons = ModeButtons(response.text).buttons
+        cells, domains = buttons["cell_type"], buttons["spatial_domain"]
+        assert cells["aria-pressed"] == "true"
+        assert "disabled" not in cells
+        assert domains["aria-pressed"] == "false"
+        assert ("disabled" in domains) is corrupt
+        assert response.text.count("data-cell-type-canvas") == 1
 
 
 def test_observation_digest_uses_unambiguous_project_framing():

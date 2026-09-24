@@ -93,12 +93,21 @@ def test_sparse_exchange_normalizes_unsigned_counts_for_r_matrix_market():
     assert matrix.data.tolist() == [1]
 
 
-def test_source_labels_are_complete_and_do_not_invent_confidence(tmp_path, write_h5mu):
+@pytest.mark.parametrize("null_metadata", [False, True])
+def test_source_labels_are_complete_and_do_not_invent_confidence(
+    tmp_path, write_h5mu, null_metadata
+):
     source = write_h5mu()
     product = md.read_h5mu(source)
     product.obs["cell_type"] = pd.Categorical(["T cell", "Myeloid"])
     labelled = tmp_path / "labelled.h5mu"
     product.write_h5mu(labelled)
+    if null_metadata:
+        with h5py.File(labelled, "r+") as handle:
+            node = handle["uns"].create_dataset(
+                "optional_annotation_metadata", data=h5py.Empty("f")
+            )
+            node.attrs.update({"encoding-type": "null", "encoding-version": "0.1.0"})
     before = _sha256(labelled)
     plan = DatasetPlan(
         "source-data",
@@ -510,7 +519,10 @@ def test_generation_removes_work_directory(tmp_path, monkeypatch, publication_fa
 
 def test_checked_in_plan_covers_catalogue_and_environment_is_cpu_only():
     plans = load_catalogue_plan()
-    assert len(plans) == 36
+    assert len(plans) == 88
+    source_plans = [plan for plan in plans.values() if plan.method == "source"]
+    assert len(source_plans) == 56
+    assert all(plan.complete and not plan.qc.require_calibration for plan in source_plans)
     assert sum(plan.pilot for plan in plans.values()) == 4
     assert {plan.method for plan in plans.values()} == {"source", "singler", "rctd"}
     assert plans["xenium_human_ccrcc_ffpe_rna_protein"].method == "source"

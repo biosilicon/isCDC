@@ -33,4 +33,9 @@
 {% if spatial_domain_method %}
   {% include "_spatial_domain_method_modal.html" %}
 {% endif %}
+{% for spatialglue_method in spatialglue_methods %}
+  {% with spatial_domain_method=spatialglue_method, domain_modal_id=spatialglue_method.modal_id %}
+    {% include "_spatial_domain_method_modal.html" %}
+  {% endwith %}
+{% endfor %}
 {% endblock %}

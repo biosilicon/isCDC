@@ -1,0 +1,11 @@
+# Default: all 2/3 modalities; four modalities expand into all four triplets.
+# Resource supervisor admits work against live CPU/RAM/GPU budgets.
+defaults:
+  seed: 42
+  resolution: 1.0
+  device: cuda:0
+  threads: 8
+  memory_budget_gb: 768
+  gpu_memory_budget_gb: 80
+  gpu_reserve_gb: 8
+datasets: {}

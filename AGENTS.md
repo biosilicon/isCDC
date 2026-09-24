@@ -33,7 +33,8 @@ are in [原始数据处理规范](doc/原始数据处理规范.md#授权与完�
 Activate `conda activate iscdc` before website, catalogue and general development commands,
 including dependency installation, tests and lint. Cell type reference, annotation, calibration,
 artifact and annotation-audit commands use the separately locked `iscdc-cell-annotation` environment.
-Spatial-domain inference uses its separately locked `iscdc-spatial-domain` environment.
+RNA spatial-domain inference uses its separately locked `iscdc-spatial-domain` environment;
+SpatialGLUE uses the separately locked `iscdc-spatial-domain-gpu` environment.
 
 ## Read by task
 

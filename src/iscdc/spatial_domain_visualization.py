@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,7 +84,32 @@ def _require(condition: bool, message: str) -> None:
         raise DomainVisualizationError(message)
 
 
-def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
+def domain_directory(
+    root: Path, dataset_id: str, method_family: str = "rna", *, combination_id=None
+) -> Path:
+    base = root / ct._safe_name(dataset_id, "dataset_id")
+    _require(method_family in {"rna", "spatialglue"}, "Unknown domain method family")
+    _require(not base.is_symlink(), "Unsafe domain directory")
+    if method_family == "spatialglue":
+        base = base / "methods" / "spatialglue"
+        _require(not base.parent.is_symlink() and not base.is_symlink(), "Unsafe method directory")
+    if combination_id is not None:
+        from .spatialglue_config import combination_id as canonical_combination
+
+        _require(method_family == "spatialglue", "Only SpatialGlue has combinations")
+        _require(
+            canonical_combination(combination_id.split("__")) == combination_id,
+            "Invalid combination identity",
+        )
+        base = base / "combinations" / combination_id
+        _require(not base.parent.is_symlink(), "Unsafe combination directory")
+        _require(not base.parent.is_symlink() and not base.is_symlink(), "Unsafe method directory")
+    return base
+
+
+def _load_generation(
+    directory: Path, dataset: object, method_family: str = "rna", combination_id=None
+) -> DomainVisualization:
     m = ct._read_json(directory / "manifest.json", "domain manifest")
     ct._strict_object(
         m,
@@ -104,7 +130,11 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
     )
     expect = ct._dataset_expectation(dataset)
     _require(expect.dataset_type == "full", "Only full Databases support spatial domains")
-    _require(m["manifest_version"] == 1, "Unsupported domain manifest version")
+    multimodal = method_family == "spatialglue"
+    _require(
+        m["manifest_version"] in ((2, 3) if multimodal else (1,)),
+        "Unsupported domain manifest version",
+    )
     _require(m["dataset_id"] == expect.dataset_id, "Domain dataset ID mismatch")
     _require(m["generation_id"] == directory.name, "Domain generation ID mismatch")
     ct._timestamp(m["generated_at"], "generated_at")
@@ -126,7 +156,8 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
     _require(expect.coordinate_dimensions == 2, "Spatial domains require 2D coordinates")
     resolution = ct._dataset_value(dataset, "spatial_unit")
     _require(src["spatial_unit"] == resolution, "Spatial resolution mismatch")
-    _require(m["method"] == method_for_resolution(resolution), "Incorrect domain method")
+    if not multimodal:
+        _require(m["method"] == method_for_resolution(resolution), "Incorrect domain method")
     coord = ct._strict_object(
         m["coordinates"], "coordinates", required={"system", "unit", "y_axis"}
     )
@@ -145,14 +176,65 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
             "environment_lock_sha256",
             "packages",
             "parameters",
-            "input_modality",
-        },
-        optional={"adapter_sha256"},
+        }
+        | (
+            {
+                "input_modalities",
+                "unused_modalities",
+                "input_value_types",
+                "device",
+                "adapter_sha256",
+            }
+            if multimodal
+            else {"input_modality"}
+        ),
+        optional=(
+            {"combination_id", "recipe_version", "partial_run"}
+            if multimodal
+            else {"adapter_sha256"}
+        ),
     )
     ct._sha256(provenance["environment_lock_sha256"], "environment_lock_sha256")
     if "adapter_sha256" in provenance:
         ct._sha256(provenance["adapter_sha256"], "adapter_sha256")
-    _require(provenance["input_modality"] == "rna", "Expected RNA input")
+    if multimodal:
+        from .spatialglue_config import modality_records, select_modalities
+
+        modalities = select_modalities(dataset, provenance["input_modalities"])
+        _require(modalities == provenance["input_modalities"], "Incorrect modality order")
+        if m["manifest_version"] == 3:
+            from .spatialglue_config import combination_id as canonical_combination
+
+            _require(
+                combination_id == canonical_combination(modalities)
+                and provenance.get("combination_id") == combination_id,
+                "Combination identity mismatch",
+            )
+            _require(provenance.get("recipe_version") == 1, "Unknown preprocessing recipe version")
+        else:
+            _require(combination_id is None, "Legacy result cannot masquerade as a combination")
+        available = modality_records(dataset)
+        _require(
+            provenance["unused_modalities"] == sorted(set(available) - set(modalities)),
+            "Unused modality mismatch",
+        )
+        _require(
+            provenance["input_value_types"]
+            == {name: available[name]["value_type"] for name in modalities},
+            "Input value type mismatch",
+        )
+        _require(
+            m["method"] == ("SpatialGlue_3M" if len(modalities) == 3 else "SpatialGlue"),
+            "Incorrect SpatialGlue model",
+        )
+        _require(
+            isinstance(provenance["device"], dict)
+            and str(provenance["device"].get("device", "")).startswith("cuda:")
+            and bool(provenance["device"].get("uuid")),
+            "Missing CUDA provenance",
+        )
+    else:
+        _require(provenance["input_modality"] == "rna", "Expected RNA input")
     _require(
         isinstance(provenance["packages"], dict) and isinstance(provenance["parameters"], dict),
         "Invalid provenance",
@@ -162,7 +244,7 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
     )
     report = ct._read_json(report_path, "report")
     _require(
-        report.get("report_version") == 1 and report.get("status") == "passed",
+        report.get("report_version") == m["manifest_version"] and report.get("status") == "passed",
         "Invalid domain report",
     )
     for key, expected in (
@@ -191,7 +273,13 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
             code = int(row["domain_id"])
             _require(code >= 0 and (row["reason"] == "") == (code > 0), "Invalid analysis status")
             _require(
-                row["reason"] in {"", "missing_rna", "zero_counts"}, "Unknown exclusion reason"
+                row["reason"]
+                in (
+                    {"", "missing_modality", "zero_counts"}
+                    if multimodal
+                    else {"", "missing_rna", "zero_counts"}
+                ),
+                "Unknown exclusion reason",
             )
             assignments[row["sample_id"]].append((obs_id, code, row["reason"]))
             obs_ids.append(obs_id)
@@ -321,7 +409,12 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
         genes = diagnostic.get("selected_genes")
         _require(
             isinstance(genes, list)
-            and len(genes) >= 2
+            and len(genes)
+            >= (
+                0
+                if multimodal and "rna" not in modalities
+                else (1 if m["manifest_version"] == 3 else 2)
+            )
             and all(isinstance(g, str) and g.strip() == g and g for g in genes),
             "Invalid selected RNA features",
         )
@@ -330,6 +423,8 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
             and obs_order_sha256(genes) == diagnostic.get("selected_genes_sha256"),
             "Selected feature digest mismatch",
         )
+        if multimodal:
+            _validate_multimodal_sample(directory, diagnostic, modalities, rows, count)
         samples[key] = ct.CellTypeSample(
             key,
             sample_id,
@@ -349,9 +444,60 @@ def _load_generation(directory: Path, dataset: object) -> DomainVisualization:
     )
 
 
-def load_spatial_domain_visualization(root: Path, dataset: object) -> DomainVisualization:
+def _validate_multimodal_sample(directory, diagnostic, modalities, rows, count):
+    features = diagnostic.get("features")
+    _require(
+        isinstance(features, dict) and set(features) == set(modalities), "Missing modality features"
+    )
+    for name, feature in features.items():
+        path, _, _ = ct._validate_file_record(directory, feature["file"], f"{name} features")
+        expected_count = ct._integer(feature["count"], "feature count", minimum=1)
+        with gzip.open(path, "rt", encoding="utf-8") as stream:
+            names = []
+            for line in stream:
+                _require(len(names) < expected_count, "Too many modality features")
+                names.append(ct._string(line.rstrip("\n"), "feature ID"))
+        _require(
+            len(names) == expected_count and len(set(names)) == expected_count,
+            "Invalid modality feature identities",
+        )
+        _require(
+            obs_order_sha256(names) == feature["ids_sha256"], "Modality feature digest mismatch"
+        )
+        if name == "rna":
+            _require(names == diagnostic["selected_genes"], "RNA feature list mismatch")
+    coverage = diagnostic.get("coverage", {})
+    for reason in ("missing_modality", "zero_counts"):
+        _require(
+            coverage.get(reason) == sum(row[2] == reason for row in rows),
+            "Pairing exclusion count mismatch",
+        )
+    _require(set(coverage.get("modalities", {})) == set(modalities), "Missing modality coverage")
+    for values in coverage["modalities"].values():
+        missing = ct._integer(values.get("missing"), "missing modality count")
+        zero = ct._integer(values.get("zero_counts"), "zero modality count")
+        _require(missing + zero <= count, "Invalid modality coverage")
+    clustering = diagnostic.get("clustering", {})
+    _require(
+        clustering.get("flavor") == "igraph"
+        and clustering.get("directed") is False
+        and clustering.get("n_iterations") == -1,
+        "Invalid SpatialGlue clustering",
+    )
+    _require(
+        diagnostic["parameters"].get("input_modalities") == modalities,
+        "Parameter modality mismatch",
+    )
+    for digest in diagnostic.get("stage_sha256", {}).values():
+        ct._sha256(digest, "stage_sha256")
+    ct._validate_file_record(directory, diagnostic["joint_embedding"], "joint embedding")
+
+
+def load_spatial_domain_visualization(
+    root: Path, dataset: object, *, method_family: str = "rna", combination_id=None
+) -> DomainVisualization:
     dataset_id = ct._safe_name(ct._dataset_value(dataset, "dataset_id"), "dataset_id")
-    base = root / dataset_id
+    base = domain_directory(root, dataset_id, method_family, combination_id=combination_id)
     _require(not base.is_symlink(), "Unsafe domain directory")
     status = ct._read_json(base / "status.json", "domain status")
     _require(
@@ -370,28 +516,38 @@ def load_spatial_domain_visualization(root: Path, dataset: object) -> DomainVisu
         ct._file_digest(manifest_path)[1] == status.get("manifest_sha256"),
         "Manifest digest mismatch",
     )
-    return _load_generation(directory, dataset)
+    return _load_generation(directory, dataset, method_family, combination_id)
 
 
-def load_spatial_domain_visualizations(root: Path, datasets) -> dict[str, DomainVisualization]:
+def load_spatial_domain_visualizations(
+    root: Path, datasets, *, method_family: str = "rna"
+) -> dict[str, DomainVisualization]:
     result = {}
     for dataset in datasets:
         dataset_id = ct._dataset_value(dataset, "dataset_id")
-        if not (root / dataset_id / "status.json").exists():
-            continue
         try:
-            result[dataset_id] = load_spatial_domain_visualization(root, dataset)
+            if not (domain_directory(root, dataset_id, method_family) / "status.json").exists():
+                continue
+            result[dataset_id] = load_spatial_domain_visualization(
+                root, dataset, method_family=method_family
+            )
         except (ValueError, TypeError, KeyError, OSError, EOFError, csv.Error) as exc:
-            LOG.warning("Ignoring spatial-domain sidecar %s: %s", dataset_id, exc)
+            LOG.warning("Ignoring %s spatial-domain sidecar %s: %s", method_family, dataset_id, exc)
     return result
 
 
 def publish_generation(
-    root: Path, dataset: object, manifest: dict, files: Mapping[str, bytes]
+    root: Path,
+    dataset: object,
+    manifest: dict,
+    files: Mapping[str, bytes],
+    *,
+    method_family: str = "rna",
+    combination_id=None,
 ) -> DomainVisualization:
     dataset_id = ct._safe_name(manifest["dataset_id"], "dataset_id")
     generation = ct._safe_name(manifest["generation_id"], "generation_id")
-    base = root / dataset_id
+    base = domain_directory(root, dataset_id, method_family, combination_id=combination_id)
     target = base / "generations"
     _require(not base.is_symlink() and not target.is_symlink(), "Unsafe publication directory")
     target.mkdir(parents=True, exist_ok=True)
@@ -419,7 +575,7 @@ def publish_generation(
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        _load_generation(staging, dataset)
+        _load_generation(staging, dataset, method_family, combination_id)
         os.rename(staging, target / generation)
         ct._atomic_json(
             base / "status.json",
@@ -432,7 +588,9 @@ def publish_generation(
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        return load_spatial_domain_visualization(root, dataset)
+        return load_spatial_domain_visualization(
+            root, dataset, method_family=method_family, combination_id=combination_id
+        )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
 
@@ -443,3 +601,81 @@ def assignment_bytes(ids, sample_ids, codes, reasons) -> bytes:
     writer.writerow(["observation_id", "sample_id", "domain_id", "reason"])
     writer.writerows(zip(ids, sample_ids, codes, reasons, strict=True))
     return gzip.compress(stream.getvalue().encode(), mtime=0)
+
+
+def publish_method_failure(
+    root, dataset_id, error, *, method_family, details=None, combination_id=None
+):
+    base = domain_directory(root, dataset_id, method_family, combination_id=combination_id)
+    failure = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex
+    parent = base / "failures"
+    _require(not parent.is_symlink(), "Unsafe failure directory")
+    directory = parent / failure
+    directory.mkdir(parents=True)
+    report = {
+        "dataset_id": dataset_id,
+        "failure_id": failure,
+        "status": "failed",
+        "method_family": method_family,
+        "error": str(error)[:2000],
+        "details": details or {},
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    ct._atomic_json(directory / "report.json", report)
+    ct._atomic_json(
+        base / "status.json",
+        {
+            "status_version": 1,
+            "state": "failure",
+            "dataset_id": dataset_id,
+            "failure_id": failure,
+            "updated_at": report["failed_at"],
+            "report": file_record(
+                f"failures/{failure}/report.json", (directory / "report.json").read_bytes()
+            ),
+        },
+    )
+
+
+def load_spatialglue_combinations(root, datasets):
+    """Read each independent current combination, including a legacy result as fallback."""
+    from .spatialglue_config import MODALITIES
+    from .spatialglue_config import combination_id as canonical_combination
+
+    result = {}
+    for dataset in datasets:
+        dataset_id = ct._dataset_value(dataset, "dataset_id")
+        base = domain_directory(root, dataset_id, "spatialglue")
+        snapshots = {}
+        parent = base / "combinations"
+        if parent.exists() and not parent.is_symlink():
+            for path in sorted(parent.iterdir()):
+                try:
+                    snapshot = load_spatial_domain_visualization(
+                        root, dataset, method_family="spatialglue", combination_id=path.name
+                    )
+                    snapshots[path.name] = snapshot
+                except (ValueError, TypeError, KeyError, OSError, EOFError, csv.Error) as exc:
+                    LOG.warning(
+                        "Ignoring SpatialGlue combination %s/%s: %s", dataset_id, path.name, exc
+                    )
+        if (base / "status.json").exists():
+            try:
+                old = load_spatial_domain_visualization(root, dataset, method_family="spatialglue")
+                key = canonical_combination(old.manifest["provenance"]["input_modalities"])
+                # A newer failed status must not resurrect an older successful result.
+                if not (parent / key / "status.json").exists():
+                    snapshots.setdefault(key, old)
+            except (ValueError, TypeError, KeyError, OSError, EOFError, csv.Error) as exc:
+                LOG.warning("Ignoring legacy SpatialGlue %s: %s", dataset_id, exc)
+        if snapshots:
+            result[dataset_id] = dict(
+                sorted(
+                    snapshots.items(),
+                    key=lambda item: tuple(
+                        MODALITIES.index(m)
+                        for m in item[1].manifest["provenance"]["input_modalities"]
+                    ),
+                )
+            )
+    return result

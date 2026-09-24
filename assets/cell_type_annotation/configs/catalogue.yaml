@@ -349,3 +349,367 @@ datasets:
     complete: true
     parameters: {rctd_mode: full, cores: 3, curation_status: matched_tissue_calibrated}
     qc: *mouse_15k_qc
+
+  - dataset_id: zenodo8041114_ribomap_mouse_brain_rep2_translatome_protein
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author level_3 labels; RNA/translatome cell and registered protein alignment verified in C002 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo8041114_starmap_mouse_brain_rep2_rna_protein
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author level_3 labels; RNA/translatome cell and registered protein alignment verified in C002 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_11_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_12_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_13_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_13_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_14_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_15_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_15_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_16_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_17_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_17_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_18_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_19_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_23_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_2_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_2_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_3_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_4_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_6_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_6_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_7_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_7_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_8_1
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_dfci_core_9_2
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_10_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_12_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_13_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_15_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_16_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_18_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_19_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_1_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_21_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_22_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_23_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_25_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_5_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_7_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_8_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: zenodo_18379156_indepth_codex_cosmx_rochester_core_9_0
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author cell_type labels; exact (data_tag, core_id, cell_id) join verified in S023 import."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p01_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p02_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p03_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p04_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p05_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p06_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p07_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p08_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p09_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p10_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}
+
+  - dataset_id: GSE328481_luad_p11_stereo_xcr
+    method: source
+    complete: true
+    source_evidence: "doc/annotation/细胞类型可视化接入记录_2026-09-20.md; Author anno2 labels; cell barcode alignment verified in S038 import, including 27 source-unmatched P5 observations."
+    parameters: {}
+    qc: {require_calibration: false}

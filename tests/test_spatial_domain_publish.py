@@ -18,6 +18,91 @@ def quiet(*args, **kwargs):
     pass
 
 
+def test_spatialglue_partial_release_preserves_rna_and_other_combinations(
+    completed, tmp_path, monkeypatch
+):
+    from test_spatialglue import combination_generation
+
+    from iscdc import spatialglue_config as config
+    from iscdc import spatialglue_publish as glue
+    from iscdc.spatial_domain_visualization import publish_method_failure
+
+    root, settings, record = completed
+    record["modalities"] = {
+        m: {"value_type": "counts", "n_obs": 3, "n_vars": 2}
+        for m in ("rna", "protein", "atac", "histone")
+    }
+    monkeypatch.setattr(glue, "catalogue_records", lambda _: [copy.deepcopy(record)])
+    monkeypatch.setattr(glue, "frozen_adapter_sha256", lambda _: "c" * 64)
+    lock = root / "code/annotation/spatial_domain/gpu/requirements.lock.txt"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("locked fixture")
+    jobs = []
+    (root / "configs").mkdir()
+    for index, modalities in enumerate(config.expand_combinations(record, config.DEFAULTS)):
+        combination = config.combination_id(modalities)
+        row = {
+            "dataset_id": "example",
+            "combination_id": combination,
+            "modalities": modalities,
+            "source_sha256": record["sha256"],
+        }
+        jobs.append(row)
+        (root / "configs" / f"{index:04d}.yaml").write_text("defaults: {}\n")
+        if index == 3:
+            publish_method_failure(
+                root / "sidecars",
+                "example",
+                "failed input",
+                method_family="spatialglue",
+                combination_id=combination,
+            )
+            continue
+        _, manifest, files = combination_generation(record, modalities)
+        manifest["provenance"].update(
+            environment_lock_sha256=publisher.ct._file_digest(lock)[1],
+            parameters=config.load_parameters(None, "example", modalities=modalities),
+        )
+        publish_generation(
+            root / "sidecars",
+            record,
+            manifest,
+            files,
+            method_family="spatialglue",
+            combination_id=combination,
+        )
+    publisher.ct._atomic_json(root / "tasks.json", {"jobs": jobs, "excluded": []})
+    publisher.ct._atomic_json(root / "run_state.json", {"state": "incomplete"})
+    publisher.ct._atomic_json(
+        root / "plan.json",
+        {
+            "total": 4,
+            "files": {
+                "tasks.json": publisher.ct._file_digest(root / "tasks.json")[1],
+                "catalog.db": publisher.ct._file_digest(root / "catalog.db")[1],
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="尚未完成"):
+        glue.audit_run(root, settings, quiet)
+    audit, records = glue.audit_run(root, settings, quiet, completed_only=True)
+    assert len(audit["selected"]) == 3
+    assert audit["deferred"][0]["combination_id"] == jobs[-1]["combination_id"]
+    target, release = tmp_path / "public", tmp_path / "release"
+    import shutil
+
+    shutil.copytree(root / "sidecars", target)
+    before = publisher.tree_hashes(target)
+    release.mkdir()
+    stage = publisher.stage_release(root, target, release, audit, records, quiet)
+    assert publisher.tree_hashes(stage) == before
+    assert load_spatial_domain_visualization(stage, record).generation_id == "run-1"
+    assert len({str(publisher.result_directory(stage, item)) for item in audit["selected"]}) == 3
+    (settings.data_root / "example/dataset.h5mu").write_bytes(b"changed")
+    with pytest.raises(ValueError, match="源 H5MU 摘要"):
+        glue.audit_run(root, settings, quiet, completed_only=True)
+
+
 @pytest.fixture
 def completed(tmp_path, monkeypatch):
     root = tmp_path / "run"

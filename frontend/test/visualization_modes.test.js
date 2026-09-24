@@ -50,3 +50,40 @@ test("domain binary discriminator and 700k point attributes", () => {
   assert.equal(attributes.radii[0], 0);
   assert.equal(attributes.radii[count - 1], 2.25);
 });
+
+test("RNA and SpatialGLUE share point type but preserve independent view state", () => {
+  const glue = {...domains, viewId: "spatialglue"};
+  const modes = new VisualizationModes([cell, domains, glue]);
+  modes.select("spatial_domain", "B");
+  modes.selectedCodes.delete(1);
+  modes.select("spatialglue");
+  assert.equal(modes.view.kind, "spatial_domain");
+  assert.equal(modes.sample.id, "B");
+  assert.deepEqual([...modes.selectedCodes], [1, 2]);
+  modes.selectedCodes.delete(2);
+  modes.select("spatial_domain");
+  assert.deepEqual([...modes.selectedCodes], [2]);
+  modes.select("spatialglue");
+  assert.deepEqual([...modes.selectedCodes], [1]);
+  assert.throws(() => new VisualizationModes([domains, domains]), /Duplicate/);
+});
+
+test("four modality combinations retain their legend and family selection", () => {
+  const combinations = ["rna__protein__atac", "rna__protein__histone", "rna__atac__histone", "protein__atac__histone"];
+  const modes = new VisualizationModes([cell, domains, ...combinations.map((id) => ({
+    ...domains, viewId: `spatialglue:${id}`, methodFamily: "spatialglue",
+  }))]);
+  modes.select("spatialglue", "B");
+  assert.equal(modes.view.viewId, "spatialglue:rna__protein__atac");
+  modes.selectedCodes.clear();
+  modes.select("spatialglue:protein__atac__histone");
+  assert.deepEqual([...modes.selectedCodes], [1, 2]);
+  modes.selectedCodes.delete(1);
+  modes.select("cell_type");
+  modes.select("spatialglue");
+  assert.equal(modes.sample.id, "B");
+  assert.equal(modes.view.viewId, "spatialglue:protein__atac__histone");
+  assert.deepEqual([...modes.selectedCodes], [2]);
+  modes.select("spatialglue:rna__protein__atac");
+  assert.equal(modes.selectedCodes.size, 0);
+});

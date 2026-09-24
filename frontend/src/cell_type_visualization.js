@@ -47,7 +47,8 @@ class CellTypeVisualization {
     this.modes = new VisualizationModes(config.views || [{...config, kind: "cell_type"}]);
     this.config = this.modes.view;
     this.displayYAxis = config.yAxis;
-    this.modeSelect = root.querySelector("[data-visualization-mode]");
+    this.modeButtons = [...root.querySelectorAll("[data-visualization-mode]")];
+    this.combinationSelect = root.querySelector("[data-spatialglue-combination]");
     this.renderedSampleId = null;
     this.stage = requiredElement(root, "[data-cell-type-stage]");
     this.canvasHost = requiredElement(root, "[data-cell-type-canvas]");
@@ -70,11 +71,20 @@ class CellTypeVisualization {
       this.lifecycle.contextLost();
     };
     this.onResize = () => this.deck?.redraw(true);
+    this.pointerInside = false;
+    this.onPointerEnter = () => { this.pointerInside = true; };
+    this.onPointerLeave = () => {
+      this.pointerInside = false;
+      this.tooltip.hidden = true;
+    };
     this.onSampleChange = () => {
       const sample = this.config.samples.find((item) => item.key === this.sampleSelect.value);
-      this.selectView(this.config.kind, sample.id);
+      this.selectView(this.config.viewId, sample.id);
     };
-    this.onModeChange = () => this.selectView(this.modeSelect.value);
+    this.onModeChange = (event) => {
+      const kind = event.currentTarget.dataset.visualizationMode;
+      if (kind !== this.config.viewId) this.selectView(kind);
+    };
     this.onReset = () => this.lifecycle.reset();
     this.onRetry = () => this.lifecycle.retry();
     this.onClose = () => this.lifecycle.destroy(true);
@@ -94,13 +104,15 @@ class CellTypeVisualization {
       hide: () => { this.root.hidden = true; },
     });
     this.bindControls();
+    this.updateCombinationSelect();
     this.populateSamples();
     this.renderLegend(buildLegendEntries(new Uint16Array(), config.categories));
   }
 
   bindControls() {
+    this.combinationSelect?.addEventListener("change", () => this.selectView(this.combinationSelect.value));
     this.sampleSelect.addEventListener("change", this.onSampleChange);
-    this.modeSelect?.addEventListener("change", this.onModeChange);
+    for (const button of this.modeButtons) button.addEventListener("click", this.onModeChange);
     this.resetButton.addEventListener("click", this.onReset);
     this.retryButton.addEventListener("click", this.onRetry);
     this.closeButton.addEventListener("click", this.onClose);
@@ -116,16 +128,28 @@ class CellTypeVisualization {
     this.points = null;
     this.attributes = null;
     this.deck?.setProps({layers: []});
-    if (this.modeSelect) this.modeSelect.value = kind;
+    for (const button of this.modeButtons) {
+      const active = button.dataset.visualizationMode === this.config.methodFamily;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("btn-primary", active);
+      button.classList.toggle("btn-outline-primary", !active);
+    }
     this.root.querySelector("[data-visualization-title]").textContent = this.config.title;
     this.root.querySelector("[data-visualization-legend-title]").textContent = this.config.label;
     this.root.querySelector("[data-visualization-method]").dataset.bsTarget = this.config.methodModal;
+    this.updateCombinationSelect();
     this.populateSamples();
     this.renderLegend(buildLegendEntries(new Uint16Array(), this.modes.categories));
     this.lifecycle.samples = this.config.samples;
     this.lifecycle.categories = this.modes.categories;
     if (this.lifecycle.started) this.lifecycle.switchSample(this.currentSampleKey);
     else this.lifecycle.currentSampleKey = this.currentSampleKey;
+  }
+
+  updateCombinationSelect() {
+    if (!this.combinationSelect) return;
+    this.combinationSelect.closest("label").hidden = this.config.methodFamily !== "spatialglue";
+    this.combinationSelect.value = this.config.viewId;
   }
 
   populateSamples() {
@@ -226,6 +250,8 @@ class CellTypeVisualization {
     } else {
       this.deck = new Deck({parent: this.canvasHost, width: "100%", height: "100%", ...props});
       this.deck.getCanvas()?.addEventListener("webglcontextlost", this.onContextLost, {once: true});
+      this.deck.getCanvas()?.addEventListener("pointerleave", this.onPointerLeave);
+      this.deck.getCanvas()?.addEventListener("pointerenter", this.onPointerEnter);
       window.addEventListener("resize", this.onResize, {passive: true});
     }
   }
@@ -243,6 +269,10 @@ class CellTypeVisualization {
   }
 
   showTooltip(info) {
+    if (!this.pointerInside) {
+      this.tooltip.hidden = true;
+      return;
+    }
     const text = formatHoverText(
       this.points,
       info.index,
@@ -315,13 +345,15 @@ class CellTypeVisualization {
 
   destroyRenderer() {
     this.sampleSelect.removeEventListener("change", this.onSampleChange);
-    this.modeSelect?.removeEventListener("change", this.onModeChange);
+    for (const button of this.modeButtons) button.removeEventListener("click", this.onModeChange);
     this.resetButton.removeEventListener("click", this.onReset);
     this.retryButton.removeEventListener("click", this.onRetry);
     this.closeButton.removeEventListener("click", this.onClose);
     window.removeEventListener("pagehide", this.onPageHide);
     window.removeEventListener("resize", this.onResize);
     this.deck?.getCanvas()?.removeEventListener("webglcontextlost", this.onContextLost);
+    this.deck?.getCanvas()?.removeEventListener("pointerleave", this.onPointerLeave);
+    this.deck?.getCanvas()?.removeEventListener("pointerenter", this.onPointerEnter);
     this.deck?.finalize();
     this.deck = null;
     this.points = null;

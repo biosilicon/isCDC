@@ -11,6 +11,12 @@ failure analysis, calibration, and scheduling lessons are in
 [`细胞类型注释经验总结.md`](细胞类型注释经验总结.md); exact round outcomes are in
 [`../../assets/cell_type_annotation/iteration_history.yaml`](../../assets/cell_type_annotation/iteration_history.yaml).
 
+The [2026-09-20 visualization recheck](细胞类型可视化复核_2026-09-20.md) identified four stale
+bindings and 52 source-labeled datasets without sidecars. The subsequent authorized
+[integration](细胞类型可视化接入记录_2026-09-20.md) restored those four historical results and
+published all 52 source-label visualizations. Current coverage is 88 full Databases: 56 source,
+31 RCTD and one SingleR. The remaining 143 require separate source-label or inference review.
+
 The repository's `annotation/` directory defines the separate `iscdc-cell-annotation`
 environment and the R adapters used to create visualization sidecars. It is not an
 application dependency.
@@ -93,6 +99,12 @@ conda run -n iscdc env PYTHONPATH=src \
 
 ## Spatial domains
 
+SpatialGLUE adds a separate paired multi-omics result in the locked
+`iscdc-spatial-domain-gpu` environment. It uses CUDA for training and igraph Leiden for
+clustering; no R/mclust dependency is added. RNA-only results continue to use the existing
+CPU environment. See [空间域识别](空间域识别.md#spatialglue-多模态空间域) for inputs,
+explicit modality subsets, resource calibration, CLI and sidecar compatibility.
+
 [Spatial domain identification](空间域识别.md) adds a separate RNA-based BANKSY/GraphST
 pipeline and same-canvas mode switch. Its `iscdc-spatial-domain` environment and lockfile
 are under `annotation/spatial_domain/`; PyTorch remains outside `iscdc-cell-annotation`.
@@ -104,3 +116,10 @@ are not modified. Source/inferred cell-type sidecar contracts remain unchanged.
 The [parallel continuation](空间域识别.md#并行续跑) supervisor owns the global resource lock
 and leases disjoint CPU sets to workers. Its default limits are eight jobs, 64 logical CPUs
 and 192 GiB aggregate reserved memory; actual concurrency follows memory availability.
+
+SpatialGLUE 的环境、真实样本校准及隔离页面验证见 [SpatialGLUE 接入记录](SpatialGLUE接入记录_2026-09-20.md)。
+
+SpatialGLUE 的补充多规模资源测试已完成 4 并发短测，并按用户要求暂停；更高并发和
+完整轮次复核待继续。当前运行建议保持不变，详见[并行度测试记录](SpatialGLUE并行度测试_2026-09-20.md)。
+
+SpatialGLUE 的非微生物准入、四模态四组合和 69 万观测测试见[准入扩展与调度测试](SpatialGLUE准入扩展与调度测试_2026-09-20.md)。

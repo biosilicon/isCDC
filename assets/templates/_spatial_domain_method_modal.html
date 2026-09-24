@@ -1,17 +1,20 @@
-<div class="modal fade" id="spatial-domain-method-modal" tabindex="-1" aria-labelledby="spatial-domain-method-title" aria-hidden="true">
+{% set modal_id = domain_modal_id|default('spatial-domain-method-modal') %}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}-title" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header"><h2 class="modal-title fs-5" id="spatial-domain-method-title">Spatial domain identification</h2></div>
+      <div class="modal-header"><h2 class="modal-title fs-5" id="{{ modal_id }}-title">Spatial domain identification</h2></div>
       <div class="modal-body">
         <dl class="row">
           <dt class="col-sm-4">Method</dt><dd class="col-sm-8">{{ spatial_domain_method.method }} + Leiden</dd>
-          <dt class="col-sm-4">Input</dt><dd class="col-sm-8">RNA counts and spatial coordinates</dd>
+          <dt class="col-sm-4">Input</dt><dd class="col-sm-8">{{ spatial_domain_method.input|default('RNA counts and spatial coordinates') }}</dd>
+          {% if spatial_domain_method.unused_modalities %}<dt class="col-sm-4">Unused modalities</dt><dd class="col-sm-8">{{ spatial_domain_method.unused_modalities|join(', ') }}</dd>{% endif %}
         </dl>
-        <p class="small text-secondary">Domains are unsupervised groups within each sample. Matching numbers across samples do not indicate the same tissue structure. Computational checks do not establish biological accuracy.</p>
+        <p class="small text-secondary">Domains are unsupervised groups within each sample and method. Matching numbers across samples or methods do not indicate the same tissue structure. Computational checks do not establish biological accuracy.</p>
         {% for sample_id, result in spatial_domain_method.samples.items() %}
           <section data-domain-method-sample="{{ sample_id }}">
             <h3 class="h6 mt-4">{{ sample_id }}</h3>
             <p>{{ result.n_domains }} domains · {{ result.analyzed }} analyzed · {{ result.not_analyzed }} not analyzed</p>
+            {% if result.clustering %}<p>Leiden backend: {{ result.clustering.flavor }} · resolution {{ result.clustering.resolution }} · seed {{ result.clustering.seed }}</p>{% endif %}
             <h4 class="h6">Preprocessing</h4>
             <dl>{% for key, value in result.preprocessing.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
             <h4 class="h6">Runtime parameters</h4>

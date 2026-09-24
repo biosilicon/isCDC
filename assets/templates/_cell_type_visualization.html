@@ -9,13 +9,6 @@
       <p class="small text-secondary mb-0">Explore spatial annotations. Domain numbers describe groups within each sample.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-end">
-      <label class="small fw-semibold"{% if cell_type_visualization.views|length < 2 %} hidden{% endif %}>Color by
-        <select class="form-select form-select-sm mt-1" data-visualization-mode>
-          {% for view in cell_type_visualization.views %}
-            <option value="{{ view.kind }}">{{ view.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
       <label class="small fw-semibold"{% if cell_type_visualization.samples|length == 1 %} hidden{% endif %}>Sample
         <select class="form-select form-select-sm mt-1" data-cell-type-sample>
           {% for sample in cell_type_visualization.samples %}
@@ -27,7 +20,26 @@
       <button class="btn btn-sm btn-outline-secondary" type="button" data-cell-type-close aria-label="Close spatial visualization">Close</button>
     </div>
   </div>
-  <div class="cell-type-visualization-layout mt-3">
+  <div class="mt-3" role="group" aria-label="Visualization type">
+    {% set available_modes = cell_type_visualization.views|map(attribute='methodFamily')|list %}
+    {% for kind, label in [('cell_type', 'Cell types'), ('spatial_domain', 'RNA domains'), ('spatialglue', 'SpatialGLUE domains')] %}
+      <button type="button" class="btn btn-sm {{ 'btn-primary' if cell_type_visualization.methodFamily == kind else 'btn-outline-primary' }}"
+        data-visualization-mode="{{ kind }}" aria-pressed="{{ 'true' if cell_type_visualization.methodFamily == kind else 'false' }}"
+        aria-controls="cell-type-visualization-map"{% if kind not in available_modes %} disabled aria-describedby="visualization-availability"{% endif %}>{{ label }}</button>
+    {% endfor %}
+  </div>
+  {% set glue_views = cell_type_visualization.views|selectattr('methodFamily', 'equalto', 'spatialglue')|list %}
+  {% if glue_views|length > 1 %}
+    <label class="small fw-semibold mt-2"{% if cell_type_visualization.methodFamily != 'spatialglue' %} hidden{% endif %}>Modality combination
+      <select class="form-select form-select-sm mt-1" data-spatialglue-combination>
+        {% for view in glue_views %}<option value="{{ view.viewId }}">{{ view.combinationLabel }}</option>{% endfor %}
+      </select>
+    </label>
+  {% endif %}
+  {% if available_modes|unique|list|length < 3 %}
+    <p id="visualization-availability" class="small text-secondary mt-2 mb-0">{% for kind, label in [('cell_type', 'Cell type annotations'), ('spatial_domain', 'RNA domain results'), ('spatialglue', 'SpatialGLUE results')] %}{% if kind not in available_modes %}{{ label }} are not available for this dataset. {% endif %}{% endfor %}</p>
+  {% endif %}
+  <div id="cell-type-visualization-map" class="cell-type-visualization-layout mt-3">
     <div class="cell-type-stage" data-cell-type-stage>
       <div class="cell-type-canvas" data-cell-type-canvas aria-label="Interactive spatial annotation map"></div>
       <div class="cell-type-status" data-cell-type-status role="status">Visualization loads when it enters the viewport.</div>

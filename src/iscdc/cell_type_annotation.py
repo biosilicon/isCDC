@@ -569,6 +569,11 @@ def generate_source_labels(h5mu_path: Path, plan: DatasetPlan) -> AnnotationPred
         raise CellTypeAnnotationError("MuData is required in iscdc-cell-annotation") from exc
     mdata = None
     try:
+        # Canonical files written by newer AnnData may contain explicit None metadata.
+        # Reuse the isolated reader backport; this imports no inference packages.
+        from .spatial_domain_annotation import enable_h5mu_null_reader
+
+        enable_h5mu_null_reader()
         mdata = mudata.read_h5mu(h5mu_path, backed="r")
         if "cell_type" not in mdata.obs.columns:
             raise CellTypeAnnotationError("Verified source obs['cell_type'] is absent")

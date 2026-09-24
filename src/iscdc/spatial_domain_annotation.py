@@ -607,20 +607,34 @@ def add_cli_commands(subparsers):
         help="Infer RNA spatial domains offline; requires the isolated spatial-domain environment.",
     )
     generate_parser.add_argument("dataset_id")
-    generate_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    generate_parser.add_argument("--config", type=Path)
+    generate_parser.add_argument("--method", choices=("rna", "spatialglue"), default="rna")
     generate_parser.add_argument("--output-root", type=Path)
     generate_parser.add_argument("--force", action="store_true")
+    generate_parser.add_argument("--combination", help="SpatialGlue canonical modality combination")
+    generate_parser.add_argument(
+        "--resume", action="store_true", help="Resume incomplete SpatialGlue combinations"
+    )
     audit = subparsers.add_parser(
         "audit-spatial-domain-visualizations", help="Read-only eligibility and artifact audit."
     )
     audit.add_argument("dataset_ids", nargs="*")
     audit.add_argument("--all", action="store_true")
     audit.add_argument("--output-root", type=Path)
+    audit.add_argument("--method", choices=("rna", "spatialglue", "all"), default="rna")
+    audit.add_argument("--config", type=Path)
 
 
 def execute_cli(args):
     settings = Settings.from_environment()
     root = args.output_root or settings.spatial_domain_visualization_root
+    method_family = getattr(args, "method", "rna")
+    if args.command == "generate-spatial-domain-visualization" and method_family == "spatialglue":
+        from .spatialglue_cli import execute
+
+        return execute(args, settings, root)
+    if args.command == "audit-spatial-domain-visualizations" and method_family != "rna":
+        return audit_methods(args, settings, root)
     if args.command == "audit-spatial-domain-visualizations":
         if not args.all and not args.dataset_ids:
             raise DomainInferenceError("Specify Database IDs or --all")
@@ -642,6 +656,7 @@ def execute_cli(args):
             results.append(row)
         print(json.dumps(results, ensure_ascii=False, indent=2))
         return 0
+    args.config = args.config or DEFAULT_CONFIG
     if (
         Path(sys.prefix).name != "iscdc-spatial-domain"
         and os.environ.get("CONDA_DEFAULT_ENV") != "iscdc-spatial-domain"
@@ -736,6 +751,60 @@ def execute_cli(args):
                     generate(record, settings, root, args.config, force=args.force), indent=2
                 )
             )
+    return 0
+
+
+def audit_methods(args, settings, root):
+    from . import spatialglue_config as glue
+
+    if not args.all and not args.dataset_ids:
+        raise DomainInferenceError("Specify Database IDs or --all")
+    results = []
+    families = ("rna", "spatialglue") if args.method == "all" else (args.method,)
+    for record in catalogue_records(settings, None if args.all else args.dataset_ids):
+        for family in families:
+            row = {"dataset_id": record["dataset_id"], "method_family": family}
+            try:
+                if family == "rna":
+                    row.update(method=method_for_resolution(record["spatial_unit"]),
+                               input_status=eligibility(record) or "eligible")
+                else:
+                    params = glue.load_parameters(
+                        args.config or glue.CONFIG_PATH, record["dataset_id"]
+                    )
+                    glue.eligibility(record, params)
+                    groups = glue.expand_combinations(record, params)
+                    row.update(input_status="eligible", combinations=[])
+                    for modalities in groups:
+                        combination = glue.combination_id(modalities)
+                        entry = {
+                            "combination_id": combination, "input_modalities": modalities,
+                            "method": "SpatialGlue_3M" if len(modalities) == 3 else "SpatialGlue",
+                            "preprocessing_recipes": {
+                                m: glue.recipe(record, m, record["modalities"][m]["value_type"])
+                                for m in modalities
+                            },
+                        }
+                        try:
+                            snapshot = load_spatial_domain_visualization(
+                                root, record, method_family=family, combination_id=combination)
+                            entry.update(state="success", generation_id=snapshot.generation_id)
+                        except (ValueError, OSError, KeyError, TypeError) as exc:
+                            entry.update(state="unavailable", reason=str(exc))
+                        row["combinations"].append(entry)
+                    complete = all(e["state"] == "success" for e in row["combinations"])
+                    row["state"] = "success" if complete else "incomplete"
+                    results.append(row)
+                    continue
+            except ValueError as exc:
+                row.update(method=None, input_status=str(exc))
+            try:
+                snapshot = load_spatial_domain_visualization(root, record, method_family=family)
+                row.update(state="success", generation_id=snapshot.generation_id)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                row.update(state="unavailable", reason=str(exc))
+            results.append(row)
+    print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 
 

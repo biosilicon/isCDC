@@ -25,7 +25,11 @@ from . import cell_type_visualization as ct
 from .config import PROJECT_ROOT, Settings
 from .spatial_domain_annotation import catalogue_records, eligibility
 from .spatial_domain_resources import resource_lock_path
-from .spatial_domain_visualization import POINT_MEDIA_TYPE, load_spatial_domain_visualization
+from .spatial_domain_visualization import (
+    POINT_MEDIA_TYPE,
+    domain_directory,
+    load_spatial_domain_visualization,
+)
 
 
 def read_json(path):
@@ -157,10 +161,28 @@ def tree_hashes(root):
     return {str(p.relative_to(root)): ct._file_digest(p)[1] for p in root.rglob("*") if p.is_file()}
 
 
+def result_directory(root, item):
+    return domain_directory(
+        root,
+        item["dataset_id"],
+        item.get("method_family", "rna"),
+        combination_id=item.get("combination_id"),
+    )
+
+
+def load_result(root, record, item):
+    return load_spatial_domain_visualization(
+        root,
+        record,
+        method_family=item.get("method_family", "rna"),
+        combination_id=item.get("combination_id"),
+    )
+
+
 def stage_release(root, target, release, audit, records, log):
     source_root, stage = root / "sidecars", release / "sidecars"
     sources = [
-        source_root / item["dataset_id"] / "generations" / item["generation_id"]
+        result_directory(source_root, item) / "generations" / item["generation_id"]
         for item in audit["selected"]
     ]
     require(not target.is_symlink() or target.is_dir(), "正式结果指针已损坏")
@@ -178,8 +200,8 @@ def stage_release(root, target, release, audit, records, log):
     for index, item in enumerate(audit["selected"], 1):
         name, generation = item["dataset_id"], item["generation_id"]
         log("stage_dataset", index=index, total=len(sources), dataset_id=name)
-        source = source_root / name / "generations" / generation
-        destination = stage / name / "generations" / generation
+        source = result_directory(source_root, item) / "generations" / generation
+        destination = result_directory(stage, item) / "generations" / generation
         if destination.exists():
             require(
                 tree_hashes(source) == tree_hashes(destination),
@@ -187,14 +209,14 @@ def stage_release(root, target, release, audit, records, log):
             )
         else:
             shutil.copytree(source, destination)
-        status = source_root / name / "status.json"
+        status = result_directory(source_root, item) / "status.json"
         payload = status.read_bytes()
         require(
             hashlib.sha256(payload).hexdigest() == item["status_sha256"],
             f"分析结果在发布中改变：{name}",
         )
-        (stage / name / "status.json").write_bytes(payload)
-        load_spatial_domain_visualization(stage, records[name])
+        (result_directory(stage, item) / "status.json").write_bytes(payload)
+        load_result(stage, records[name], item)
     log("staging_verified", directory=str(stage), datasets=len(sources))
     return stage
 
@@ -236,7 +258,16 @@ def verify_http(client, selected, log):
         parser = PageConfig()
         parser.feed(response.text)
         config = json.loads("".join(parser.parts))
-        views = [view for view in config["views"] if view["kind"] == "spatial_domain"]
+        family = item.get("method_family", "rna")
+        combination = item.get("combination_id")
+        views = [
+            view
+            for view in config["views"]
+            if view["kind"] == "spatial_domain"
+            and view.get("methodFamily", "spatial_domain")
+            == ("spatialglue" if family == "spatialglue" else "spatial_domain")
+            and (not combination or view.get("viewId") == f"spatialglue:{combination}")
+        ]
         require(
             len(views) == 1 and views[0]["generationId"] == generation, f"页面未加载新结果：{name}"
         )
@@ -248,6 +279,11 @@ def verify_http(client, selected, log):
         )
         for sample in item["manifest"]["samples"]:
             url = f"{path}/spatial-domain-visualization/{generation}/{sample['key']}"
+            if family == "spatialglue":
+                url = (
+                    f"{path}/spatial-domain-visualization/spatialglue/"
+                    f"{combination}/{generation}/{sample['key']}"
+                )
             point = client.get(url, headers={"Accept-Encoding": "identity"})
             point.raise_for_status()
             expected = sample["representations"]["identity"]
@@ -336,7 +372,9 @@ def switch_release(target, stage, release, service, verify, log):
         raise
 
 
-def execute(root, settings, target, report_dir, *, check_only=False, completed_only=False):
+def execute(
+    root, settings, target, report_dir, *, check_only=False, completed_only=False, method="rna"
+):
     report_dir.mkdir(parents=True, exist_ok=False)
 
     def log(event, **details):
@@ -358,7 +396,14 @@ def execute(root, settings, target, report_dir, *, check_only=False, completed_o
     )
     try:
         # Freeze the cohort once; jobs finishing later are picked up on the next invocation.
-        progress = read_json(root / "progress.json")
+        audit_function = audit_run
+        if method == "spatialglue":
+            from .spatialglue_publish import audit_run as audit_function
+            from .spatialglue_publish import snapshot_progress
+
+            progress = snapshot_progress(root)
+        else:
+            progress = read_json(root / "progress.json")
         if not completed_only:
             require(progress["state"] == "complete", "分析尚未完成，未执行发布或重启")
         with ExitStack() as stack:
@@ -368,17 +413,17 @@ def execute(root, settings, target, report_dir, *, check_only=False, completed_o
             )
             paths = [publication_lock]
             if not completed_only:
-                paths.extend((root / ".supervisor.lock", resource_lock_path()))
+                queue_lock = "run.lock" if method == "spatialglue" else ".supervisor.lock"
+                paths.extend((root / queue_lock, resource_lock_path()))
             for job in progress["jobs"]:
                 if job["state"] in {"success", "reused"}:
-                    name = ct._safe_name(job["dataset_id"], "dataset_id")
-                    directory = root / "sidecars" / name
+                    directory = result_directory(root / "sidecars", job)
                     require(not directory.is_symlink(), f"不安全的结果目录：{directory}")
                     paths.append(directory / ".generation.lock")
             for path in paths:
                 lock = stack.enter_context(path.open("a"))
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            audit, records = audit_run(
+            audit, records = audit_function(
                 root, settings, log, completed_only=completed_only, progress=progress
             )
             ct._atomic_json(report_dir / "audit.json", audit)
@@ -462,12 +507,15 @@ def main(argv=None):
         "--run-root", type=Path, help="默认读取 temp/spatial_domain_full_latest.json"
     )
     parser.add_argument("--check-only", action="store_true", help="只审计，写报告，不发布或重启")
+    parser.add_argument("--method", choices=("rna", "spatialglue"), default="rna")
     parser.add_argument(
         "--completed-only",
         action="store_true",
         help="发布本次开始时已成功的结果，暂缓其他任务，允许后台计算继续运行",
     )
     args = parser.parse_args(argv)
+    if args.method == "spatialglue" and args.run_root is None:
+        parser.error("SpatialGLUE 发布必须显式指定 --run-root")
     settings = Settings.from_environment()
     root = args.run_root or Path(
         read_json(PROJECT_ROOT / "temp/spatial_domain_full_latest.json")["run_root"]
@@ -498,6 +546,7 @@ def main(argv=None):
             report_dir,
             check_only=args.check_only,
             completed_only=args.completed_only,
+            method=args.method,
         )
     except (Exception, KeyboardInterrupt) as error:
         print(f"发布未完成：{error}\n日志：{report_dir}", file=sys.stderr)
