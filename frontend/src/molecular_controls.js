@@ -23,7 +23,8 @@ export class MolecularControls {
     const options = {signal: this.events.signal};
     for (const modality of view.modalities) {
       const option = document.createElement("option");
-      option.value = modality.name; option.textContent = `${modality.name} · ${modality.n_vars.toLocaleString()} features`;
+      const count = modality.n_searchable ?? modality.n_vars;
+      option.value = modality.name; option.textContent = `${modality.name} · ${count.toLocaleString()} searchable features`;
       this.select.append(option);
     }
     this.select.value = this.modality.name;
@@ -105,7 +106,8 @@ export class MolecularControls {
       }
       this.nextOffset = result.nextOffset; this.more.hidden = result.nextOffset === null;
       this.status.textContent = this.items.childElementCount ? `${this.items.childElementCount} results shown`
-        : "No matching features. Try a source ID or name.";
+        : this.modality.n_searchable === 0 ? "All features in this modality have zero values."
+          : "No matching features. All-zero features are hidden. Try a source ID or name.";
     } catch (error) {
       if (token === this.searchSequence && error.name !== "AbortError") {
         this.status.textContent = "Search unavailable. Focus the search field or edit your query to retry.";

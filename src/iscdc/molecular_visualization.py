@@ -118,7 +118,53 @@ def load_publication(root: Path | None, datasets) -> dict:
             result[dataset_id] = {**manifest, "directory": directory}
         except (OSError, ValueError, KeyError, TypeError) as exc:
             LOG.warning("Molecular visualization unavailable for %s: %s", dataset_id, exc)
+    _load_search_publication(root, index, result)
     return result
+
+
+def _load_search_publication(root, publication, snapshots):
+    try:
+        search = json.loads((root / "search-publication.json").read_text())
+        if search["version"] != 1 or not isinstance(search["datasets"], dict):
+            raise ValueError("Unsupported molecular search publication")
+        directory = safe_path(root, search["directory"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    for dataset_id, entry in search["datasets"].items():
+        snapshot = snapshots.get(dataset_id)
+        if snapshot is None:
+            continue
+        try:
+            if (
+                entry["parent_generation_id"] != snapshot["generation_id"]
+                or entry["parent_manifest_sha256"]
+                != publication["datasets"][dataset_id]["manifest_sha256"]
+            ):
+                continue
+            modalities = []
+            for modality in snapshot["modalities"]:
+                filtered = entry["modalities"][modality["name"]]
+                if (
+                    filtered["n_vars"] != modality["n_vars"]
+                    or not isinstance(filtered["n_searchable"], int)
+                    or not 0 <= filtered["n_searchable"] <= modality["n_vars"]
+                    or (
+                        filtered["n_searchable"]
+                        and not isinstance(filtered["first_feature"], dict)
+                    )
+                ):
+                    raise ValueError("Invalid filtered feature metadata")
+                path = safe_path(directory, filtered["index"])
+                if not path.is_file():
+                    raise ValueError("Filtered feature index missing")
+                modalities.append({
+                    **modality, "index": filtered["index"], "index_directory": directory,
+                    "n_searchable": filtered["n_searchable"],
+                    "first_feature": filtered["first_feature"] or modality["first_feature"],
+                })
+            snapshot["modalities"] = modalities
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            LOG.warning("Filtered molecular search unavailable for %s: %s", dataset_id, exc)
 
 
 def view_config(snapshot: dict, request: Request) -> dict:
@@ -144,7 +190,8 @@ def view_config(snapshot: dict, request: Request) -> dict:
         "categories": [],
         "baseUrl": base,
         "modalities": [
-            {k: m[k] for k in ("name", "value_type", "n_vars", "first_feature")}
+            {**{k: m[k] for k in ("name", "value_type", "n_vars", "first_feature")},
+             "n_searchable": m.get("n_searchable", m["n_vars"])}
             for m in snapshot["modalities"]
         ],
         "samples": [
@@ -314,12 +361,15 @@ def install_routes(application, snapshots: dict, preferred_encoding) -> None:
         snapshot, _, modality = service.resolve(
             dataset_id, generation_id, modality_name=modality_name
         )
-        if offset >= modality["n_vars"]:
+        if offset >= modality.get("n_searchable", modality["n_vars"]):
             return {"items": [], "offset": offset, "nextOffset": None}
         try:
             with service.slots:
                 return feature_search(
-                    safe_path(snapshot["directory"], modality["index"]), q, offset, limit
+                    safe_path(
+                        modality.get("index_directory", snapshot["directory"]), modality["index"]
+                    ),
+                    q, offset, limit,
                 )
         except (OSError, sqlite3.Error, ValueError) as exc:
             raise HTTPException(404, "Molecular feature index unavailable") from exc

@@ -92,9 +92,15 @@ test("logarithmic defaults, manual linear colors and binary ATAC fallback", asyn
   const scale = region.locator("[data-molecular-scale]");
   await expect(scale).toHaveValue("log1p");
   await expect(region.locator("[data-cell-type-legend]")).toContainText("Log1p colors");
+  const search = region.locator("[data-molecular-search]");
+  for (const zeroFeature of ["FAM138A", "ENSG00000237613"]) {
+    await search.fill(zeroFeature);
+    await expect(region.locator("[data-molecular-search-status]")).toContainText("No matching features");
+    await expect(region.locator(".molecular-result")).toHaveCount(0);
+  }
   await scale.selectOption("linear");
   await expect(region.locator("[data-cell-type-legend]")).toContainText("Linear colors");
-  await region.locator("[data-molecular-search]").focus();
+  await search.fill("");
   await region.locator(".molecular-result").nth(1).click();
   await expect(region).toHaveAttribute("data-visualization-state", "ready");
   await expect(scale).toHaveValue("linear");
@@ -103,8 +109,14 @@ test("logarithmic defaults, manual linear colors and binary ATAC fallback", asyn
   await expect(scale).toHaveValue("linear");
   await expect(region.locator('[data-molecular-scale] option[value="log1p"]')).toHaveJSProperty("disabled", true);
   await region.locator("[data-molecular-search]").fill("chr1:10000-15000");
-  await region.locator(".molecular-result").filter({hasText: "chr1:10000-15000"}).first().click();
-  await expect(region.locator("[data-molecular-selected]")).toContainText("chr1:10000-15000");
+  await expect(region.locator("[data-molecular-search-status]")).toContainText("No matching features");
+  await expect(region.locator(".molecular-result")).toHaveCount(0);
+  await search.fill("chr1:");
+  const activeInterval = region.locator(".molecular-result").first();
+  await expect(activeInterval).toBeVisible();
+  const interval = await activeInterval.textContent();
+  await activeInterval.click();
+  await expect(region.locator("[data-molecular-selected]")).toContainText(interval);
   await expect(region).toHaveAttribute("data-visualization-state", "ready");
   await expect(region.locator("[data-cell-type-legend]")).toContainText("binary");
   await expect(region.locator(".molecular-colorbar-ticks")).toHaveText("01");

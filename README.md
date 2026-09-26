@@ -240,6 +240,9 @@ bash annotation/spatial_domain/publish_completed.sh
 Database 详情页的 **Molecular distribution** 模式支持按样本、模态和特征查看空间分布。
 特征可按来源 ID、名称、gene symbol、m/z 或受体序列搜索；短于三个字符时按 ID/显示名
 前缀查询。各模态保留实际保存的特征，包括 ATAC/组蛋白区间、克隆型和微生物分类单元。
+搜索结果隐藏在该模态全部实际观测中均为 0 的特征，默认选择首个可搜索特征；筛选在分页
+之前完成。负值、正负抵消、非有限值或没有观测的情况不误判为全零，缺失模态不补作零。
+筛选范围是该 Database 的整个模态，不随所选样本变化；原始列 ID 和数值保持不变。
 页面展示 `X` 的存储值及 `value_type`，不新增归一化；非负且未声明为 binary 或
 `log_normalized` 的值默认使用 Log1p **颜色尺度**，也可手动切换为线性色阶，悬停仍显示原值。
 切换模态时重新默认使用 Log1p；不适用时自动使用线性色阶。颜色范围按当前特征和
@@ -269,6 +272,20 @@ PYTHONPATH=src python -m iscdc.molecular_prepare publish --input-root temp/molec
 正式目录默认 `data/molecular_visualizations/`，可通过 `ISCDC_MOLECULAR_VISUALIZATION_ROOT`
 覆盖。回滚使用 `PYTHONPATH=src python -m iscdc.molecular_prepare rollback`，随后重启并验证网站。
 已发布旧 generation 保留，不自动清理。
+
+新准备的可视化自动生成排除全零特征的索引。已有发布可只更新搜索索引，复用已审计的
+数值文件，无需重新转换正式矩阵：
+
+```bash
+PYTHONPATH=src python -m iscdc.molecular_search prepare --output-root temp/molecular_search_release
+PYTHONPATH=src python -m iscdc.molecular_search publish --input-root temp/molecular_search_release
+./deploy_test.sh restart
+```
+
+搜索批次冻结 catalogue、父 publication 和 generation，逐个核验已准备输入与新索引；
+发布通过 `search-publication.json` 原子切换，父 generation 不匹配时不套用旧索引。
+输出目录需独立且未使用；失败时可用新目录重试。`audit --input-root ...` 可独立复核，
+`python -m iscdc.molecular_search rollback` 恢复上一个搜索发布，之后重启站点。
 
 网站启动只读取发布索引及小型 manifest。内部接口位于
 `/databases/{dataset_id}/molecular-visualization/{generation_id}/`，只读取已准备的特征索引、

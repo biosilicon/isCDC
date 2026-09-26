@@ -20,13 +20,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import Settings
+from .molecular_search import filter_index, searchable_features
 from .molecular_visualization import DTYPES, SAFE_KEY, VERSION, encode_array, safe_path
 
 PREPARATION_CODE = Path(__file__).read_bytes()
 ENCODING_CODE = Path(__file__).with_name("molecular_visualization.py").read_bytes()
+SEARCH_CODE = Path(__file__).with_name("molecular_search.py").read_bytes()
 CODE_DIGESTS = {
     "molecular_prepare.py": hashlib.sha256(PREPARATION_CODE).hexdigest(),
     "molecular_visualization.py": hashlib.sha256(ENCODING_CODE).hexdigest(),
+    "molecular_search.py": hashlib.sha256(SEARCH_CODE).hexdigest(),
 }
 
 ALIASES = (
@@ -325,6 +328,9 @@ def prepare_generation(settings, record, root, *, memory_gib=16):
             dtype, obs_digest = _write_matrix(
                 group, directory / matrix_name, top_ids, sample_rows, memory_gib=memory_gib
             )
+            search = filter_index(
+                directory / index_name, searchable_features(directory / matrix_name)
+            )
             assay = read_elem(group["uns/assay"])
             manifest["modalities"].append(
                 {
@@ -332,7 +338,8 @@ def prepare_generation(settings, record, root, *, memory_gib=16):
                     "n_vars": count,
                     "feature_order_sha256": digest,
                     "obs_order_sha256": obs_digest,
-                    "first_feature": first,
+                    "first_feature": search["first_feature"] or first,
+                    "n_searchable": search["n_searchable"],
                     "value_type": str(assay["value_type"]),
                     "dtype": dtype,
                     "index": index_name,
@@ -396,6 +403,7 @@ def prepare_batch(settings, output_root, *, dataset_id=None, memory_gib=16):
         for name, content in (
             ("molecular_prepare.py", PREPARATION_CODE),
             ("molecular_visualization.py", ENCODING_CODE),
+            ("molecular_search.py", SEARCH_CODE),
         ):
             snapshot = code_root / name
             if snapshot.exists() and snapshot.read_bytes() != content:

@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
+import iscdc.molecular_prepare as molecular_prepare
 from iscdc.app import create_app
 from iscdc.importer import import_dataset
 from iscdc.molecular_prepare import (
@@ -23,6 +24,12 @@ from iscdc.molecular_prepare import (
     prepare_generation,
     publish_batch,
     sha256,
+)
+from iscdc.molecular_search import (
+    audit_search,
+    prepare_search,
+    publish_search,
+    searchable_features,
 )
 from iscdc.molecular_visualization import (
     HEADER,
@@ -134,6 +141,82 @@ def test_binary_golden_vector_and_unsafe_paths(tmp_path):
             safe_path(tmp_path, value)
     with pytest.raises(ValueError):
         encode_array(np.array([1]), kind=2, states=[3])
+
+
+@pytest.mark.parametrize("encoding", ["dense", "csr", "csc"])
+def test_zero_features_are_hidden_without_losing_negative_or_unknown_values(
+    settings, tmp_path, encoding
+):
+    record, source = _source(settings, "dense")
+    values = np.array([
+        [0, 5, 0, 1e-300, np.nan, np.inf, -3, 7, 0, 0],
+        [0, -5, 0, 0, 0, 0, -4, 0, -0.0, 2],
+    ])
+    x = values
+    if encoding != "dense":
+        rows, columns = np.indices(values.shape)
+        # Deliberately retain explicitly stored sparse zeros.
+        x = sparse.coo_matrix((values.ravel(), (rows.ravel(), columns.ravel())), shape=values.shape)
+        x = x.tocsr() if encoding == "csr" else x.tocsc()
+    source.mod["rna"] = ad.AnnData(
+        x, obs=pd.DataFrame(index=["b", "a"]),
+        var=pd.DataFrame({"gene_symbol": [
+            "silent", "shared", "shared", "shared alias", "unknown", "infinite",
+            "negative", "shared-extra", "zero", "later",
+        ]}, index=[f"gene_{i}" for i in range(10)]),
+    )
+    source.mod["rna"].uns["assay"] = {"value_type": "normalized"}
+    source.update()
+    path = settings.data_root / record["storage_dir"] / "dataset.h5mu"
+    source.write_h5mu(path)
+    record["sha256"] = sha256(path)
+    root = tmp_path / "filtered"
+    item = prepare_generation(settings, record, root)
+    manifest = audit_generation(settings, record, root, item)
+    rna = next(m for m in manifest["modalities"] if m["name"] == "rna")
+    directory = root / item["directory"]
+    keep = searchable_features(directory / rna["matrix"], block_bytes=16)
+    np.testing.assert_array_equal(np.flatnonzero(keep), [1, 3, 4, 5, 6, 7, 9])
+    assert rna["n_vars"] == 10 and rna["n_searchable"] == 7
+    assert rna["first_feature"]["key"] == "1"
+    index = directory / rna["index"]
+    for query in ("", "ge", "gene_"):
+        keys = [int(r["key"]) for r in feature_search(index, query, 0, 50)["items"]]
+        assert keys == [1, 3, 4, 5, 6, 7, 9]
+    assert feature_search(index, "gene_0", 0, 50)["items"] == []
+    assert feature_search(index, "silent", 0, 50)["items"] == []
+    for offset, key in enumerate(["1", "3", "7"]):
+        page = feature_search(index, "shared", offset, 1)
+        assert page["items"][0]["key"] == key
+        assert page["nextOffset"] == (offset + 1 if offset < 2 else None)
+    assert feature_search(index, "shared", 3, 1)["items"] == []
+    # Hidden features remain readable by their original stable column keys.
+    _, original, states = _decode(read_vector(directory, rna, "s0", 0))
+    np.testing.assert_array_equal(original, [0, 0])
+    np.testing.assert_array_equal(states, [0, 0])
+
+
+def test_all_zero_modality_keeps_valid_metadata_and_empty_search(settings, tmp_path):
+    record, source = _source(settings, "dense")
+    source.mod["rna"].X[:] = 0
+    path = settings.data_root / record["storage_dir"] / "dataset.h5mu"
+    source.write_h5mu(path)
+    record["sha256"] = sha256(path)
+    root = tmp_path / "all_zero"
+    item = prepare_generation(settings, record, root)
+    manifest = audit_generation(settings, record, root, item)
+    rna = next(m for m in manifest["modalities"] if m["name"] == "rna")
+    assert rna["n_searchable"] == 0 and rna["first_feature"]["key"] == "0"
+    assert feature_search(root / item["directory"] / rna["index"], "", 0, 50) == {
+        "items": [], "offset": 0, "nextOffset": None,
+    }
+
+
+def test_absent_observations_are_not_classified_as_zero(tmp_path):
+    path = tmp_path / "missing.h5"
+    with h5py.File(path, "w") as handle:
+        handle.attrs.update(n_vars=3, n_obs=0, encoding="dense")
+    assert searchable_features(path).tolist() == [True, True, True]
 
 
 def test_audit_detects_corruption_and_source_change(settings, tmp_path):
@@ -277,3 +360,86 @@ def test_copy_failure_cannot_replace_publication(
     with pytest.raises(OSError, match="disk failure"):
         publish_batch(settings, prepared, root)
     assert (root / "publication.json").read_bytes() == before
+
+
+@pytest.mark.anyio
+async def test_filtered_search_publication_is_bound_readonly_and_atomic(
+    settings, write_h5mu, write_metadata, tmp_path, monkeypatch
+):
+    settings = replace(
+        settings, analytics_enabled=False, molecular_visualization_root=tmp_path / "published"
+    )
+    source = write_h5mu()
+    with h5py.File(source, "r+") as handle:
+        handle["mod/rna/X"][:, 0] = 0
+    import_dataset(source, write_metadata(), settings)
+    root = settings.molecular_visualization_root
+    # Simulate an older unfiltered generation to exercise the upgrade path.
+    with monkeypatch.context() as legacy:
+        legacy.setattr(molecular_prepare, "filter_index", lambda path, keep: {
+            "n_searchable": len(keep), "first_feature": None,
+        })
+        prepare_batch(settings, tmp_path / "legacy")
+        original = publish_batch(settings, tmp_path / "legacy", root)
+    record = catalogue(settings)[0]
+    parent = original["datasets"][record["dataset_id"]]
+    parent_directory = root / parent["directory"]
+    manifest = json.loads((parent_directory / "manifest.json").read_text())
+    original_index = next(m for m in manifest["modalities"] if m["name"] == "rna")["index"]
+    parent_hash = sha256(root / "publication.json")
+    old_index_hash = sha256(parent_directory / original_index)
+    prepared = tmp_path / "search"
+    batch = prepare_search(settings, prepared)
+    assert batch["datasets"][record["dataset_id"]]["modalities"]["rna"]["n_searchable"] == 1
+    publish_search(settings, prepared)
+    assert sha256(root / "publication.json") == parent_hash
+    assert sha256(parent_directory / original_index) == old_index_hash
+    did = record["dataset_id"]
+    prefix = f"/databases/{did}/molecular-visualization/{manifest['generation_id']}"
+    with monkeypatch.context() as guard:
+        guard.setattr(h5py, "File", lambda *a, **k: pytest.fail("Matrix opened by startup/search"))
+        app = create_app(settings)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            page = await client.get(f"/databases/{record['dataset_id']}")
+            assert '"n_searchable": 1' in page.text
+            for query in ("", "ge", "gene", "gene_2"):
+                response = await client.get(
+                    prefix + "/modalities/rna/features", params={"q": query}
+                )
+                result = response.json()
+                assert [r["key"] for r in result["items"]] == ["1"]
+            hidden = await client.get(prefix + "/modalities/rna/features?q=gene_1")
+            assert hidden.json()["items"] == []
+    datasets = [SimpleNamespace(dataset_type="full", dataset_id=did)]
+    snapshots = load_publication(root, datasets)
+    rna = next(m for m in snapshots[did]["modalities"] if m["name"] == "rna")
+    assert rna["first_feature"]["key"] == "1"
+    before = (root / "search-publication.json").read_bytes()
+    # A corrupt input or failed output copy must leave the published pointer intact.
+    relative = batch["datasets"][record["dataset_id"]]["modalities"]["rna"]["index"]
+    index = prepared / batch["directory"] / relative
+    contents = index.read_bytes()
+    index.write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="checksum"):
+        publish_search(settings, prepared)
+    index.write_bytes(contents)
+    second = tmp_path / "search_second"
+    prepare_search(settings, second)
+    with monkeypatch.context() as failure:
+        def fail_copy(*args, **kwargs):
+            raise OSError("simulated disk failure")
+        failure.setattr(shutil, "copytree", fail_copy)
+        with pytest.raises(OSError, match="disk failure"):
+            publish_search(settings, second)
+    assert (root / "search-publication.json").read_bytes() == before
+    # Stale overlays cannot change a replacement generation's feature identities.
+    overlay = json.loads(before)
+    overlay["datasets"][record["dataset_id"]]["parent_generation_id"] = "stale"
+    (root / "search-publication.json").write_text(json.dumps(overlay))
+    stale = load_publication(root, datasets)
+    assert "index_directory" not in stale[record["dataset_id"]]["modalities"][0]
+    (root / "publication.json").write_text(json.dumps({"version": 1, "datasets": {}}))
+    with pytest.raises(ValueError, match="changed"):
+        audit_search(settings, prepared)
