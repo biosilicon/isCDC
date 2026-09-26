@@ -12,6 +12,7 @@ DATABASE_PATH="${ISCDC_DATABASE_PATH:-${PROJECT_ROOT}/data/catalog.db}"
 ANALYTICS_DATABASE_PATH="${ISCDC_ANALYTICS_DATABASE_PATH:-${PROJECT_ROOT}/data/analytics.db}"
 DATA_ROOT="${ISCDC_DATA_ROOT:-${PROJECT_ROOT}/data/datasets}"
 DOMAIN_ROOT="${ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT:-${PROJECT_ROOT}/data/spatial_domain_visualizations}"
+MOLECULAR_ROOT="${ISCDC_MOLECULAR_VISUALIZATION_ROOT:-${PROJECT_ROOT}/data/molecular_visualizations}"
 LOG_PATH="${ISCDC_DEPLOY_LOG:-${PROJECT_ROOT}/data/iscdc-server.log}"
 LOCAL_URL="http://127.0.0.1:${PORT}/healthz"
 PUBLIC_URL="http://10.138.46.171:${PORT}"
@@ -24,6 +25,9 @@ if [[ "${DATA_ROOT}" != /* ]]; then
 fi
 if [[ "${DOMAIN_ROOT}" != /* ]]; then
     DOMAIN_ROOT="${PROJECT_ROOT}/${DOMAIN_ROOT}"
+fi
+if [[ "${MOLECULAR_ROOT}" != /* ]]; then
+    MOLECULAR_ROOT="${PROJECT_ROOT}/${MOLECULAR_ROOT}"
 fi
 if [[ "${ANALYTICS_DATABASE_PATH}" != /* ]]; then
     ANALYTICS_DATABASE_PATH="${PROJECT_ROOT}/${ANALYTICS_DATABASE_PATH}"
@@ -62,6 +66,8 @@ Optional environment variables:
   ISCDC_DATA_ROOT       Dataset directory (default: data/datasets).
   ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT
                         Spatial-domain results (default: data/spatial_domain_visualizations).
+  ISCDC_MOLECULAR_VISUALIZATION_ROOT
+                        Molecular results (default: data/molecular_visualizations).
 EOF
 }
 
@@ -148,6 +154,7 @@ start_service() {
         "ISCDC_ANALYTICS_DATABASE_PATH=${ANALYTICS_DATABASE_PATH}" \
         "ISCDC_DATA_ROOT=${DATA_ROOT}" \
         "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT=${DOMAIN_ROOT}" \
+        "ISCDC_MOLECULAR_VISUALIZATION_ROOT=${MOLECULAR_ROOT}" \
         "${PYTHON_BIN}" -m uvicorn iscdc.app:app \
         --app-dir "${PROJECT_ROOT}/src" \
         --host "${HOST}" \

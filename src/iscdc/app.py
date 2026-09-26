@@ -36,6 +36,15 @@ from .database import create_database_engine, create_session_factory, initialize
 from .difficulty_snapshot import ChallengeDifficulty
 from .entry_names import DEFAULT_ENTRY_NAMES_PATH, resolve_entry_names
 from .models import Dataset
+from .molecular_visualization import (
+    install_routes as install_molecular_routes,
+)
+from .molecular_visualization import (
+    load_publication as load_molecular_publication,
+)
+from .molecular_visualization import (
+    view_config as molecular_view_config,
+)
 from .prepared_visualizations import (
     READ_ERRORS,
     discover_spatial_thumbnails,
@@ -574,6 +583,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         domain_visualizations,
         spatialglue_combinations,
     )
+    molecular_visualizations = load_molecular_publication(
+        settings.molecular_visualization_root, catalogue_datasets,
+    )
 
     difficulty_by_split_id: dict[str, ChallengeDifficulty] = {}
     difficulty_snapshot = None
@@ -655,6 +667,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.spatial_domain_visualizations = domain_visualizations
     application.state.spatialglue_visualizations = spatialglue_visualizations
     application.state.templates = templates
+    install_molecular_routes(application, molecular_visualizations, _preferred_content_encoding)
     application.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     if analytics is not None:
         application.add_middleware(
@@ -944,6 +957,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "categories": domain_samples[0]["categories"], "samples": domain_samples,
                 "initialSampleKey": domain_samples[0]["key"],
             })
+        molecular = molecular_visualizations.get(database.dataset_id)
+        if molecular is not None:
+            molecular_view = molecular_view_config(molecular, request)
+            # All modes use the source's global coordinates; retain the established
+            # canvas orientation when annotation views already exist.
+            if views:
+                molecular_view["yAxis"] = views[0]["yAxis"]
+            views.append(molecular_view)
         if views:
             visualization_config = {**views[0], "views": views}
         return templates.TemplateResponse(

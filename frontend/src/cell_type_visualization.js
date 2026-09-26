@@ -4,6 +4,8 @@ import {ScatterplotLayer} from "@deck.gl/layers";
 import {decodePointData} from "./point_data.js";
 import {VisualizationModes} from "./visualization_modes.js";
 import {VisualizationLifecycle} from "./visualization_lifecycle.js";
+import {MolecularControls} from "./molecular_controls.js";
+import {molecularAttributes, molecularHover} from "./molecular_data.js";
 import {
   buildBinaryAttributes,
   buildLegendEntries,
@@ -64,13 +66,17 @@ class CellTypeVisualization {
     this.attributes = null;
     this.initialViewState = null;
     this.viewState = null;
+    this.cameraTouched = false;
     this.selectedCodes = this.modes.selectedCodes;
     this.currentSampleKey = config.initialSampleKey || config.samples[0].key;
     this.onContextLost = (event) => {
       event.preventDefault();
       this.lifecycle.contextLost();
     };
-    this.onResize = () => this.deck?.redraw(true);
+    this.onResize = () => {
+      if (this.points && !this.cameraTouched) this.resetView();
+      else this.deck?.redraw(true);
+    };
     this.pointerInside = false;
     this.onPointerEnter = () => { this.pointerInside = true; };
     this.onPointerLeave = () => {
@@ -103,6 +109,17 @@ class CellTypeVisualization {
       onState: (state, message) => this.setStatus(state, message),
       hide: () => { this.root.hidden = true; },
     });
+    const molecularView = this.modes.views.find((view) => view.kind === "molecular");
+    this.molecular = molecularView ? new MolecularControls(root, molecularView, {
+      onDataChange: () => {
+        this.points = null; this.attributes = null; this.tooltip.hidden = true;
+        this.deck?.setProps({layers: []}); this.legend.replaceChildren();
+        if (this.lifecycle.started) this.lifecycle.retry();
+      },
+      onScaleChange: () => this.rebuildLayer(false),
+    }) : null;
+    this.molecular?.setActive(this.config.kind === "molecular");
+    this.root.classList.toggle("molecular-active", this.config.kind === "molecular");
     this.bindControls();
     this.updateCombinationSelect();
     this.populateSamples();
@@ -122,6 +139,8 @@ class CellTypeVisualization {
   selectView(kind, sampleId) {
     this.modes.select(kind, sampleId);
     this.config = this.modes.view;
+    this.molecular?.setActive(this.config.kind === "molecular");
+    this.root.classList.toggle("molecular-active", this.config.kind === "molecular");
     this.selectedCodes = this.modes.selectedCodes;
     this.currentSampleKey = this.modes.sample.key;
     this.tooltip.hidden = true;
@@ -154,6 +173,7 @@ class CellTypeVisualization {
 
   populateSamples() {
     this.sampleSelect.replaceChildren();
+    this.sampleSelect.closest("label").hidden = this.config.samples.length === 1;
     for (const sample of this.config.samples) {
       const option = document.createElement("option");
       option.value = sample.key;
@@ -175,6 +195,7 @@ class CellTypeVisualization {
   }
 
   async fetchPoints(sample, signal) {
+    if (this.config.kind === "molecular") return this.molecular.load(sample, signal);
     const kind = this.config.kind;
     const response = await fetch(sample.url, {
       signal,
@@ -190,7 +211,7 @@ class CellTypeVisualization {
     this.currentSampleKey = sample.key;
     this.sampleSelect.value = sample.key;
     this.points = points;
-    this.renderLegend(buildLegendEntries(points.type, this.modes.categories));
+    if (points.kind !== "molecular") this.renderLegend(buildLegendEntries(points.type, this.modes.categories));
     this.rebuildLayer(this.renderedSampleId !== sample.id);
     this.renderedSampleId = sample.id;
     for (const section of document.querySelectorAll("[data-domain-method-sample]")) {
@@ -200,7 +221,9 @@ class CellTypeVisualization {
 
   rebuildLayer(resetView = false) {
     if (!this.points) return;
-    this.attributes = buildBinaryAttributes(
+    this.attributes = this.points.kind === "molecular" ? molecularAttributes(
+      this.points, this.molecular.renderLegend(this.legend, this.points), this.displayYAxis,
+    ) : buildBinaryAttributes(
       this.points,
       this.modes.categories,
       this.selectedCodes,
@@ -215,6 +238,7 @@ class CellTypeVisualization {
       },
     };
     if (resetView || !this.initialViewState) {
+      this.cameraTouched = false;
       const rect = this.canvasHost.getBoundingClientRect();
       this.initialViewState = resetViewState(
         coordinateBounds(this.attributes.positions),
@@ -240,6 +264,7 @@ class CellTypeVisualization {
       controller: {dragPan: true, scrollZoom: true, doubleClickZoom: true, touchZoom: true},
       layers: [layer],
       onViewStateChange: ({viewState}) => {
+        this.cameraTouched = true;
         this.viewState = viewState;
         this.deck?.setProps({viewState});
       },
@@ -265,6 +290,7 @@ class CellTypeVisualization {
       rect.height,
     );
     this.viewState = this.initialViewState;
+    this.cameraTouched = false;
     this.deck?.setProps({viewState: this.viewState});
   }
 
@@ -273,7 +299,8 @@ class CellTypeVisualization {
       this.tooltip.hidden = true;
       return;
     }
-    const text = formatHoverText(
+    const molecularIndex = info.index >= 0 ? this.attributes?.sourceIndices?.[info.index] : -1;
+    const text = this.points?.kind === "molecular" ? molecularHover(this.points, molecularIndex) : formatHoverText(
       this.points,
       info.index,
       this.modes.categories,
@@ -291,6 +318,10 @@ class CellTypeVisualization {
 
   renderLegend(entries) {
     this.legend.replaceChildren();
+    if (this.config.kind === "molecular") {
+      this.legend.textContent = "Select a feature to explore its stored values.";
+      return;
+    }
     const controls = document.createElement("div");
     controls.className = "cell-type-legend-controls";
     const selectAll = document.createElement("button");
@@ -344,6 +375,7 @@ class CellTypeVisualization {
   }
 
   destroyRenderer() {
+    this.molecular?.destroy();
     this.sampleSelect.removeEventListener("change", this.onSampleChange);
     for (const button of this.modeButtons) button.removeEventListener("click", this.onModeChange);
     this.resetButton.removeEventListener("click", this.onReset);

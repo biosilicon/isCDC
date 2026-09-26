@@ -139,3 +139,18 @@ test("mode switch rejects old results and validates sample-local domain categori
   assert.equal(calls.render.length, 1);
   assert.equal(calls.states.at(-1)[0], "ready");
 });
+
+test("molecular switching ignores stale values without category validation", async () => {
+  const stale = deferred();
+  const {lifecycle, calls} = harness({load: () => stale.promise});
+  const original = lifecycle.start();
+  const values = {kind: "molecular", count: 1, values: new Float64Array([7]), states: new Uint8Array([0])};
+  lifecycle.categories = [];
+  lifecycle.load = async () => values;
+  assert.equal(await lifecycle.retry(), true);
+  stale.resolve(point); await original;
+  assert.equal(calls.render.length, 1);
+  assert.equal(calls.render[0][0].values[0], 7);
+  lifecycle.load = async () => ({...values, count: 2});
+  assert.equal(await lifecycle.retry(), false);
+});

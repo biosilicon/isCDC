@@ -55,6 +55,7 @@ class Settings:
     cell_type_visualization_root: Path | None = None
     entry_names_path: Path | None = None
     spatial_domain_visualization_root: Path | None = None
+    molecular_visualization_root: Path | None = None
 
     @classmethod
     def from_environment(cls, project_root: Path = PROJECT_ROOT) -> Settings:
@@ -89,6 +90,11 @@ class Settings:
             spatial_domain_visualization_root=_configured_path(
                 "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT",
                 project_root / "data" / "spatial_domain_visualizations",
+                project_root,
+            ),
+            molecular_visualization_root=_configured_path(
+                "ISCDC_MOLECULAR_VISUALIZATION_ROOT",
+                project_root / "data" / "molecular_visualizations",
                 project_root,
             ),
         )

@@ -169,6 +169,7 @@ def test_start_passes_domain_root_explicitly_to_existing_tmux_server(tmp_path: P
     catalogue = tmp_path / "catalog.db"
     catalogue.touch()
     domain_root = tmp_path / "domain results"
+    molecular_root = tmp_path / "molecular results"
     result = _run_script(
         "start",
         env={
@@ -180,8 +181,10 @@ def test_start_passes_domain_root_explicitly_to_existing_tmux_server(tmp_path: P
             "ISCDC_DEPLOY_LOG": str(tmp_path / "server.log"),
             "ISCDC_ANALYTICS_DATABASE_PATH": str(tmp_path / "analytics.db"),
             "ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT": str(domain_root),
+            "ISCDC_MOLECULAR_VISUALIZATION_ROOT": str(molecular_root),
         },
     )
     assert result.returncode == 0, result.stderr
     command = shlex.split(capture.read_text().splitlines()[-1])
     assert f"ISCDC_SPATIAL_DOMAIN_VISUALIZATION_ROOT={domain_root}" in command
+    assert f"ISCDC_MOLECULAR_VISUALIZATION_ROOT={molecular_root}" in command

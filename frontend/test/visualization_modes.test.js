@@ -11,6 +11,16 @@ const domains = {kind: "spatial_domain", samples: [
   {id: "B", key: "domain_b", categories: [{code: 1, label: "Domain 1"}, {code: 2, label: "Domain 2"}]},
 ]};
 
+test("molecular mode preserves sample identity and categorical selections", () => {
+  const molecular = {kind: "molecular", categories: [], samples: [{id: "A", key: "s0"}, {id: "B", key: "s1"}]};
+  const modes = new VisualizationModes([cell, molecular]);
+  modes.select("cell_type", "B"); modes.selectedCodes.add(2);
+  modes.select("molecular");
+  assert.equal(modes.sample.key, "s1"); assert.equal(modes.selectedCodes.size, 0);
+  modes.select("cell_type");
+  assert.equal(modes.sample.id, "B"); assert.deepEqual([...modes.selectedCodes], [1, 2]);
+});
+
 test("mode changes retain sample identity and independent selections", () => {
   const modes = new VisualizationModes([cell, domains]);
   assert.deepEqual([...modes.selectedCodes], [1]);

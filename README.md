@@ -235,6 +235,48 @@ bash annotation/spatial_domain/publish_completed.sh
 暂缓未完成/失败项并保留它们的现有正式结果；之后再次运行同一命令补充新完成的结果。
 具体路径、前提与恢复说明见[分析完成后一键发布](doc/annotation/空间域识别.md#分析完成后一键发布)。
 
+### 分子空间分布
+
+Database 详情页的 **Molecular distribution** 模式支持按样本、模态和特征查看空间分布。
+特征可按来源 ID、名称、gene symbol、m/z 或受体序列搜索；短于三个字符时按 ID/显示名
+前缀查询。各模态保留实际保存的特征，包括 ATAC/组蛋白区间、克隆型和微生物分类单元。
+页面展示 `X` 的存储值及 `value_type`，不新增归一化；非负且未声明为 binary 或
+`log_normalized` 的值默认使用 Log1p **颜色尺度**，也可手动切换为线性色阶，悬停仍显示原值。
+切换模态时重新默认使用 Log1p；不适用时自动使用线性色阶。颜色范围按当前特征和
+样本计算，跨零值使用以零为中心的发散色带。测得为零、缺少模态、非有限值分别处理。
+密集区域先绘制缺测与较低信号，较强信号最后绘制（发散色带按绝对值排序），以减少遮挡；
+保留全部观测，悬停通过来源索引返回正确的坐标和存储值。
+
+该模式与细胞类型、RNA domain、SpatialGLUE 共用画布、样本和视角，也可在没有注释结果的
+Database 中独立使用。首版为二维全集数据，不包含 Challenge、多分子对比或直方图。
+
+使用 `iscdc` 环境离线准备，Python 的 SQLite 需支持 FTS5 及 trigram tokenizer。
+产物包含来源哈希、观测/特征顺序摘要、代码快照、环境版本、
+分页检索索引、按列读取的数值副本及坐标；不写入正式 H5MU 或 catalogue。以下命令默认
+串行、逐模态处理，稀疏转换内存预算为 16 GiB；恢复准备会复核已有产物，代码或冻结目录
+清单变化时应使用新输出目录。输出目录必须与正式发布目录分开：
+
+```bash
+conda activate iscdc
+PYTHONPATH=src python -m iscdc.molecular_prepare prepare --all --output-root temp/molecular_release
+PYTHONPATH=src python -m iscdc.molecular_prepare audit --input-root temp/molecular_release
+PYTHONPATH=src python -m iscdc.molecular_prepare publish --input-root temp/molecular_release
+./deploy_test.sh restart
+```
+
+单个 Database 将 `--all` 替换为 `--dataset-id DATASET_ID`。`publish` 再次执行全批审计，
+拷贝并核验不可变 generation 后原子切换 `publication.json`；任何失败都保留此前发布索引。
+正式目录默认 `data/molecular_visualizations/`，可通过 `ISCDC_MOLECULAR_VISUALIZATION_ROOT`
+覆盖。回滚使用 `PYTHONPATH=src python -m iscdc.molecular_prepare rollback`，随后重启并验证网站。
+已发布旧 generation 保留，不自动清理。
+
+网站启动只读取发布索引及小型 manifest。内部接口位于
+`/databases/{dataset_id}/molecular-visualization/{generation_id}/`，只读取已准备的特征索引、
+样本坐标或所选特征列。数值二进制保留原始类型（包括 Float64 和 64 位整数），缺测状态
+独立编码；前端悬停保留原值。数值读取最多四路并发，响应缓存上限 128 MiB。缺失或损坏
+产物仅影响分子模式。发布验收应包含全库详情页/各模态接口、大样本浏览器和移动端截图。
+首次全库覆盖和验证证据见 [2026-09-26 上线记录](doc/分子空间分布上线记录_2026-09-26.md)。
+
 ### Cell type 空间可视化
 
 Database 详情页可以读取独立的 cell type 可视化 sidecar。正式 `.h5mu`、catalogue schema、
